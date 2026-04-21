@@ -23,24 +23,23 @@ const showOnly = (name) => {
 // ─── WELCOME SCREEN ───────────────────────────────────────────
 const renderWelcome = () => {
   screens.welcome.innerHTML = `
-    <div style="min-height:100vh;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;">
-      <div style="margin-bottom:16px;text-align:center;">
-        <img src="/sloty-logo-v2.png.png" alt="Sloty" style="width:280px;height:auto;display:block;margin:0 auto;" />
-        <p style="color:rgba(255,255,255,0.5);font-size:0.85rem;font-weight:600;letter-spacing:2px;text-transform:uppercase;margin-top:14px;margin-bottom:0;text-align:center;">Gestión inteligente de estacionamientos</p>
+    <div style="min-height:100vh;min-height:100dvh;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:env(safe-area-inset-top, 40px) 24px env(safe-area-inset-bottom, 40px);">
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;gap:0;">
+        <img src="/sloty-logo-v2.png.png" alt="Sloty" style="width:75%;max-width:300px;height:auto;display:block;margin:0 auto;" />
+        <p style="color:rgba(255,255,255,0.5);font-size:0.8rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;margin:20px 0 0;text-align:center;">GESTIÓN INTELIGENTE DE<br>ESTACIONAMIENTOS</p>
       </div>
-      <div style="margin-bottom:60px;"></div>
-      <div style="width:100%;max-width:340px;display:flex;flex-direction:column;gap:14px;">
-        <button id="btn-goto-register" style="width:100%;padding:18px;background:#F5C518;color:#1a1a2e;border:none;border-radius:14px;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:900;cursor:pointer;letter-spacing:1px;">
+      <div style="width:100%;max-width:420px;display:flex;flex-direction:column;gap:14px;padding-bottom:20px;">
+        <button id="btn-goto-register" style="width:100%;padding:20px;background:#F5C518;color:#1a1a2e;border:none;border-radius:18px;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:900;cursor:pointer;letter-spacing:1px;">
           REGISTRAR MI EDIFICIO
         </button>
-        <button id="btn-goto-login" style="width:100%;padding:18px;background:transparent;color:white;border:2px solid rgba(255,255,255,0.2);border-radius:14px;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:700;cursor:pointer;">
+        <button id="btn-goto-login" style="width:100%;padding:20px;background:transparent;color:white;border:2px solid rgba(255,255,255,0.2);border-radius:18px;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:700;cursor:pointer;">
           YA TENGO CUENTA
         </button>
-        <button id="btn-goto-guard" style="width:100%;padding:14px;background:transparent;color:rgba(255,255,255,0.4);border:none;border-radius:14px;font-family:'Montserrat',sans-serif;font-size:0.85rem;font-weight:600;cursor:pointer;letter-spacing:1px;">
+        <button id="btn-goto-guard" style="width:100%;padding:14px;background:transparent;color:rgba(255,255,255,0.4);border:none;font-family:'Montserrat',sans-serif;font-size:0.85rem;font-weight:600;cursor:pointer;letter-spacing:1px;">
           SOY GUARDIA →
         </button>
+        <p style="color:rgba(255,255,255,0.15);font-size:0.65rem;font-weight:600;text-align:center;letter-spacing:2px;margin-top:4px;">POWERED BY KREIKA</p>
       </div>
-      <p style="color:rgba(255,255,255,0.2);font-size:0.7rem;margin-top:60px;font-weight:600;">POWERED BY KREIKA</p>
     </div>
   `
   $('btn-goto-register').onclick = () => { renderRegister(); showOnly('register') }
