@@ -40,6 +40,7 @@ export const initMaster = (container) => {
     <div style="display:flex;border-bottom:1px solid rgba(255,255,255,0.1);overflow-x:auto;">
       ${[
         { k:'BUILDINGS', label:'Edificios'  },
+        { k:'ADS',       label:'Anuncios'   },
         { k:'AUDIT',     label:'Auditoría'  },
         { k:'SYSTEM',    label:'Sistema'    },
       ].map(t => `
@@ -189,7 +190,44 @@ export const initMaster = (container) => {
     `
   }
 
+  // ── ADS TAB ──────────────────────────────────────────────
+  const renderAds = (state) => {
+    const ads = state.ads || []
+    return `
+      <div style="padding:20px;">
+        <h3 style="font-weight:900;color:white;margin-bottom:20px;">GESTIÓN DE ANUNCIOS (CAROUSEL)</h3>
+        
+        <div style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:20px;margin-bottom:30px;">
+          <h4 style="font-size:0.7rem;font-weight:900;color:#F5C518;letter-spacing:1px;margin-bottom:15px;">NUEVO ANUNCIO</h4>
+          <input type="text" id="ad-url" placeholder="URL de la imagen (Ej: https://...)" style="width:100%;padding:14px;border:1px solid rgba(255,255,255,0.1);border-radius:12px;background:rgba(255,255,255,0.05);color:white;margin-bottom:12px;font-family:'Montserrat',sans-serif;">
+          <input type="text" id="ad-link" placeholder="Link (opcional)" style="width:100%;padding:14px;border:1px solid rgba(255,255,255,0.1);border-radius:12px;background:rgba(255,255,255,0.05);color:white;margin-bottom:20px;font-family:'Montserrat',sans-serif;">
+          <button onclick="window._master_addAd()" style="width:100%;padding:16px;background:#F5C518;color:#1a1a2e;border:none;border-radius:14px;font-weight:900;cursor:pointer;">PUBLICAR ANUNCIO</button>
+        </div>
+
+        <div style="display:grid;gap:15px;">
+          ${ads.map(ad => `
+            <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:14px;overflow:hidden;display:flex;align-items:center;padding:12px;">
+              <div style="width:80px;height:45px;border-radius:8px;background:#000;overflow:hidden;flex-shrink:0;margin-right:15px;">
+                <img src="${ad.imageUrl}" style="width:100%;height:100%;object-fit:cover;">
+              </div>
+              <div style="flex:1;">
+                <div style="font-size:0.75rem;color:white;font-weight:700;word-break:break-all;">${ad.imageUrl.substring(0, 30)}...</div>
+                <div style="font-size:0.6rem;color:${ad.active?'#22c55e':'#999'};font-weight:900;margin-top:4px;">
+                  ${ad.active ? '● ACTIVO' : '○ INACTIVO'}
+                </div>
+              </div>
+              <div style="display:flex;gap:10px;">
+                <button onclick="window._master_toggleAd('${ad.id}')" style="background:none;border:none;color:white;cursor:pointer;font-size:1.2rem;">${ad.active?'👁️':'🚫'}</button>
+                <button onclick="window._master_deleteAd('${ad.id}')" style="background:none;border:none;color:#e63946;cursor:pointer;font-weight:900;font-size:0.8rem;">BORRAR</button>
+              </div>
+            </div>
+          `).join(ads.length ? '' : '<p style="text-align:center;color:rgba(255,255,255,0.3);padding:20px;">No hay anuncios.</p>')}
+        </div>
+      </div>`
+  }
+
   // ── AUDIT TAB ─────────────────────────────────────────────
+
   const renderAudit = (state) => {
     const allMovements = (state.movements||[])
     const allAudit = (state.auditLog||[])
@@ -361,6 +399,33 @@ export const initMaster = (container) => {
     location.reload()
   }
 
+  window._master_addAd = () => {
+    const url = document.getElementById('ad-url').value.trim()
+    const link = document.getElementById('ad-link').value.trim()
+    if (!url) return alert('La URL de imagen es obligatoria')
+    const state = getState()
+    state.ads = state.ads || []
+    state.ads.push({ id: Date.now().toString(), imageUrl: url, link, active: true })
+    saveParkingState(state)
+    render()
+  }
+
+  window._master_toggleAd = (id) => {
+    const state = getState()
+    const ad = state.ads.find(a => a.id === id)
+    if (ad) ad.active = !ad.active
+    saveParkingState(state)
+    render()
+  }
+
+  window._master_deleteAd = (id) => {
+    if (!confirm('¿Eliminar este anuncio?')) return
+    const state = getState()
+    state.ads = state.ads.filter(a => a.id !== id)
+    saveParkingState(state)
+    render()
+  }
+
   // ── RENDER ────────────────────────────────────────────────
   const render = () => {
     const state = getState()
@@ -381,6 +446,7 @@ export const initMaster = (container) => {
         ${tabBar()}
         <div style="overflow-y:auto;padding-bottom:40px;">
           ${activeTab==='BUILDINGS' ? renderBuildings(state) : ''}
+          ${activeTab==='ADS'       ? renderAds(state)       : ''}
           ${activeTab==='AUDIT'     ? renderAudit(state)     : ''}
           ${activeTab==='SYSTEM'    ? renderSystem(state)    : ''}
         </div>

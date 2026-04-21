@@ -21,6 +21,7 @@ const defaultState = {
   levels: [],
   movements: [],
   auditLog: [],
+  ads: [], // { id, imageUrl, link, active }
   stats: {
     totalSpots: 0,
     occupied: 0,
@@ -118,6 +119,10 @@ export const getParkingState = () => {
           { id:'ELECTRICO', label:'Eléctrico', color:'#0ed3cf', tag:'E', txt:'#000000' },
           { id:'MUDANZA',   label:'Mudanza',   color:'#a855f7', tag:'M', txt:'white'   }
         ]
+        migrated = true
+      }
+      if (!state.ads) {
+        state.ads = []
         migrated = true
       }
       

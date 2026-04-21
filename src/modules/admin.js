@@ -137,7 +137,14 @@ export const initAdmin = (container) => {
       saveParkingState(state); pendingAction = null; render()
     },
     CANCEL_MODAL: () => { pendingAction = null; render() },
+    CANCEL_MODAL: () => { pendingAction = null; render() },
     TAB: (btn) => { activeTab = btn.dataset.tab; render() },
+    LOGOUT: () => { 
+      if (confirm('¿Cerrar sesión?')) {
+        localStorage.removeItem('sloty_session')
+        location.reload()
+      }
+    },
     FILTER_REPORTS: (btn) => { reportFilter = btn.dataset.filter; render() },
     LOGOUT: () => { location.reload() },
     SAVE_SETTINGS: () => {
@@ -239,160 +246,117 @@ export const initAdmin = (container) => {
     if (!pendingAction) return ''
     const title = pendingAction.type === 'LEVEL' ? 'Eliminar Planta' : 'Eliminar Puesto'
     return `
-      <div style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;backdrop-filter:blur(4px);">
-        <div style="background:white;padding:30px;border-radius:24px;width:100%;max-width:400px;text-align:center;">
-          <h3 style="font-weight:900;margin-bottom:10px;">${title}</h3>
-          <p style="color:#666;margin-bottom:30px;">Esta acción no se puede deshacer.</p>
+      <div style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;backdrop-filter:blur(10px);">
+        <div style="background:white;padding:30px;border-radius:24px;width:100%;max-width:400px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,0.3);">
+          <h3 style="font-weight:900;margin-bottom:10px;color:var(--primary);">¿Estás seguro?</h3>
+          <p style="color:#666;margin-bottom:30px;font-size:0.9rem;">${title}. Esta acción no se puede deshacer.</p>
           <div style="display:flex;flex-direction:column;gap:10px;">
-            <button data-action="CONFIRM_DELETE" class="btn-primary" style="background:#e63946;margin:0;">SÍ, ELIMINAR</button>
-            <button data-action="CANCEL_MODAL" style="background:#f4f4f4;border:none;height:50px;border-radius:12px;font-weight:900;cursor:pointer;">CANCELAR</button>
+            <button data-action="CONFIRM_DELETE" class="btn-primary" style="background:#e63946;margin:0;">ELIMINAR AHORA</button>
+            <button data-action="CANCEL_MODAL" style="background:#f4f4f4;border:none;height:50px;border-radius:16px;font-weight:900;cursor:pointer;color:#333;">CANCELAR</button>
           </div>
         </div>
       </div>`
   }
 
+  const renderTopBar = (state) => `
+    <header class="smart-header">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <img src="/sloty-logo-v2.png.png" style="height:32px;width:auto;" />
+        <div style="height:20px;width:2px;background:rgba(255,255,255,0.15);"></div>
+        <div style="font-size:0.9rem;font-weight:900;letter-spacing:-0.5px;">${state.buildingName.toUpperCase()}</div>
+      </div>
+      <div class="header-status">
+        <span style="color:#22c55e;">●</span> 
+        <span>${state.stats.occupied} / ${state.stats.totalSpots} OCUP.</span>
+      </div>
+    </header>
+  `
+
+  const renderBottomNav = () => {
+    const items = [
+      { k: 'HOME',      label: 'Inicio',    icon: '🏠' },
+      { k: 'REPORTES',  label: 'Historial', icon: '🕒' },
+      { k: 'STRUCTURE', label: 'Estructura',icon: '🏢' },
+      { k: 'FINANCE',   label: 'Finanzas',  icon: '💰' },
+    ]
+    return `
+      <nav class="bottom-nav">
+        ${items.map(i => `
+          <div class="nav-item ${activeTab === i.k ? 'active' : ''}" data-action="TAB" data-tab="${i.k}">
+            <div class="nav-bubble">${i.icon}</div>
+            <div class="nav-icon">${i.icon}</div>
+            <span>${i.label}</span>
+          </div>
+        `).join('')}
+        <div class="nav-item" data-action="LOGOUT">
+          <div class="nav-icon">🚪</div>
+          <span>Salir</span>
+        </div>
+      </nav>
+    `
+  }
+
+  const renderCarousel = (state) => {
+    const ads = (state.ads || []).filter(a => a.active)
+    if (!ads.length) return ''
+    return `
+      <section class="carousel-container">
+        <div class="carousel-track" id="main-carousel">
+          ${ads.map(ad => `
+            <div class="ad-card" onclick="${ad.link ? `window.open('${ad.link}')` : ''}">
+              <img src="${ad.imageUrl}" onerror="this.src='https://images.unsplash.com/photo-1506521781263-d8422e82f27a?auto=format&fit=crop&q=80&w=800'">
+            </div>
+          `).join('')}
+        </div>
+      </section>
+    `
+  }
+
   const renderHome = (state) => {
-    const slug = state.buildingName.toLowerCase().replace(/\s+/g, '-');
+    const movsToday = (state.movements || []).filter(m => new Date(m.timestamp) >= new Date().setHours(0,0,0,0))
     
-    const movs = state.movements || []
-    const startOfToday = new Date()
-    startOfToday.setHours(0,0,0,0)
-    const movsToday = movs.filter(m => new Date(m.timestamp) >= startOfToday)
-    
-    let sumHrs = 0; let countExits = 0
-    movsToday.forEach(m => {
-      if (m.type === 'SALIDA') {
-        const entry = movs.find(e => e.type === 'INGRESO' && e.plate === m.plate && e.timestamp < m.timestamp)
-        if (entry) {
-          sumHrs += (new Date(m.timestamp) - new Date(entry.timestamp)) / 3600000
-          countExits++
-        }
-      }
-    })
-    const avgStay = countExits > 0 ? (sumHrs / countExits).toFixed(1) : 0
-    
-    // Calculate active vehicles and categories
-    const activeVehicles = []
-    const catCounts = {}
-    state.levels.forEach(l => {
-      l.slots.forEach(s => {
-        if (s.status === 'OCCUPIED' || s.status === 'DEBT') {
-          activeVehicles.push({ ...s, levelName: l.name })
-          catCounts[s.category] = (catCounts[s.category] || 0) + 1
-        }
-      })
-    })
-
-    // Sort active vehicles by most recent entry
-    activeVehicles.sort((a,b) => new Date(b.entryTime) - new Date(a.entryTime))
-
-    // Calculate Donut Chart Config for Free vs Occupied
-    const totalSpots = state.stats.totalSpots || 1
-    const occupiedSpots = state.stats.occupied
-    const freeSpots = totalSpots - occupiedSpots
-    const occPercent = (occupiedSpots / totalSpots) * 360
-    const donutStops = `#1a1a2e 0deg ${occPercent}deg, #22c55e ${occPercent}deg 360deg`
+    const features = [
+      { k: 'STRUCTURE', label: 'Estructura', desc: `${state.levels.length} Niveles`, icon: '🏢', bg: '#EEF2FF', color: '#4F46E5' },
+      { k: 'REPORTES',  label: 'Auditoría',   desc: 'Ticket log',         icon: '📋', bg: '#FFF7ED', color: '#EA580C' },
+      { k: 'PERSONAL',  label: 'Personal',    desc: 'Gestionar nómina',   icon: '👥', bg: '#F0FDF4', color: '#16A34A' },
+      { k: 'FINANCE',   label: 'Finanzas',    desc: 'Cierre de caja',     icon: '💰', bg: '#FEF2F2', color: '#DC2626' },
+      { k: 'STARDARD',  label: 'Tarifas',     desc: 'Ajustes de cobro',   icon: '⚡', bg: '#FFFBEB', color: '#D97706' },
+    ]
 
     return `
-    <div style="padding:20px;">
-      <div style="background:var(--primary);border-radius:18px;padding:25px;margin-bottom:20px;color:white;box-shadow:0 10px 20px rgba(26,26,46,0.1);">
-        <div style="font-size:0.7rem;opacity:0.6;font-weight:900;letter-spacing:1px;">EDIFICIO</div>
-        <div style="font-size:1.4rem;font-weight:900;">${state.buildingName}</div>
-        <div style="font-size:0.8rem;opacity:0.8;margin-top:4px;">Resp: ${state.adminInfo?.name || 'Admin'}</div>
-      </div>
-      
-      <!-- CÓDIGO DE EDIFICIO -->
-      <div style="background:white;padding:20px;border-radius:18px;margin-bottom:20px;border:1px solid #eee;display:flex;justify-content:space-between;align-items:center;">
-        <div>
-          <h4 style="font-size:0.7rem;font-weight:900;color:#999;letter-spacing:1px;text-transform:uppercase;">Código de Edificio</h4>
-          <div style="font-size:1.5rem;font-weight:900;color:var(--primary);">${state.buildingCode}</div>
-        </div>
-        <button onclick="navigator.clipboard.writeText('${state.buildingCode}'); alert('Código copiado!')"
-          style="background:#f4f4f4;border:none;padding:12px 20px;border-radius:12px;font-weight:900;cursor:pointer;color:var(--primary);font-size:0.8rem;">
-          COPIAR
-        </button>
-      </div>
-
-      <!-- MÉTRICAS PREMIUM (ESTILO CLARO) -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
-        <!-- DONUT CHART CARD -->
-        <div style="background:white;border:1px solid #eee;border-radius:24px;padding:25px 20px;box-shadow:0 10px 30px rgba(0,0,0,0.03);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-           <div style="font-size:0.7rem;font-weight:900;color:#999;letter-spacing:1px;margin-bottom:15px;text-align:center;">DENSIDAD</div>
-           
-           <div style="position:relative;width:110px;height:110px;border-radius:50%;background:conic-gradient(${donutStops});display:flex;align-items:center;justify-content:center;margin-bottom:18px;">
-             <div style="width:85px;height:85px;background:white;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:inset 0 4px 10px rgba(0,0,0,0.05);">
-               <div style="font-size:1.8rem;font-weight:900;color:#1a1a2e;line-height:1;">${Math.round((occupiedSpots/totalSpots)*100)}%</div>
-               <div style="font-size:0.5rem;font-weight:900;color:#999;letter-spacing:1px;margin-top:2px;">USO</div>
-             </div>
-           </div>
-
-           <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:10px;width:100%;">
-              <div style="display:flex;align-items:center;gap:4px;">
-                 <div style="width:10px;height:10px;border-radius:50%;background:#1a1a2e;"></div>
-                 <span style="font-size:0.6rem;font-weight:900;color:#666;">${occupiedSpots} Ocupados</span>
-              </div>
-              <div style="display:flex;align-items:center;gap:4px;">
-                 <div style="width:10px;height:10px;border-radius:50%;background:#22c55e;"></div>
-                 <span style="font-size:0.6rem;font-weight:900;color:#666;">${freeSpots} Libres</span>
-              </div>
-           </div>
-        </div>
-
-        <div style="display:flex;flex-direction:column;gap:12px;">
-           <div style="background:white;border:1px solid #1a1a2e;border-radius:20px;padding:20px;color:#1a1a2e;flex:1;display:flex;flex-direction:column;justify-content:center;box-shadow:0 6px 20px rgba(26,26,46,0.08);">
-              <div style="font-size:2.4rem;font-weight:900;line-height:1;margin-bottom:4px;color:#1a1a2e;">${movsToday.length}</div>
-              <div style="font-size:0.65rem;font-weight:900;color:#999;text-transform:uppercase;">Flujo del Día (Movs)</div>
-           </div>
-           <div style="background:white;border:1px solid #eee;border-radius:20px;padding:20px;color:#1a1a2e;flex:1;display:flex;flex-direction:column;justify-content:center;box-shadow:0 4px 15px rgba(0,0,0,0.03);">
-              <div style="font-size:2.4rem;font-weight:900;line-height:1;margin-bottom:4px;color:var(--primary);">${avgStay}h</div>
-              <div style="font-size:0.65rem;font-weight:900;color:#999;text-transform:uppercase;">T. Promedio Permanencia</div>
-           </div>
-        </div>
-      </div>
-      
-      <!-- DESGLOSE DE OCUPACIÓN -->
-      ${Object.keys(catCounts).length > 0 ? `
-      <h4 style="font-size:0.75rem;font-weight:900;color:var(--primary);margin-bottom:12px;letter-spacing:1px;text-transform:uppercase;">Clasificación Actual</h4>
-      <div style="display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:10px;margin-bottom:20px;">
-        ${Object.entries(catCounts).map(([cat, count]) => `
-          <div style="background:white;border:1px solid #eee;border-radius:12px;padding:12px 16px;min-width:100px;text-align:center;box-shadow:0 2px 5px rgba(0,0,0,0.02);flex-shrink:0;">
-            <div style="width:12px;height:12px;border-radius:3px;background:${getCategoryColor(cat, state.settings?.categories)};margin:0 auto 8px;"></div>
-            <div style="font-size:1.2rem;font-weight:900;color:var(--primary);line-height:1;">${count}</div>
-            <div style="font-size:0.6rem;font-weight:900;color:#999;letter-spacing:0.5px;margin-top:4px;">${cat}</div>
+      <div style="background:#fcfcfc;min-height:100vh;padding-bottom:120px;">
+        ${renderCarousel(state)}
+        
+        <div style="padding:10px 20px 20px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+            <h4 style="font-size:0.9rem; font-weight:900; color:var(--primary); letter-spacing:-0.5px;">Panel de Gestión</h4>
+            <div style="background:var(--accent); color:var(--primary); padding:4px 10px; border-radius:10px; font-size:0.7rem; font-weight:900;">${state.buildingCode}</div>
           </div>
-        `).join('')}
-      </div>
-      ` : ''}
-
-      <!-- LISTA DE VEHÍCULOS -->
-      <h4 style="font-size:0.75rem;font-weight:900;color:var(--primary);margin-bottom:12px;letter-spacing:1px;text-transform:uppercase;">Vehículos en Estructura</h4>
-      ${activeVehicles.length > 0 ? `
-      <div style="background:white;border-radius:18px;border:1px solid #eee;overflow:hidden;">
-        ${activeVehicles.map((v, i) => `
-          <div style="padding:15px;display:flex;justify-content:space-between;align-items:center;border-bottom:${i === activeVehicles.length - 1 ? 'none' : '1px solid #f4f4f4'};">
-            <div style="display:flex;align-items:center;gap:12px;">
-              <div style="background:${getCategoryColor(v.category, state.settings?.categories)};color:white;width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1.2rem;box-shadow:0 4px 10px rgba(0,0,0,0.1);">
-                ${getCategoryLabel(v.category, state.settings?.categories)}
-              </div>
+          
+          <div style="background:white; border-radius:24px; padding:20px; box-shadow:0 10px 30px rgba(0,0,0,0.02); margin-bottom:20px; border:1px solid #f0f0f0;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
               <div>
-                <div style="font-size:1rem;font-weight:900;color:var(--primary);">${v.plate || 'Sin Placa'}</div>
-                <div style="font-size:0.65rem;font-weight:700;color:#999;">${v.label} • Llegada: ${v.entryTime ? new Date(v.entryTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '--:--'}</div>
+                <div style="font-size:0.7rem; color:#999; font-weight:700; margin-bottom:4px;">FLUJO DEL DÍA</div>
+                <div style="font-size:1.8rem; font-weight:900; color:var(--primary);">${movsToday.length} <span style="font-size:0.8rem; color:#ccc;">movimientos</span></div>
               </div>
-            </div>
-            <div style="text-align:right;">
-              ${v.prePaid ? `<span style="background:rgba(34,197,94,0.1);color:#22c55e;padding:4px 8px;border-radius:6px;font-size:0.6rem;font-weight:900;">PREPAGO</span>` : ''}
-              <div style="font-size:0.65rem;color:#ccc;margin-top:4px;">G: ${v.guardName || 'Desconocido'}</div>
+              <div style="width:50px; height:50px; background:#f4f4f4; border-radius:15px; display:flex; align-items:center; justify-content:center; font-size:1.5rem;">📈</div>
             </div>
           </div>
-        `).join('')}
+
+          <div class="dashboard-grid">
+            ${features.map(f => `
+              <div class="feature-btn" data-action="TAB" data-tab="${f.k}">
+                <div class="f-icon" style="background:${f.bg}; color:${f.color};">${f.icon}</div>
+                <div>
+                  <div class="f-label">${f.label}</div>
+                  <div class="f-stat">${f.desc}</div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
       </div>
-      ` : `
-      <div style="text-align:center;padding:30px;background:white;border-radius:18px;border:1px dashed #ddd;color:#bbb;">
-        <div style="font-size:2rem;margin-bottom:10px;">🍃</div>
-        <div style="font-size:0.8rem;font-weight:700;">Estacionamiento completamente libre</div>
-      </div>
-      `}
-    </div>`
+    `
   }
 
   const renderLayout = (state) => `
@@ -527,7 +491,6 @@ export const initAdmin = (container) => {
     const bs = paid.filter(m => m.payMethod === 'EFECTIVO_BS').length
     const pm = paid.filter(m => m.payMethod === 'PAGO_MOVIL').length
 
-    // Today metrics
     const now = new Date()
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
     const startOfWeek = new Date(startOfToday - now.getDay() * 86400000).getTime()
@@ -535,7 +498,6 @@ export const initAdmin = (container) => {
     const dailyIncome = paid.filter(m => new Date(m.timestamp).getTime() >= startOfToday).reduce((a, b) => a + (b.amount || 0), 0)
     const weeklyIncome = paid.filter(m => new Date(m.timestamp).getTime() >= startOfWeek).reduce((a, b) => a + (b.amount || 0), 0)
 
-    // Projected income (extrapolation)
     const rawDaysElapsed = now.getDay() + (now.getHours() / 24)
     const daysElapsed = rawDaysElapsed === 0 ? 0.1 : rawDaysElapsed
     const projectedWeekly = Math.round((weeklyIncome / daysElapsed) * 7)
@@ -544,7 +506,6 @@ export const initAdmin = (container) => {
       <div style="padding:20px;">
         <h3 style="font-weight:900;margin-bottom:20px;">RENDIMIENTO FINANCIERO</h3>
         
-        <!-- MÉTRICAS EN TIEMPO REAL -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
           <div style="background:var(--primary);color:white;padding:15px;border-radius:15px;text-align:center;box-shadow:0 4px 10px rgba(0,0,0,0.1);">
             <div style="font-size:1.6rem;font-weight:900;">$${dailyIncome}.00</div>
@@ -561,7 +522,6 @@ export const initAdmin = (container) => {
           <div style="font-size:1.4rem;font-weight:900;color:#22c55e;">~$${projectedWeekly}.00</div>
         </div>
 
-        <!-- HISTÓRICO GLOBAL -->
         <h4 style="font-size:0.75rem;font-weight:900;color:#999;letter-spacing:1px;margin-bottom:12px;">INVENTARIO GLOBAL</h4>
         <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:20px;">
           <div style="flex:1 1 45%; background:white;border:1px solid #eee;color:var(--primary);padding:15px;border-radius:15px;text-align:center;">
@@ -617,7 +577,6 @@ export const initAdmin = (container) => {
     let movs = [...(state.movements || [])]
     const customFields = state.settings?.customFields || []
     
-    // Filtering Logic
     const now = new Date()
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
     const startOfWeek = new Date(startOfToday - now.getDay() * 86400000).getTime()
@@ -642,7 +601,6 @@ export const initAdmin = (container) => {
           </button>
         </div>
 
-        <!-- FILTROS -->
         <div style="display:flex;gap:10px;margin-bottom:20px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:5px;">
           ${['HOY','SEMANA','MES','TODO'].map(f => `
             <button data-action="FILTER_REPORTS" data-filter="${f}" 
@@ -787,49 +745,43 @@ export const initAdmin = (container) => {
     `
   }
 
-  // -- LIVE SYNC LOGIC --
+  // -- LIVE SYNC & CAROUSEL LOGIC --
   let lastSyncStr = localStorage.getItem('sloty_state')
+  let carouselIndex = 0
+  
   setInterval(() => {
     const freshSyncStr = localStorage.getItem('sloty_state')
     if (freshSyncStr !== lastSyncStr) {
       lastSyncStr = freshSyncStr
-      if (activeTab === 'HOME' || activeTab === 'FINANCE') {
-        render()
-      }
+      if (['HOME', 'FINANCE', 'REPORTES'].includes(activeTab)) render()
     }
-  }, 1000)
+    
+    const track = document.getElementById('main-carousel')
+    if (track && track.children.length > 1) {
+      carouselIndex = (carouselIndex + 1) % track.children.length
+      track.style.transform = `translateX(-${carouselIndex * 100}%)`
+    }
+  }, 4000)
 
   const render = () => {
     const state = getParkingState()
-    lastSyncStr = JSON.stringify(state)
     container.innerHTML = `
-      <div style="background:#f4f4f4;min-height:100vh;display:flex;flex-direction:column;font-family:var(--font);">
-        <div style="background:var(--primary);padding:20px;color:white;display:flex;justify-content:space-between;align-items:center;">
-          <img src="/sloty-logo-v2.png.png" alt="Sloty" style="width:100px;height:auto;display:block;" />
-          <button data-action="LOGOUT" style="background:rgba(255,255,255,0.2);border:none;color:white;padding:8px 15px;border-radius:20px;font-weight:700;cursor:pointer;font-size:0.8rem;">Salir</button>
-        </div>
-        <nav style="display:flex;flex-wrap:wrap;justify-content:center;background:white;border-bottom:1px solid #eee;gap:0;">
-          ${['HOME','REPORTES','LAYOUT','PERSONAL','AUDIT','FINANCE','SETTINGS'].map(tab => `
-            <div data-action="TAB" data-tab="${tab}" 
-              style="flex:1 1 auto;padding:12px 6px;text-align:center;font-weight:800;font-size:0.7rem;cursor:pointer;
-                border-bottom:3px solid ${activeTab === tab ? 'var(--accent)' : 'transparent'};
-                color:${activeTab === tab ? 'var(--primary)' : '#999'};">
-              ${{HOME:'Inicio',REPORTES:'Reportes',LAYOUT:'Estructura',PERSONAL:'Personal',AUDIT:'Auditoría',FINANCE:'Finanzas',SETTINGS:'Tarifas'}[tab]}
-            </div>`).join('')}
-        </nav>
-        <div style="flex:1;overflow-y:auto;padding-bottom:100px;">
+      <div style="display:flex; flex-direction:column; min-height:100vh; background:#fcfcfc;">
+        ${renderModal()}
+        ${renderTopBar(state)}
+        <main style="flex:1; overflow-y:auto; padding-bottom:env(safe-area-inset-bottom, 30px);">
           ${activeTab === 'HOME' ? renderHome(state) : ''}
           ${activeTab === 'REPORTES' ? renderReportes(state) : ''}
-          ${activeTab === 'LAYOUT' ? renderLayout(state) : ''}
+          ${activeTab === 'STRUCTURE' ? renderLayout(state) : ''}
           ${activeTab === 'PERSONAL' ? renderPersonnel(state) : ''}
           ${activeTab === 'AUDIT' ? renderAudit(state) : ''}
           ${activeTab === 'FINANCE' ? renderFinance(state) : ''}
           ${activeTab === 'SETTINGS' ? renderSettings(state) : ''}
-        </div>
-        ${renderModal()}
-      </div>`
+        </main>
+        ${renderBottomNav()}
+      </div>
+    `
     
-    // Setup listeners for file upload in Personnel tab
     if (activeTab === 'PERSONAL') {
       const dropzone = container.querySelector('#photo-dropzone');
       const input = container.querySelector('#guard-photo-input');
