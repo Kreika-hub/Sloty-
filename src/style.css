@@ -135,31 +135,37 @@ a {
   color: white;
 }
 
-/* 2D Tactical Map (Light Mode) */
+/* 2D Tactical Map */
 .parking-canvas {
   display: flex;
   justify-content: center;
   gap: 15px;
   padding: 40px 10px;
   background: white;
-  min-height: 400px;
+  min-height: 480px;
+  position: relative;
+  border-radius: 20px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.05);
 }
 
 .parking-lane {
   width: 50px;
-  background: #f9f9f9;
+  background: #fcfcfc;
   border-left: 2px dashed #eee;
   border-right: 2px dashed #eee;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  position: relative;
 }
 
 .parking-lane::after {
   content: '↑';
-  font-size: 2rem;
-  color: #eee;
+  font-size: 2.5rem;
+  color: #f0f0f0;
   font-weight: 900;
+  margin-top: 100px;
 }
 
 .parking-column {
@@ -169,63 +175,97 @@ a {
 }
 
 .spot-2d {
-  width: 90px;
-  height: 45px;
-  background: #fff;
-  border: 2px solid #f0f0f0;
-  border-radius: 6px;
+  width: 105px;
+  height: 60px;
+  background: #E8E8E8;
+  border: 1.5px solid #282828;
+  border-radius: 12px;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: 0.7rem;
-  font-weight: 800;
-  color: #ddd;
   position: relative;
   transition: all 0.3s;
 }
 
 .spot-2d.occupied {
-  border-color: #1a1a2e;
-}
-
-.spot-2d.occupied::before {
-  content: '';
-  width: 60%;
-  height: 30px;
   background: var(--primary);
-  border-radius: 4px;
-  position: absolute;
+  border-color: var(--primary);
 }
 
 .spot-2d.debt {
-  border-color: #e63946;
-  background: #fff5f5;
-  animation: glow-red 2s infinite;
-}
-
-.spot-2d.debt::before {
-  content: '';
-  width: 60%;
-  height: 30px;
-  background: #e63946;
-  border-radius: 4px;
-  position: absolute;
-}
-
-@keyframes glow-red {
-  0% { box-shadow: 0 0 5px rgba(230, 57, 70, 0.2); }
-  50% { box-shadow: 0 0 15px rgba(230, 57, 70, 0.4); }
-  100% { box-shadow: 0 0 5px rgba(230, 57, 70, 0.2); }
+  background: var(--accent2);
+  border-color: var(--accent2);
 }
 
 .spot-label {
   position: absolute;
-  bottom: -4px;
-  right: -2px;
+  bottom: 6px;
+  right: 6px;
   background: white;
-  padding: 0 4px;
-  font-size: 0.55rem;
-  color: #666;
+  padding: 2px 6px;
+  font-size: 0.65rem;
+  font-weight: 900;
+  color: var(--primary);
+  border-radius: 4px;
+}
+
+/* Floor Tag */
+.floor-tag {
+  background: var(--accent);
+  color: var(--primary);
+  padding: 8px 24px;
+  border-radius: 20px;
+  font-weight: 900;
+  font-size: 0.8rem;
+  display: inline-block;
+  margin-bottom: 20px;
+}
+
+/* Bottom Action Bar */
+.bottom-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  padding: 16px;
+  background: white;
+  border-top: 1px solid #eee;
+  z-index: 1000;
+}
+
+.btn-new-entry {
+  width: 100%;
+  padding: 18px;
+  background: #22c55e;
+  color: white;
+  border: none;
+  border-radius: 16px;
+  font-family: var(--font);
+  font-size: 1.1rem;
+  font-weight: 900;
+  cursor: pointer;
+  letter-spacing: 1px;
+}
+
+/* Payment Timing Chips */
+.timing-chip {
+  padding: 14px 10px;
+  border-radius: 14px;
+  border: 2px solid #eee;
+  background: white;
+  color: #bbb;
+  font-family: var(--font);
+  font-size: 0.75rem;
+  font-weight: 900;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.timing-active {
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: white !important;
 }
 
 /* Stats Cards */
