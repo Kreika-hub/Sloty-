@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icons/icon-192.png', 'icons/icon-512.png'],
+      includeAssets: ['icons/icon-192.jpg', 'icons/icon-512.jpg'],
       manifest: {
         name: 'Sloty - Estacionamientos',
         short_name: 'Sloty',
@@ -17,15 +17,15 @@ export default defineConfig({
         theme_color: '#1a1a2e',
         icons: [
           {
-            src: '/icons/icon-192.png',
+            src: '/icons/icon-192.jpg',
             sizes: '192x192',
-            type: 'image/png',
+            type: 'image/jpeg',
             purpose: 'any maskable'
           },
           {
-            src: '/icons/icon-512.png',
+            src: '/icons/icon-512.jpg',
             sizes: '512x512',
-            type: 'image/png',
+            type: 'image/jpeg',
             purpose: 'any maskable'
           },
         ],
