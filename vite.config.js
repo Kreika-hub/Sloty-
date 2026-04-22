@@ -17,15 +17,15 @@ export default defineConfig({
         theme_color: '#1a1a2e',
         icons: [
           {
-            src: '/icons/icon-192.jpg',
+            src: '/icons/pwa sloty.png',
             sizes: '192x192',
-            type: 'image/jpeg',
+            type: 'image/png',
             purpose: 'any maskable'
           },
           {
-            src: '/icons/icon-512.jpg',
+            src: '/icons/pwa sloty.png',
             sizes: '512x512',
-            type: 'image/jpeg',
+            type: 'image/png',
             purpose: 'any maskable'
           },
         ],
