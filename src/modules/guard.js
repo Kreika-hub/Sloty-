@@ -5,9 +5,11 @@ export const initGuard = (container, guardName = 'Guardia') => {
   let selectedSlot = null
   let currentView = 'MAP'
   let activeLevel = null
-  let clockInterval = null
   let qrScanner = null
-  let lastTicketData = null
+  
+  // --- DOM Elements Cache ---
+  let elContent = null
+  let elShell = null
 
   const CAT = [
     { cat:'VISITANTE',    color:'#1a1a2e', label:'Visitante'  },
@@ -24,8 +26,6 @@ export const initGuard = (container, guardName = 'Guardia') => {
   ]
   
   const getCatColor = cat => CAT.find(c=>c.cat===cat)?.color || '#1a1a2e'
-  const getCatLabel = cat => ({ VISITANTE:'V',RESIDENTE:'R',DISCAPACITADO:'D',ELECTRICO:'E',MUDANZA:'M',MERCADO:'MK' }[cat]||'V')
-
   const formatTime = iso => {
     if (!iso) return '00:00:00'
     const d = Math.floor((Date.now()-new Date(iso))/1000)
@@ -43,23 +43,11 @@ export const initGuard = (container, guardName = 'Guardia') => {
     const all = (state.movements||[]).filter(m => m.plate === plate && m.phone)
     return all.length ? { plate: all[0].plate, phone: all[0].phone, category: all[0].category } : null
   }
-  const getFrequentVisitors = () => {
-    const map = {}
-    ;(state.movements||[]).forEach(m => {
-      if (!m.plate) return
-      if (!map[m.plate]) map[m.plate] = { plate:m.plate, phone:m.phone||'', category:m.category||'VISITANTE', count:0 }
-      map[m.plate].count++
-    })
-    return Object.values(map).sort((a,b)=>b.count-a.count).slice(0,5)
-  }
 
   // ── SCANNER LOGIC ──────────────────────────────────────────
   const stopScanner = async () => {
     if (qrScanner) {
-      try {
-        await qrScanner.clear()
-        qrScanner = null
-      } catch (e) {}
+      try { await qrScanner.clear(); qrScanner = null } catch (e) {}
     }
   }
 
@@ -71,341 +59,288 @@ export const initGuard = (container, guardName = 'Guardia') => {
       qrScanner.render((text) => {
         try {
           const data = JSON.parse(text)
-          if (data.plate && data.slot) handleQRResult(data)
-        } catch (e) {
-          console.warn("QR no válido", text)
-        }
+          if (data.plate && data.slot) {
+            stopScanner()
+            state.levels.forEach(lvl => {
+              const sIdx = lvl.slots.findIndex(s => s.label === data.slot)
+              if (sIdx !== -1) {
+                selectedSlot = { ...lvl.slots[sIdx], levelName: lvl.name, sIdx }
+                currentView = selectedSlot.status === 'FREE' ? 'ENTRY' : 'EXIT'
+                render()
+              }
+            })
+          }
+        } catch (e) {}
       })
     }, 100)
-  }
-
-  const handleQRResult = (data) => {
-    stopScanner()
-    state.levels.forEach(lvl => {
-      const sIdx = lvl.slots.findIndex(s => s.label === data.slot)
-      if (sIdx !== -1) {
-        selectedSlot = { ...lvl.slots[sIdx], levelName: lvl.name, sIdx }
-        currentView = selectedSlot.status === 'FREE' ? 'ENTRY' : 'EXIT'
-        render()
-      }
-    })
   }
 
   // ── PRINT LOGIC ─────────────────────────────────────────────
   const printTicket = (type = 'INGRESO') => {
     const slot = selectedSlot
-    const building = state.buildingName
-    const logoBase64 = "" // Podríamos inyectar el logo aquí si fuera necesario
-    
     const win = window.open('', '_blank', 'width=400,height=600')
-    win.document.write('<html><head><title>Ticket Sloty</title>')
-    win.document.write('<style>body{font-family:sans-serif;text-align:center;padding:10px;} .qr{margin:20px 0;} .label{font-size:32px;font-weight:bold;}</style>')
-    win.document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></scr' + 'ipt>')
-    win.document.write('</head><body>')
-    win.document.write('<h2>' + building + '</h2>')
-    win.document.write('<p>TICKET DE ' + type + '</p>')
-    win.document.write('<div class="label">' + slot.label + '</div>')
-    win.document.write('<p>PLACA: ' + (slot.plate || '---') + '</p>')
-    win.document.write('<div id="qrcode" class="qr"></div>')
-    win.document.write('<p>' + new Date().toLocaleString() + '</p>')
-    win.document.write('<p>¡Gracias por usar Sloty!</p>')
-    win.document.write('<script>')
-    win.document.write('  setTimeout(function(){')
-    win.document.write('    new QRCode(document.getElementById("qrcode"), { text: JSON.stringify({plate:"'+slot.plate+'",slot:"'+slot.label+'"}), width: 180, height: 180 });')
-    win.document.write('    setTimeout(function(){ window.print(); window.close(); }, 500);')
-    win.document.write('  }, 500);')
-    win.document.write('</script></body></html>')
+    win.document.write('<html><head><title>Ticket Sloty</title><style>body{font-family:sans-serif;text-align:center;padding:10px;} .qr{margin:20px 0;} .label{font-size:32px;font-weight:bold;}</style><script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></scr' + 'ipt></head><body>')
+    win.document.write('<h2>'+state.buildingName+'</h2><p>TICKET DE '+type+'</p><div class="label">'+slot.label+'</div><p>PLACA: '+(slot.plate||'---')+'</p><div id="qrcode" class="qr"></div><p>'+new Date().toLocaleString()+'</p><p>¡Gracias por usar Sloty!</p>')
+    win.document.write('<script>setTimeout(function(){new QRCode(document.getElementById("qrcode"),{text:JSON.stringify({plate:"'+slot.plate+'",slot:"'+slot.label+'"}),width:180,height:180});setTimeout(function(){window.print();window.close();},500);},500);</script></body></html>')
     win.document.close()
   }
 
-  // ── HEADER ───────────────────────────────────────────────────
-  const renderHeader = () => {
+  // ── ACTIONS ──────────────────────────────────────────────────
+  const actions = {
+    TAB_LEVEL: (btn) => { activeLevel = btn.dataset.level; render() },
+    OPEN_SLOT: (btn) => {
+      const level = state.levels.find(l=>l.name===btn.dataset.level)
+      const sIdx = parseInt(btn.dataset.sidx)
+      selectedSlot = { ...level.slots[sIdx], levelName: btn.dataset.level, sIdx }
+      currentView = selectedSlot.status==='FREE' ? 'ENTRY' : 'EXIT'
+      render()
+    },
+    BACK_MAP: () => { stopScanner(); currentView = 'MAP'; render() },
+    LOGOUT: () => { if(confirm('¿Cerrar sesión?')) location.reload() },
+    SHOW_SCANNER: () => {
+      stopScanner(); currentView = 'ENTRY'
+      if (!selectedSlot || selectedSlot.status !== 'FREE') {
+        const level = state.levels.find(l => l.name === (activeLevel || state.levels[0].name))
+        const freeIdx = level.slots.findIndex(s => s.status === 'FREE')
+        if (freeIdx !== -1) selectedSlot = { ...level.slots[freeIdx], levelName: level.name, sIdx: freeIdx }
+        else return alert("No hay puestos libres")
+      }
+      render()
+    },
+    CONFIRM_ENTRY: () => {
+      const plate = document.getElementById('entry-plate')?.value.trim().toUpperCase()
+      const phone = document.getElementById('entry-phone')?.value.trim()
+      if (!plate) return alert('Ingresa la placa')
+
+      // COLLECT CUSTOM FIELDS
+      const metadata = {}
+      let missingField = null
+      state.settings.customFields.forEach(f => {
+        const val = document.getElementById(`custom-${f.id}`)?.value.trim()
+        if (!val) missingField = f.label
+        metadata[f.id] = val
+      })
+      if (missingField) return alert(`El campo ${missingField} es obligatorio`)
+
+      const category = document.querySelector('.cat-active')?.dataset.cat || 'VISITANTE'
+      const timing = document.querySelector('.timing-active')?.dataset.timing || 'EXIT'
+      const payMethod = timing === 'PRE' ? (document.querySelector('#prepay-selector .pay-active')?.dataset.method || 'EFECTIVO_USD') : null
+      
+      const lvl = state.levels.find(l=>l.name===selectedSlot.levelName)
+      const entryData = { 
+        ...lvl.slots[selectedSlot.sIdx], 
+        status:'OCCUPIED', 
+        category, 
+        plate, 
+        phone, 
+        metadata,
+        entryTime: new Date().toISOString(), 
+        guardName, 
+        paymentStatus: timing === 'PRE' ? 'PAGADO' : 'PENDIENTE',
+        payMethod
+      }
+      
+      lvl.slots[selectedSlot.sIdx] = entryData
+      updateParkingState(state)
+      
+      logMovement({ 
+        type:'INGRESO', 
+        plate, 
+        slot:selectedSlot.label, 
+        category, 
+        guardName, 
+        phone, 
+        metadata,
+        paymentStatus: timing === 'PRE' ? 'PAGADO' : 'PENDIENTE', 
+        payMethod,
+        amount: timing === 'PRE' ? (state.settings?.baseRate || 1) : 0 
+      })
+      
+      if (confirm('¿Deseas imprimir ticket?')) printTicket('INGRESO')
+      currentView='MAP'; render()
+    },
+    EXIT_PAID: () => processExit('FREE'),
+    EXIT_DEBT: () => processExit('DEBT'),
+    PRINT_TICKET: () => printTicket('SALIDA')
+  }
+
+  const processExit = (newStatus) => {
+    const payMethod = document.querySelector('.pay-active')?.dataset.method || 'EFECTIVO_USD'
+    const lvl = state.levels.find(l=>l.name===selectedSlot.levelName)
+    const slotData = lvl.slots[selectedSlot.sIdx]
+    lvl.slots[selectedSlot.sIdx] = { ...slotData, status:newStatus, plate: newStatus==='FREE'?null:slotData.plate, phone: newStatus==='FREE'?null:slotData.phone, entryTime: newStatus==='FREE'?null:slotData.entryTime }
+    updateParkingState(state); logMovement({ type:'SALIDA', plate:slotData.plate, slot:slotData.label, category:slotData.category, guardName, paymentStatus: newStatus==='FREE'?'PAGADO':'DEUDA', payMethod, amount:1 })
+    currentView='MAP'; render()
+  }
+
+  // ── RENDER COMPONENTS ────────────────────────────────────────
+  const renderHeader = (state) => {
     const occ = state.levels.reduce((a,l)=>a+l.slots.filter(s=>s.status==='OCCUPIED'||s.status==='DEBT').length,0)
     const total = state.levels.reduce((a,l)=>a+l.slots.length,0)
     const debts = state.levels.reduce((a,l)=>a+l.slots.filter(s=>s.status==='DEBT').length,0)
     return `
-    <div style="background:#1a1a2e;padding:24px 24px 16px;color:white;position:sticky;top:0;z-index:100;">
+    <div style="background:#1a1a2e;padding:24px 24px 16px;color:white;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;">
         <div>
           <div style="font-size:0.6rem;font-weight:700;color:rgba(255,255,255,0.4);letter-spacing:2px;">GARITA ACTIVA</div>
           <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
             <div style="font-size:1.2rem;font-weight:900;">${guardName}</div>
-            <button id="btn-guard-logout" style="background:#F5C518;color:#1a1a2e;border:none;padding:5px 12px;border-radius:8px;font-size:0.65rem;font-weight:900;cursor:pointer;font-family:'Montserrat',sans-serif;">CERRAR TURNO</button>
+            <button data-action="LOGOUT" style="background:#F5C518;color:#1a1a2e;border:none;padding:5px 12px;border-radius:8px;font-size:0.65rem;font-weight:900;cursor:pointer;">SALIR</button>
           </div>
           <div id="guard-clock" style="font-size:0.85rem;color:#F5C518;font-weight:700;margin-top:4px;">${new Date().toLocaleTimeString().toLowerCase()}</div>
         </div>
         <div style="text-align:right;">
           <div style="font-size:0.6rem;color:rgba(255,255,255,0.4);font-weight:700;">DISPONIBLES</div>
-          <div style="font-size:2.8rem;font-weight:900;color:#F5C518;line-height:0.9;">${total-occ}</div>
-          <div style="font-size:0.65rem;color:rgba(255,255,255,0.35);">de ${total} puestos</div>
+          <div id="header-disp" style="font-size:2.8rem;font-weight:900;color:#F5C518;line-height:0.9;">${total-occ}</div>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
         <div style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:12px;padding:12px;text-align:center;">
-          <div style="font-size:1.6rem;font-weight:900;color:white;">${total-occ}</div>
-          <div style="font-size:0.55rem;color:rgba(255,255,255,0.5);font-weight:700;letter-spacing:1px;">LIBRES</div>
+          <div id="stat-free" style="font-size:1.6rem;font-weight:900;">${total-occ}</div><div style="font-size:0.55rem;color:rgba(255,255,255,0.5);font-weight:700;">LIBRES</div>
         </div>
-        <div style="background:rgba(245,197,24,0.1);border:1px solid rgba(245,197,24,0.2);border-radius:12px;padding:12px;text-align:center;">
-          <div style="font-size:1.6rem;font-weight:900;color:#F5C518;">${occ}</div>
-          <div style="font-size:0.55rem;color:rgba(245,197,24,0.8);font-weight:700;letter-spacing:1px;">OCUPADOS</div>
+        <div style="background:rgba(245,197,24,0.1);border:1.5px solid rgba(245,197,24,0.3);border-radius:12px;padding:12px;text-align:center;">
+          <div id="stat-occ" style="font-size:1.6rem;font-weight:900;color:#F5C518;">${occ}</div><div style="font-size:0.55rem;color:rgba(245,197,24,0.8);font-weight:700;">OCUPADOS</div>
         </div>
         <div style="background:rgba(230,57,70,0.1);border:1px solid rgba(230,57,70,0.2);border-radius:12px;padding:12px;text-align:center;">
-          <div style="font-size:1.6rem;font-weight:900;color:#e63946;">${debts}</div>
-          <div style="font-size:0.55rem;color:rgba(230,57,70,0.8);font-weight:700;letter-spacing:1px;">ALERTAS</div>
+          <div id="stat-debt" style="font-size:1.6rem;font-weight:900;color:#e63946;">${debts}</div><div style="font-size:0.55rem;color:rgba(230,57,70,0.8);font-weight:700;">DEUDAS</div>
         </div>
       </div>
     </div>`
   }
 
-  // ── LEVEL TABS ───────────────────────────────────────────────
-  const renderLevelTabs = () => {
-    if (!state.levels.length) return ''
-    if (!activeLevel) activeLevel = state.levels[0].name
-    return `
-    <div style="background:#1a1a2e;padding:0 16px 20px;display:flex;gap:12px;overflow-x:auto;-webkit-overflow-scrolling:touch;">
-      ${state.levels.map(l=>`
-        <button class="level-tab" data-level="${l.name}"
-          style="padding:10px 20px;border-radius:24px;border:none;white-space:nowrap;font-family:'Montserrat',sans-serif;font-weight:700;font-size:0.8rem;cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color: transparent;
-            background:${activeLevel===l.name?'#F5C518':'rgba(255,255,255,0.08)'};
-            color:${activeLevel===l.name?'#1a1a2e':'rgba(255,255,255,0.6)'};">
-          ${l.name.toLowerCase()}
-        </button>`).join('')}
-    </div>`
-  }
-
-  // ── MAP ──────────────────────────────────────────────────────
-  const renderMap = () => {
-    if (!state.levels.length) return `<div style="padding:100px 24px;text-align:center;"><p>Cargando mapa...</p></div>`
+  const renderMap = (state) => {
     const level = state.levels.find(l=>l.name===activeLevel)||state.levels[0]
+    if (!level) return ''
     const half = Math.ceil(level.slots.length/2)
     return `
+    <div style="background:#1a1a2e;padding:0 16px 20px;display:flex;gap:12px;overflow-x:auto;">
+      ${state.levels.map(l=>`<button data-action="TAB_LEVEL" data-level="${l.name}" style="padding:10px 20px;border-radius:24px;border:none;font-weight:700;font-size:0.8rem;background:${activeLevel===l.name?'#F5C518':'rgba(255,255,255,0.08)'};color:${activeLevel===l.name?'#1a1a2e':'white'};">${l.name}</button>`).join('')}
+    </div>
     <div style="padding:16px 20px 100px;">
-      <div style="display:flex;gap:15px;padding-bottom:12px;justify-content:center;">
-        ${[['#fff','#ccc','LIBRE'],['#1a1a2e','#1a1a2e','OCUPADO'],['#e63946','#e63946','DEUDA']].map(([bg,bc,lbl])=>`
-          <div style="display:flex;align-items:center;gap:6px;">
-            <div style="width:12px;height:12px;border-radius:3px;background:${bg};border:1.5px solid ${bc};"></div>
-            <span style="font-size:0.65rem;font-weight:900;color:#282828;">${lbl}</span>
-          </div>`).join('')}
-      </div>
-      
       <div class="parking-canvas">
         <div class="parking-column">${level.slots.slice(0,half).map((s,i)=>renderSpot(s,level.name,i)).join('')}</div>
-        <div class="parking-lane">
-          <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(0deg); opacity:0.1; font-size:3rem; font-weight:900;">↑</div>
-        </div>
+        <div class="parking-lane"><div style="opacity:0.1; font-size:3rem;">↑</div></div>
         <div class="parking-column">${level.slots.slice(half).map((s,i)=>renderSpot(s,level.name,i+half)).join('')}</div>
       </div>
-      
-      <div class="bottom-bar">
-        <button id="btn-show-scanner" class="btn-new-entry">+ NUEVO INGRESO</button>
-      </div>
+      <div class="bottom-bar"><button data-action="SHOW_SCANNER" class="btn-new-entry">+ NUEVO INGRESO</button></div>
     </div>`
   }
 
   const renderSpot = (slot, levelName, sIdx) => {
-    const occ = slot.status==='OCCUPIED'
-    const debt = slot.status==='DEBT'
-    const color = getCatColor(slot.category)
-    return `
-    <div class="spot-2d guard-action ${occ?'occupied':''} ${debt?'debt':''}"
-      data-level="${levelName}" data-sidx="${sIdx}"
-      style="${occ?`background:${color};border-color:${color};`:''}">
-      ${occ?`<div style="font-size:1.1rem;">🚗</div>`:''}
-      <span class="spot-label">${slot.label}</span>
-    </div>`
+    const occ = slot.status==='OCCUPIED', debt = slot.status==='DEBT', color = getCatColor(slot.category)
+    return `<div class="spot-2d ${occ?'occupied':''} ${debt?'debt':''}" data-action="OPEN_SLOT" data-level="${levelName}" data-sidx="${sIdx}" style="${occ?`background:${color};border-color:${color};`:''}">
+      ${occ?`<div style="font-size:1.1rem;">🚗</div>`:''}<span class="spot-label">${slot.label}</span></div>`
   }
 
-  // ── FORMS ────────────────────────────────────────────────────
-  const renderEntryForm = () => {
-    const slot = selectedSlot
-    const frequent = getFrequentVisitors()
-    const entryTime = new Date()
-    const limitTime = new Date(entryTime.getTime() + 8 * 60 * 60 * 1000)
-
-    const formatFormTime = d => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).toLowerCase()
-
-    return `
-    <div style="padding:20px;max-width:420px;margin:0 auto;padding-bottom:100px;">
-      <div id="qr-reader" style="margin-bottom:20px;"></div>
-
-      <div style="border-radius:32px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,0.1);background:white;">
-        <div style="background:#1a1a2e;padding:28px 24px 0;position:relative;">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;">
+  const renderEntryForm = () => `
+    <div style="padding:20px;padding-bottom:100px;">
+      <div id="qr-reader" style="margin-bottom:20px;border-radius:20px;overflow:hidden;"></div>
+      <div style="background:white;border-radius:32px;padding:24px;box-shadow:0 10px 30px rgba(0,0,0,0.05);">
+        <div style="display:flex;justify-content:space-between;margin-bottom:20px;">
+          <h2 style="font-weight:900;color:var(--primary);">INGRESO</h2>
+          <div style="font-size:1.8rem;font-weight:900;color:#22c55e;">${selectedSlot.label}</div>
+        </div>
+        <input type="text" id="entry-plate" placeholder="PLACA" style="width:100%;padding:18px;border:2px solid #eee;border-radius:16px;font-size:1.8rem;font-weight:900;text-align:center;margin-bottom:15px;">
+        <input type="tel" id="entry-phone" placeholder="WHATSAPP (Opcional)" style="width:100%;padding:14px;border:2px solid #eee;border-radius:14px;margin-bottom:15px;">
+        
+        <!-- DYNAMIC CUSTOM FIELDS -->
+        <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:20px;">
+          ${(state.settings?.customFields || []).map(f => `
             <div>
-              <div style="font-size:0.6rem;font-weight:700;color:rgba(255,255,255,0.4);letter-spacing:1px;margin-bottom:4px;">TICKET DE INGRESO</div>
-              <div style="font-size:2.2rem;font-weight:900;color:#F5C518;">SLOTY</div>
+              <label style="font-size:0.6rem; font-weight:900; color:#999; margin-left:12px; text-transform:uppercase;">${f.label} *</label>
+              <input type="text" id="custom-${f.id}" placeholder="Ingresar ${f.label.toLowerCase()}" required
+                style="width:100%; padding:14px; border:2px solid #eee; border-radius:14px; font-weight:700;">
             </div>
-            <div style="text-align:right;">
-              <div style="font-size:0.6rem;color:rgba(255,255,255,0.4);font-weight:700;">ASIGNADO A</div>
-              <div style="font-size:2.2rem;font-weight:900;color:#22c55e;">${slot.label}</div>
-            </div>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;border-top:1px dashed rgba(255,255,255,0.2);padding:16px 0 0;">
-            <div><div style="font-size:0.55rem;color:rgba(255,255,255,0.4);font-weight:800;">INGRESO</div><div style="font-size:0.95rem;font-weight:900;color:white;">${formatFormTime(entryTime)}</div></div>
-            <div style="text-align:right;"><div style="font-size:0.55rem;color:rgba(255,255,255,0.4);font-weight:800;">VENCE LÍMITE (8H)</div><div style="font-size:0.95rem;font-weight:900;color:#F97316;">${formatFormTime(limitTime)}</div></div>
-          </div>
-          <div style="height:20px;margin:12px -24px 0;background:white;border-radius:24px 24px 0 0;"></div>
+          `).join('')}
         </div>
 
-        <div style="background:white;padding:10px 24px 28px;">
-          <div style="margin-bottom:20px;">
-            <label style="display:block;font-size:0.7rem;font-weight:900;color:#bbb;margin-bottom:8px;">PLACA *</label>
-            <input type="text" id="entry-plate" placeholder="ABC-123" maxlength="10"
-              style="width:100%;padding:16px;border:2px solid #eee;border-radius:16px;font-family:'Montserrat',sans-serif;font-size:1.6rem;font-weight:900;text-transform:uppercase;text-align:center;outline:none;">
-          </div>
-
-          <div style="margin-bottom:20px;">
-            <label style="display:block;font-size:0.7rem;font-weight:900;color:#bbb;margin-bottom:8px;">WHATSAPP (Opcional)</label>
-            <input type="tel" id="entry-phone" placeholder="04XX..."
-              style="width:100%;padding:14px;border:2px solid #eee;border-radius:14px;font-family:'Montserrat',sans-serif;font-size:1.1rem;font-weight:700;outline:none;">
-          </div>
-
-          <div style="margin-bottom:24px;">
-            <label style="display:block;font-size:0.7rem;font-weight:900;color:#bbb;margin-bottom:10px;">CATEGORÍA</label>
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
-              ${CAT.map((c,i)=>`
-                <button class="cat-chip ${i===0?'cat-active':''}" data-cat="${c.cat}" data-color="${c.color}"
-                  style="padding:12px 6px;border-radius:12px;border:2px solid #eee;background:white;color:#bbb;font-family:'Montserrat',sans-serif;font-size:0.7rem;font-weight:900;cursor:pointer;">
-                  ${c.label}
-                </button>`).join('')}
-            </div>
-          </div>
-
-          <div style="background:#f8f9fa;border-radius:20px;padding:16px;margin-bottom:24px;border:1px solid #eee;">
-            <label style="display:block;font-size:0.7rem;font-weight:900;color:#bbb;margin-bottom:12px;text-align:center;">¿CUÁNDO PAGARÁ?</label>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-              <button class="timing-chip timing-active" data-timing="EXIT">AL SALIR</button>
-              <button class="timing-chip" data-timing="PRE">PRE-PAGO AHORA ($1)</button>
-            </div>
-          </div>
-
-          <button id="btn-confirm-entry" class="btn-new-entry" style="background:#1a1a2e; color:#F5C518;">
-            ↓ CONFIRMAR INGRESO
-          </button>
+        <div style="grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:20px; display: ${state.settings?.categories?.length ? 'grid' : 'none'};">
+          ${(state.settings?.categories || CAT).map((c,i)=>`<button class="cat-chip ${i===0?'cat-active':''}" data-cat="${c.id || c.cat}" data-color="${c.color}" style="padding:10px;border-radius:10px;border:2px solid #eee;background:white;font-size:0.7rem;font-weight:900;">${c.label}</button>`).join('')}
         </div>
-      </div>
-    </div>`
-  }
-
-  const renderExitForm = () => {
-    const slot = selectedSlot
-    const timeStr = formatTime(slot.entryTime)
-    const warn = getWarning(slot.entryTime)
-    return `
-    <div style="padding:20px;max-width:420px;margin:0 auto;padding-bottom:100px;">
-      <div style="border-radius:32px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,0.1);background:white;">
-        <div style="background:#1a1a2e;padding:28px 24px 0;">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;">
-            <div>
-              <div style="font-size:0.6rem;font-weight:700;color:rgba(255,255,255,0.4);letter-spacing:1px;margin-bottom:4px;">TICKET DE SALIDA</div>
-              <div style="font-size:2.2rem;font-weight:900;color:#F5C518;">SLOTY</div>
-            </div>
-            <div style="text-align:right;">
-              <div style="font-size:0.6rem;color:rgba(255,255,255,0.4);font-weight:700;">PUESTO</div>
-              <div style="font-size:2.2rem;font-weight:900;color:white;">${slot.label}</div>
-            </div>
-          </div>
-          <div style="height:20px;margin:12px -24px 0;background:white;border-radius:24px 24px 0 0;"></div>
-        </div>
-
-        <div style="background:white;padding:10px 24px 28px;">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:24px;">
-            <div><label style="display:block;font-size:0.6rem;font-weight:900;color:#bbb;">PLACA</label><div style="font-size:1.4rem;font-weight:900;color:#1a1a2e;">${slot.plate||'---'}</div></div>
-            <div style="text-align:right;"><label style="display:block;font-size:0.6rem;font-weight:900;color:#bbb;">TIEMPO</label><div id="exit-timer" style="font-size:1.4rem;font-weight:900;color:${warn?'#e63946':'#22c55e'};">${timeStr}</div></div>
-          </div>
-
-          <div style="margin-bottom:24px;">
-            <label style="display:block;font-size:0.7rem;font-weight:900;color:#bbb;margin-bottom:8px;">MÉTODO DE PAGO</label>
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
-              ${PAY.map((p,i)=>`
-                <button class="pay-chip ${i===0?'pay-active':''}" data-method="${p.m}"
-                  style="padding:12px 6px;border-radius:12px;border:2px solid #eee;background:white;color:#bbb;font-family:'Montserrat',sans-serif;font-size:0.65rem;font-weight:900;cursor:pointer;">
-                  ${p.label}
-                </button>`).join('')}
-            </div>
-          </div>
-
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-            <button id="btn-exit-paid" style="padding:18px;background:#22c55e;color:white;border:none;border-radius:16px;font-weight:900;cursor:pointer;font-size:0.95rem;">✓ PAGADO</button>
-            <button id="btn-exit-debt" style="padding:18px;background:#e63946;color:white;border:none;border-radius:16px;font-weight:900;cursor:pointer;font-size:0.95rem;">✗ DEUDA</button>
+        
+        <div style="background:#f8f9fa;padding:15px;border-radius:16px;margin-bottom:20px;text-align:center;">
+          <div style="font-size:0.6rem;font-weight:900;color:#999;margin-bottom:10px;">¿CUÁNDO PAGARÁ?</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px; margin-bottom:12px;">
+            <button class="timing-chip timing-active" data-timing="EXIT" style="padding:12px;border-radius:10px;border:none;font-weight:900;">AL SALIR</button>
+            <button class="timing-chip" data-timing="PRE" style="padding:12px;border-radius:10px;border:none;font-weight:900;">PRE-PAGO ($${state.settings?.baseRate || 1})</button>
           </div>
           
-          <button id="btn-print-exit" style="width:100%;margin-top:12px;padding:14px;background:#f0f0f0;color:#666;border:none;border-radius:12px;font-weight:900;cursor:pointer;font-size:0.8rem;">⎘ IMPRIMIR TICKET</button>
+          <div id="prepay-selector" style="display:none; transition: all 0.3s;">
+             <div style="font-size:0.55rem; font-weight:900; color:#bbb; margin:10px 0 8px;">MÉTODO DE PAGO</div>
+             <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px;">
+                ${PAY.map((p,i) => `<button class="pay-chip ${i===0?'pay-active':''}" data-method="${p.m}" style="padding:8px; border-radius:8px; border:1px solid #eee; background:white; font-size:0.55rem; font-weight:900;">${p.label}</button>`).join('')}
+             </div>
+          </div>
+        </div>
+        <button data-action="CONFIRM_ENTRY" class="btn-new-entry" style="background:#1a1a2e;color:#F5C518;box-shadow: 0 10px 20px rgba(26,26,46,0.2);">↓ CONFIRMAR INGRESO</button>
+      </div>
+    </div>`
+
+  const renderExitForm = () => `
+    <div style="padding:20px;padding-bottom:100px;">
+      <div style="background:white;border-radius:32px;padding:24px;box-shadow:0 10px 30px rgba(0,0,0,0.05);">
+        <div style="display:flex;justify-content:space-between;margin-bottom:20px;">
+          <h2 style="font-weight:900;color:var(--primary);">SALIDA</h2>
+          <div style="font-size:1.8rem;font-weight:900;color:#1a1a2e;">${selectedSlot.label}</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:20px;">
+          <div><label style="font-size:0.6rem;font-weight:900;color:#999;">PLACA</label><div style="font-size:1.4rem;font-weight:900;">${selectedSlot.plate||'---'}</div></div>
+          <div style="text-align:right;"><label style="font-size:0.6rem;font-weight:900;color:#999;">TIEMPO</label><div id="exit-timer" style="font-size:1.4rem;font-weight:900;color:#22c55e;">${formatTime(selectedSlot.entryTime)}</div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:25px;">
+          ${PAY.map((p,i)=>`<button class="pay-chip ${i===0?'pay-active':''}" data-method="${p.m}" style="padding:10px;border-radius:10px;border:2px solid #eee;background:white;font-size:0.65rem;font-weight:900;">${p.label}</button>`).join('')}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <button data-action="EXIT_PAID" style="padding:18px;background:#22c55e;color:white;border:none;border-radius:16px;font-weight:900;">PAGADO</button>
+          <button data-action="EXIT_DEBT" style="padding:18px;background:#e63946;color:white;border:none;border-radius:16px;font-weight:900;">DEUDA</button>
         </div>
       </div>
     </div>`
-  }
 
-  // ── CORE ─────────────────────────────────────────────────────
-  const render = (skipScanner = false) => {
-    if (clockInterval) clearInterval(clockInterval)
-    state = getParkingState()
-    if (!activeLevel && state.levels.length) activeLevel = state.levels[0].name
-    
+  // ── CORE LOGIC ───────────────────────────────────────────────
+  const renderShell = (state) => {
     container.innerHTML = `
-    <div style="background:#f0f2f5;min-height:100vh;font-family:'Montserrat',sans-serif;color:#1a1a2e;padding-bottom:20px;">
-      ${renderHeader()}
-      ${currentView==='MAP' ? renderLevelTabs() : ''}
-      <div id="guard-content">
-        ${currentView==='MAP'   ? renderMap()       : ''}
-        ${currentView==='ENTRY' ? renderEntryForm() : ''}
-        ${currentView==='EXIT'  ? renderExitForm()  : ''}
-      </div>
-      ${currentView!=='MAP' ? `
-        <div style="position:fixed;bottom:0;left:0;width:100%;padding:16px;background:white;border-top:1px solid #eee;z-index:200;">
-          <button id="btn-back-map" style="width:100%;padding:16px;background:#f8f9fa;border:1px solid #eee;border-radius:16px;font-family:'Montserrat',sans-serif;font-weight:700;color:#999;font-size:0.9rem;cursor:pointer;">
-            ← CANCELAR / VOLVER
-          </button>
-        </div>` : ''}
-    </div>`
-    
-    if (currentView === 'ENTRY' && !skipScanner) initQRScanner()
-    setupListeners()
+      <div id="guard-shell" style="background:#f0f2f5;min-height:100vh;font-family:'Montserrat',sans-serif;color:#1a1a2e;">
+        <div id="guard-header-area"></div>
+        <div id="guard-content-area"></div>
+        <div id="guard-footer-area"></div>
+      </div>`
+    elShell = container.querySelector('#guard-header-area')
+    elContent = container.querySelector('#guard-content-area')
   }
 
-  const setupListeners = () => {
-    clockInterval = setInterval(() => {
-      const el = document.getElementById('guard-clock')
-      if (el) el.textContent = new Date().toLocaleTimeString().toLowerCase()
-      const et = document.getElementById('exit-timer')
-      if (et && selectedSlot) et.textContent = formatTime(selectedSlot.entryTime)
-    }, 1000)
-
-    document.getElementById('btn-guard-logout')?.addEventListener('click', () => { if(confirm('¿Cerrar sesión?')) location.reload() })
-    document.querySelectorAll('.level-tab').forEach(b => b.onclick = () => { activeLevel = b.dataset.level; render() })
+  const render = () => {
+    const freshState = getParkingState()
+    if (!elShell) renderShell(freshState)
+    elShell.innerHTML = renderHeader(freshState)
     
-    document.querySelectorAll('.guard-action').forEach(b => {
-      b.onclick = () => {
-        const level = state.levels.find(l=>l.name===b.dataset.level)
-        const sIdx = parseInt(b.dataset.sidx)
-        selectedSlot = { ...level.slots[sIdx], levelName: b.dataset.level, sIdx }
-        currentView = selectedSlot.status==='FREE' ? 'ENTRY' : 'EXIT'
-        render()
-      }
-    })
+    let html = ''
+    if (currentView === 'MAP') html = renderMap(freshState)
+    else if (currentView === 'ENTRY') html = renderEntryForm()
+    else if (currentView === 'EXIT') html = renderExitForm()
+    
+    if (elContent.innerHTML !== html) {
+      elContent.innerHTML = html
+      if (currentView === 'ENTRY') initQRScanner()
+      setupLocalInteractions()
+    }
+    
+    const footer = container.querySelector('#guard-footer-area')
+    footer.innerHTML = currentView !== 'MAP' ? `
+      <div style="position:fixed;bottom:0;left:0;width:100%;padding:16px;background:white;border-top:1px solid #eee;z-index:200;">
+        <button data-action="BACK_MAP" style="width:100%;padding:16px;background:#f8f9fa;border:none;border-radius:16px;font-weight:700;color:#999;">← VOLVER AL MAPA</button>
+      </div>` : ''
+  }
 
-    document.getElementById('btn-show-scanner')?.addEventListener('click', () => {
-      stopScanner()
-      currentView = 'ENTRY'
-      // Seleccionar el primer puesto libre si no hay uno seleccionado
-      if (!selectedSlot || selectedSlot.status !== 'FREE') {
-        const level = state.levels.find(l => l.name === (activeLevel || state.levels[0].name))
-        const freeIdx = level.slots.findIndex(s => s.status === 'FREE')
-        if (freeIdx !== -1) selectedSlot = { ...level.slots[freeIdx], levelName: level.name, sIdx: freeIdx }
-        else { alert("No hay puestos libres en este nivel"); return }
-      }
-      render()
-    })
-
+  const setupLocalInteractions = () => {
     const plateEl = document.getElementById('entry-plate')
     if (plateEl) {
-      plateEl.addEventListener('input', () => {
+      plateEl.oninput = () => {
         plateEl.value = plateEl.value.toUpperCase()
         const found = findVisitorByPlate(plateEl.value)
-        if (found) document.getElementById('entry-phone').value = found.phone||''
-      })
+        if (found && !document.getElementById('entry-phone').value) document.getElementById('entry-phone').value = found.phone||''
+      }
     }
-
     document.querySelectorAll('.cat-chip').forEach(c => {
       const color = c.dataset.color
       if (c.classList.contains('cat-active')) { c.style.background = color; c.style.borderColor = color; c.style.color = 'white' }
@@ -414,14 +349,15 @@ export const initGuard = (container, guardName = 'Guardia') => {
         c.style.background=color; c.style.borderColor=color; c.style.color='white'; c.classList.add('cat-active')
       }
     })
-
     document.querySelectorAll('.timing-chip').forEach(c => {
       c.onclick = () => {
-        document.querySelectorAll('.timing-chip').forEach(x => x.classList.remove('timing-active'))
-        c.classList.add('timing-active')
+        document.querySelectorAll('.timing-chip').forEach(x => { x.style.background='#f0f0f0'; x.style.color='#999'; x.classList.remove('timing-active') })
+        c.style.background='#1a1a2e'; c.style.color='#F5C518'; c.classList.add('timing-active')
+        
+        const prepayEl = document.getElementById('prepay-selector')
+        if (prepayEl) prepayEl.style.display = c.dataset.timing === 'PRE' ? 'block' : 'none'
       }
     })
-
     document.querySelectorAll('.pay-chip').forEach(c => {
       if (c.classList.contains('pay-active')) { c.style.background = '#1a1a2e'; c.style.borderColor = '#1a1a2e'; c.style.color = '#F5C518' }
       c.onclick = () => {
@@ -429,63 +365,29 @@ export const initGuard = (container, guardName = 'Guardia') => {
         c.style.background='#1a1a2e'; c.style.borderColor='#1a1a2e'; c.style.color='#F5C518'; c.classList.add('pay-active')
       }
     })
-
-    document.getElementById('btn-confirm-entry')?.addEventListener('click', () => {
-      const plate = document.getElementById('entry-plate')?.value.trim().toUpperCase()
-      const phone = document.getElementById('entry-phone')?.value.trim()
-      if (!plate) { alert('Ingresa la placa'); return }
-      
-      const category = document.querySelector('.cat-chip.cat-active')?.dataset.cat || 'VISITANTE'
-      const timing = document.querySelector('.timing-chip.timing-active')?.dataset.timing || 'EXIT'
-      
-      const lvl = state.levels.find(l=>l.name===selectedSlot.levelName)
-      lvl.slots[selectedSlot.sIdx] = {
-        ...lvl.slots[selectedSlot.sIdx],
-        status:'OCCUPIED', category, plate, phone,
-        entryTime: new Date().toISOString(), guardName,
-        paymentStatus: timing === 'PRE' ? 'PAGADO' : 'PENDIENTE'
-      }
-      
-      updateParkingState(state) // GUARDAR ESTADO PRIMERO
-      logMovement({ 
-        type:'INGRESO', plate, slot:selectedSlot.label, category, guardName, phone,
-        paymentStatus: timing === 'PRE' ? 'PAGADO' : 'PENDIENTE',
-        amount: timing === 'PRE' ? 1 : 0
-      })
-      
-      if (confirm('¿Deseas imprimir el ticket de entrada?')) printTicket('INGRESO')
-      
-      currentView='MAP'; render()
-    })
-
-    const processExit = (newStatus) => {
-      const payMethod = document.querySelector('.pay-active')?.dataset.method || 'EFECTIVO_USD'
-      const lvl = state.levels.find(l=>l.name===selectedSlot.levelName)
-      const slotData = lvl.slots[selectedSlot.sIdx]
-      
-      lvl.slots[selectedSlot.sIdx] = {
-        ...slotData, status:newStatus,
-        plate: newStatus==='FREE'?null:slotData.plate,
-        phone: newStatus==='FREE'?null:slotData.phone,
-        entryTime: newStatus==='FREE'?null:slotData.entryTime
-      }
-      
-      updateParkingState(state) // GUARDAR ESTADO PRIMERO
-      logMovement({
-        type:'SALIDA', plate:slotData.plate, slot:slotData.label,
-        category:slotData.category, guardName,
-        paymentStatus: newStatus==='FREE'?'PAGADO':'DEUDA',
-        payMethod, amount:1
-      })
-      
-      currentView='MAP'; render()
-    }
-
-    document.getElementById('btn-exit-paid')?.addEventListener('click', () => processExit('FREE'))
-    document.getElementById('btn-exit-debt')?.addEventListener('click', () => processExit('DEBT'))
-    document.getElementById('btn-print-exit')?.addEventListener('click', () => printTicket('SALIDA'))
-    document.getElementById('btn-back-map')?.addEventListener('click', () => { stopScanner(); currentView='MAP'; render() })
   }
 
+  container.onclick = (e) => {
+    const btn = e.target.closest('[data-action]')
+    if (btn && actions[btn.dataset.action]) actions[btn.dataset.action](btn)
+  }
+
+  let syncInt = setInterval(() => {
+    state = getParkingState()
+    const clock = document.getElementById('guard-clock')
+    if (clock) clock.textContent = new Date().toLocaleTimeString().toLowerCase()
+    const et = document.getElementById('exit-timer')
+    if (et && selectedSlot) et.textContent = formatTime(selectedSlot.entryTime)
+    // Update Disp/Stats in header without wiping everything
+    const occ = state.levels.reduce((a,l)=>a+l.slots.filter(s=>s.status==='OCCUPIED'||s.status==='DEBT').length,0)
+    const total = state.levels.reduce((a,l)=>a+l.slots.length,0)
+    const debts = state.levels.reduce((a,l)=>a+l.slots.filter(s=>s.status==='DEBT').length,0)
+    if (document.getElementById('header-disp')) document.getElementById('header-disp').textContent = total-occ
+    if (document.getElementById('stat-free')) document.getElementById('stat-free').textContent = total-occ
+    if (document.getElementById('stat-occ')) document.getElementById('stat-occ').textContent = occ
+    if (document.getElementById('stat-debt')) document.getElementById('stat-debt').textContent = debts
+  }, 1000)
+
+  if (state.levels.length) activeLevel = state.levels[0].name
   render()
 }

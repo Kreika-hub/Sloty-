@@ -69,11 +69,17 @@ const renderLogin = () => {
           ENTRAR
         </button>
         <p id="login-error" style="color:#e63946;text-align:center;font-size:0.85rem;font-weight:700;min-height:20px;"></p>
-        <a href="#" id="forgot-password" style="color:rgba(255,255,255,0.3);text-align:center;font-size:0.8rem;">¿Olvidaste tu contraseña?</a>
+        <div style="display:flex;flex-direction:column;gap:12px;margin-top:10px;text-align:center;">
+          <a href="#" id="forgot-password" style="color:rgba(255,255,255,0.3);font-size:0.8rem;display:block;">¿Olvidaste tu contraseña?</a>
+          <a href="#" id="goto-register" style="color:#F5C518;font-size:0.85rem;font-weight:900;text-decoration:none;">REGISTRAR NUEVO EDIFICIO</a>
+          <a href="#" id="goto-guard" style="color:rgba(255,255,255,0.4);font-size:0.8rem;margin-top:10px;">Soy Guardia →</a>
+        </div>
       </div>
     </div>
   `
-  $('btn-back-login').onclick = () => { showOnly('welcome') }
+  $('goto-register').onclick = () => { renderRegister(); showOnly('register') }
+  $('goto-guard').onclick = () => { renderGuardPin(); showOnly('guardPin') }
+  $('btn-back-login').onclick = () => { renderLogin(); showOnly('login') } // Now it just re-renders itself or we could go back to welcome if we kept it
 
   const chips = screens.login.querySelectorAll('.role-chip')
   chips.forEach(chip => {
@@ -440,20 +446,16 @@ async function redirectByRole(userId) {
 
 // ─── INIT ──────────────────────────────────────────────────────
 async function init() {
-  renderWelcome()
-  showOnly('welcome')
-
   const params = new URLSearchParams(window.location.search)
   const bParam = params.get('building')
-  
   if (bParam) {
-    // If URL has building param, we save it and go straight to guard PIN
     localStorage.setItem('sloty_active_building', bParam)
-    renderGuardPin()
-    showOnly('guardPin')
-    return 
+    renderGuardPin(); showOnly('guardPin'); return
   }
-
+  // Mostrar login inmediatamente, sin esperar la sesión
+  renderLogin(); showOnly('login')
+  
+  // Verificar sesión en paralelo
   const session = await getSession()
   if (session) await redirectByRole(session.user.id)
 }

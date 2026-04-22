@@ -6,6 +6,10 @@ export const initAdmin = (container) => {
   let pendingAction = null // { type, name, lName, sLabel, guardId }
   let editingLevel = null // Level name being renamed
 
+  // --- DOM Elements Cache ---
+  let elMain = null
+  let elStatus = null
+
   const getCategoryColor = (cat, categories = []) => {
     const found = categories.find(c => c.id === cat)
     return found ? found.color : '#F5C518'
@@ -18,7 +22,6 @@ export const initAdmin = (container) => {
 
   // --- ACTIONS ---
   const actions = {
-    // INFRASTRUCTURE
     TOGGLE_COLLAPSE: (btn) => {
       const name = btn.dataset.name
       const state = getParkingState()
@@ -96,7 +99,6 @@ export const initAdmin = (container) => {
       saveParkingState(state)
       render()
     },
-    // PERSONNEL
     ADD_GUARD: () => {
       const name = document.getElementById('guard-name').value.trim();
       const pin = document.getElementById('guard-pin').value.trim();
@@ -104,12 +106,11 @@ export const initAdmin = (container) => {
       const shift = document.getElementById('guard-shift').value;
       const photoEl = document.getElementById('guard-photo-preview');
       const photo = photoEl ? photoEl.src : null;
-      
       if (!name || !pin) return alert('Nombre y PIN obligatorios');
       const state = getParkingState();
       state.personnel = state.personnel || [];
       state.personnel.push({ id: Date.now().toString(), name, pin, phone, shift, photo });
-      logAudit(`Registró guardia: ${name} (Turno: ${shift})`);
+      logAudit(`Registró guardia: ${name}`);
       saveParkingState(state);
       render();
     },
@@ -120,692 +121,259 @@ export const initAdmin = (container) => {
       saveParkingState(state);
       render();
     },
-    // GLOBAL
     CONFIRM_DELETE: () => {
       if (!pendingAction) return
       const state = getParkingState()
       if (pendingAction.type === 'LEVEL') {
         state.levels = state.levels.filter(l => l.name !== pendingAction.name)
-        logAudit(`Eliminó planta: ${pendingAction.name}`)
       } else if (pendingAction.type === 'SLOT') {
         const level = state.levels.find(l => l.name === pendingAction.lName)
-        if (level) {
-          level.slots = level.slots.filter(s => s.label !== pendingAction.sLabel)
-          logAudit(`Eliminó puesto: ${pendingAction.sLabel} en ${pendingAction.lName}`)
-        }
+        if (level) level.slots = level.slots.filter(s => s.label !== pendingAction.sLabel)
       }
       saveParkingState(state); pendingAction = null; render()
     },
     CANCEL_MODAL: () => { pendingAction = null; render() },
-    CANCEL_MODAL: () => { pendingAction = null; render() },
     TAB: (btn) => { activeTab = btn.dataset.tab; render() },
-    LOGOUT: () => { 
-      if (confirm('¿Cerrar sesión?')) {
-        localStorage.removeItem('sloty_session')
-        location.reload()
-      }
-    },
+    LOGOUT: () => { if (confirm('¿Cerrar sesión?')) { localStorage.removeItem('sloty_session'); location.reload() } },
     FILTER_REPORTS: (btn) => { reportFilter = btn.dataset.filter; render() },
-    LOGOUT: () => { location.reload() },
     SAVE_SETTINGS: () => {
       const freeHours = parseFloat(document.getElementById('set-freehours').value) || 0
       const baseRate = parseFloat(document.getElementById('set-baserate').value) || 0
       const extraPerHour = parseFloat(document.getElementById('set-extra').value) || 0
-      
       const state = getParkingState()
-      state.settings = { freeHours, baseRate, extraPerHour }
-      logAudit(`Actualizó Tarifas: ${freeHours}h libres / $${baseRate} base / $${extraPerHour} extra/h`)
-      saveParkingState(state)
-      alert('Tarifas guardadas correctamente')
-      render()
-    },
-    ADD_FIELD: () => {
-      const label = document.getElementById('new-field-label').value.trim()
-      if (!label) return
-      const id = label.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-true]/g, '')
-      const state = getParkingState()
-      state.settings.customFields = state.settings.customFields || []
-      if (state.settings.customFields.find(f => f.id === id)) return alert('Ya existe un campo similar')
-      state.settings.customFields.push({ id, label, required: true })
-      saveParkingState(state)
-      render()
-    },
-    DELETE_FIELD: (btn) => {
-      const id = btn.dataset.id
-      const state = getParkingState()
-      state.settings.customFields = state.settings.customFields.filter(f => f.id !== id)
-      saveParkingState(state)
-      render()
-    },
-    ADD_CAT: () => {
-      const label = document.getElementById('new-cat-label').value.trim()
-      const tag = document.getElementById('new-cat-tag').value.trim().toUpperCase()
-      const color = document.getElementById('new-cat-color').value
-      if (!label || !tag) return alert('Nombre y Etiqueta son obligatorios')
-      
-      const state = getParkingState()
-      state.settings.categories = state.settings.categories || []
-      const id = label.toUpperCase().replace(/\s+/g, '_')
-      if (state.settings.categories.find(c => c.id === id)) return alert('Ya existe esta categoría')
-      
-      state.settings.categories.push({ id, label, tag, color, txt: 'white' }) // Simplificamos txt a white o calculamos contraste
-      saveParkingState(state)
-      render()
-    },
-    DELETE_CAT: (btn) => {
-      const id = btn.dataset.id
-      const state = getParkingState()
-      state.settings.categories = state.settings.categories.filter(c => c.id !== id)
-      saveParkingState(state)
-      render()
+      state.settings = { ...state.settings, freeHours, baseRate, extraPerHour }
+      saveParkingState(state); alert('Tarifas guardadas'); render()
     },
     DOWNLOAD_CSV: () => {
-      const state = getParkingState()
-      const movs = state.movements || []
-      if (!movs.length) return alert('No hay movimientos para exportar')
+      const state = getParkingState(); const movs = state.movements || []
+      if (!movs.length) return alert('No hay movimientos')
       
-      const customFields = state.settings?.customFields || []
-      const headers = ['ID','FECHA','TIPO','PLACA','PUESTO','CATEGORIA','COBRO_USD','COBRO_BS','REF','GUARDIA', ...customFields.map(f=>f.label.toUpperCase())]
+      const customHeaders = (state.settings?.customFields || []).map(f => f.label.toUpperCase())
+      const headers = ['ID','FECHA','TIPO','PLACA','PUESTO', ...customHeaders, 'MÉTODO PAGO', 'COBRO']
       
       const rows = movs.map(m => {
-        const baseRow = [
-          m.id,
-          new Date(m.timestamp).toLocaleString(),
-          m.type,
-          m.plate || '---',
-          m.slot || '---',
-          m.category || '---',
-          m.amount || 0,
-          m.rawAmount || 0,
-          m.ref || '---',
-          m.guardName || '---'
-        ]
-        const customRows = customFields.map(f => m[f.id] || '---')
-        return [...baseRow, ...customRows].join(',')
+        const metaValues = (state.settings?.customFields || []).map(f => (m.metadata && m.metadata[f.id]) || '---')
+        return [
+          m.id, 
+          new Date(m.timestamp).toLocaleString(), 
+          m.type, 
+          m.plate || '---', 
+          m.slot || '---', 
+          ...metaValues,
+          m.payMethod || '---',
+          m.amount || 0
+        ].join(',')
       })
       
-      const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows].join('\n')
-      const encodedUri = encodeURI(csvContent)
+      const csvContent = "\ufeff" + [headers.join(','), ...rows].join('\n')
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
       const link = document.createElement("a")
-      link.setAttribute("href", encodedUri)
-      link.setAttribute("download", `sloty-report-${new Date().toISOString().split('T')[0]}.csv`)
-      document.body.appendChild(link)
+      link.setAttribute("href", url)
+      link.setAttribute("download", `reporte-sloty-${new Date().toISOString().split('T')[0]}.csv`)
       link.click()
-      document.body.removeChild(link)
     }
   }
 
   container.onclick = (e) => {
     const trigger = e.target.closest('[data-action]')
-    if (!trigger) return
-    const action = trigger.dataset.action
-    if (actions[action]) actions[action](trigger)
+    if (trigger && actions[trigger.dataset.action]) actions[trigger.dataset.action](trigger)
   }
 
-  const renderModal = () => {
-    if (!pendingAction) return ''
-    const title = pendingAction.type === 'LEVEL' ? 'Eliminar Planta' : 'Eliminar Puesto'
+  const renderShell = (state) => {
+    container.innerHTML = `
+      <div id="admin-shell" style="display:flex; flex-direction:column; min-height:100vh; background:#fcfcfc; overflow:hidden;">
+        <div id="modal-layer"></div>
+        <header class="smart-header">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <div style="font-size:1.1rem;font-weight:900;letter-spacing:-1px;color:white;">SLOTY</div>
+            <div style="height:20px;width:1.5px;background:rgba(255,255,255,0.2);"></div>
+            <div style="font-size:0.85rem;font-weight:900;color:white;opacity:0.9;">${state.buildingName.toUpperCase()}</div>
+          </div>
+          <div class="header-status">
+            <span style="color:#22c55e;">●</span> 
+            <span id="header-occupancy">${state.stats.occupied} / ${state.stats.totalSpots} OCUP.</span>
+          </div>
+        </header>
+        <main id="admin-content" style="flex:1; overflow-y:auto; padding-bottom:env(safe-area-inset-bottom, 30px);"></main>
+        <nav class="bottom-nav">
+          ${[{k:'HOME',l:'Inicio',i:'🏠'},{k:'REPORTES',l:'Historial',i:'🕒'},{k:'STRUCTURE',l:'Gestión',i:'🏢'},{k:'FINANCE',l:'Finanzas',i:'💰'}].map(i=>`
+            <div class="nav-item ${activeTab===i.k?'active':''}" data-action="TAB" data-tab="${i.k}">
+              <div class="nav-bubble">${i.i}</div><div class="nav-icon">${i.i}</div>
+              <span style="opacity:${activeTab===i.k?0:1}">${i.l}</span>
+            </div>`).join('')}
+          <div class="nav-item" data-action="LOGOUT"><div class="nav-icon">🚪</div><span>Salir</span></div>
+        </nav>
+      </div>`
+    elMain = container.querySelector('#admin-content')
+    elStatus = container.querySelector('#header-occupancy')
+  }
+
+  const updateStats = (state) => { if (elStatus) elStatus.textContent = `${state.stats.occupied} / ${state.stats.totalSpots} OCUP.` }
+
+  const renderHome = (state) => {
+    const movsToday = (state.movements || []).filter(m => new Date(m.timestamp) >= new Date().setHours(0,0,0,0))
+    const ads = (state.ads || []).filter(a => a.active)
     return `
-      <div style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;backdrop-filter:blur(10px);">
-        <div style="background:white;padding:30px;border-radius:24px;width:100%;max-width:400px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,0.3);">
-          <h3 style="font-weight:900;margin-bottom:10px;color:var(--primary);">¿Estás seguro?</h3>
-          <p style="color:#666;margin-bottom:30px;font-size:0.9rem;">${title}. Esta acción no se puede deshacer.</p>
-          <div style="display:flex;flex-direction:column;gap:10px;">
-            <button data-action="CONFIRM_DELETE" class="btn-primary" style="background:#e63946;margin:0;">ELIMINAR AHORA</button>
-            <button data-action="CANCEL_MODAL" style="background:#f4f4f4;border:none;height:50px;border-radius:16px;font-weight:900;cursor:pointer;color:#333;">CANCELAR</button>
+      <div style="padding-bottom:100px;">
+        ${ads.length ? `
+          <section class="carousel-container"><div class="carousel-track" id="main-carousel">
+            ${ads.map(ad => `<div class="ad-card"><img src="${ad.imageUrl}" onerror="this.src='https://images.unsplash.com/photo-1506521781263-d8422e82f27a?auto=format&fit=crop&q=80&w=800'"></div>`).join('')}
+          </div></section>` : ''}
+        <div style="padding:20px;">
+          <div style="background:white; border-radius:32px; padding:25px; box-shadow:0 10px 40px rgba(0,0,0,0.02); margin-bottom:25px; border:1px solid #f8f8f8; display:flex; justify-content:space-between; align-items:center;">
+             <div><div style="font-size:0.75rem; color:#999; font-weight:700; margin-bottom:6px;">INGRESOS EN CURSO</div><div style="font-size:2.2rem; font-weight:900; color:var(--primary);">${movsToday.length}</div></div>
+             <div style="width:60px; height:60px; background:#f4f4f4; border-radius:20px; display:flex; align-items:center; justify-content:center; font-size:1.8rem;">📦</div>
+          </div>
+          <div class="dashboard-grid">
+            ${[{k:'STRUCTURE',l:'Estructura',s:`${state.levels.length} Niveles`,i:'🏢',bg:'linear-gradient(135deg,#EEF2FF,#E0E7FF)',c:'#4F46E5'},
+               {k:'PERSONAL',l:'Personal',s:`${(state.personnel||[]).length} Guardias`,i:'👥',bg:'linear-gradient(135deg,#F0FDF4,#DCFCE7)',c:'#16A34A'},
+               {k:'SETTINGS',l:'Tarifas',s:'Ajustes de cobro',i:'⚡',bg:'linear-gradient(135deg,#FFFBEB,#FEF3C7)',c:'#D97706'}].map(f=>`
+              <div class="feature-btn" data-action="TAB" data-tab="${f.k}"><div class="f-icon" style="background:${f.bg}; color:${f.c};">${f.i}</div><div><div class="f-label">${f.l}</div><div class="f-stat">${f.s}</div></div></div>`).join('')}
           </div>
         </div>
       </div>`
   }
 
-  const renderTopBar = (state) => `
-    <header class="smart-header">
-      <div style="display:flex;align-items:center;gap:12px;">
-        <img src="/sloty-logo-v2.png.png" style="height:32px;width:auto;" />
-        <div style="height:20px;width:2px;background:rgba(255,255,255,0.15);"></div>
-        <div style="font-size:0.9rem;font-weight:900;letter-spacing:-0.5px;">${state.buildingName.toUpperCase()}</div>
-      </div>
-      <div class="header-status">
-        <span style="color:#22c55e;">●</span> 
-        <span>${state.stats.occupied} / ${state.stats.totalSpots} OCUP.</span>
-      </div>
-    </header>
-  `
-
-  const renderBottomNav = () => {
-    const items = [
-      { k: 'HOME',      label: 'Inicio',    icon: '🏠' },
-      { k: 'REPORTES',  label: 'Historial', icon: '🕒' },
-      { k: 'STRUCTURE', label: 'Estructura',icon: '🏢' },
-      { k: 'FINANCE',   label: 'Finanzas',  icon: '💰' },
-    ]
-    return `
-      <nav class="bottom-nav">
-        ${items.map(i => `
-          <div class="nav-item ${activeTab === i.k ? 'active' : ''}" data-action="TAB" data-tab="${i.k}">
-            <div class="nav-bubble">${i.icon}</div>
-            <div class="nav-icon">${i.icon}</div>
-            <span>${i.label}</span>
-          </div>
-        `).join('')}
-        <div class="nav-item" data-action="LOGOUT">
-          <div class="nav-icon">🚪</div>
-          <span>Salir</span>
-        </div>
-      </nav>
-    `
-  }
-
-  const renderCarousel = (state) => {
-    const ads = (state.ads || []).filter(a => a.active)
-    if (!ads.length) return ''
-    return `
-      <section class="carousel-container">
-        <div class="carousel-track" id="main-carousel">
-          ${ads.map(ad => `
-            <div class="ad-card" onclick="${ad.link ? `window.open('${ad.link}')` : ''}">
-              <img src="${ad.imageUrl}" onerror="this.src='https://images.unsplash.com/photo-1506521781263-d8422e82f27a?auto=format&fit=crop&q=80&w=800'">
-            </div>
-          `).join('')}
-        </div>
-      </section>
-    `
-  }
-
-  const renderHome = (state) => {
-    const movsToday = (state.movements || []).filter(m => new Date(m.timestamp) >= new Date().setHours(0,0,0,0))
-    
-    const features = [
-      { k: 'STRUCTURE', label: 'Estructura', desc: `${state.levels.length} Niveles`, icon: '🏢', bg: '#EEF2FF', color: '#4F46E5' },
-      { k: 'REPORTES',  label: 'Auditoría',   desc: 'Ticket log',         icon: '📋', bg: '#FFF7ED', color: '#EA580C' },
-      { k: 'PERSONAL',  label: 'Personal',    desc: 'Gestionar nómina',   icon: '👥', bg: '#F0FDF4', color: '#16A34A' },
-      { k: 'FINANCE',   label: 'Finanzas',    desc: 'Cierre de caja',     icon: '💰', bg: '#FEF2F2', color: '#DC2626' },
-      { k: 'STARDARD',  label: 'Tarifas',     desc: 'Ajustes de cobro',   icon: '⚡', bg: '#FFFBEB', color: '#D97706' },
-    ]
-
-    return `
-      <div style="background:#fcfcfc;min-height:100vh;padding-bottom:120px;">
-        ${renderCarousel(state)}
-        
-        <div style="padding:10px 20px 20px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-            <h4 style="font-size:0.9rem; font-weight:900; color:var(--primary); letter-spacing:-0.5px;">Panel de Gestión</h4>
-            <div style="background:var(--accent); color:var(--primary); padding:4px 10px; border-radius:10px; font-size:0.7rem; font-weight:900;">${state.buildingCode}</div>
-          </div>
-          
-          <div style="background:white; border-radius:24px; padding:20px; box-shadow:0 10px 30px rgba(0,0,0,0.02); margin-bottom:20px; border:1px solid #f0f0f0;">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <div>
-                <div style="font-size:0.7rem; color:#999; font-weight:700; margin-bottom:4px;">FLUJO DEL DÍA</div>
-                <div style="font-size:1.8rem; font-weight:900; color:var(--primary);">${movsToday.length} <span style="font-size:0.8rem; color:#ccc;">movimientos</span></div>
-              </div>
-              <div style="width:50px; height:50px; background:#f4f4f4; border-radius:15px; display:flex; align-items:center; justify-content:center; font-size:1.5rem;">📈</div>
-            </div>
-          </div>
-
-          <div class="dashboard-grid">
-            ${features.map(f => `
-              <div class="feature-btn" data-action="TAB" data-tab="${f.k}">
-                <div class="f-icon" style="background:${f.bg}; color:${f.color};">${f.icon}</div>
-                <div>
-                  <div class="f-label">${f.label}</div>
-                  <div class="f-stat">${f.desc}</div>
-                </div>
-              </div>
-            `).join('')}
-          </div>
-        </div>
-      </div>
-    `
-  }
-
-  const renderLayout = (state) => `
-    <div style="padding:20px;">
-      <h3 style="font-weight:900;margin-bottom:20px;">CONFIGURACIÓN DE ESTRUCTURA</h3>
-      <div style="background:#f8f9fa;padding:20px;border-radius:16px;margin-bottom:30px;border:1px dashed #ddd;">
-        <input type="text" id="level-name" placeholder="Ej. Sótano 1" style="width:100%;padding:14px;border:1px solid #ddd;border-radius:12px;margin-bottom:12px;">
-        <input type="number" id="level-capacity" placeholder="Capacidad" style="width:100%;padding:14px;border:1px solid #ddd;border-radius:12px;margin-bottom:20px;">
-        <button data-action="GENERATE" class="btn-primary" style="margin:0;">CREAR PLANTA</button>
-      </div>
-      ${state.levels.map(lvl => `
-        <div style="background:white;border:1px solid #eee;border-radius:16px;margin-bottom:15px;overflow:hidden;">
-          <div style="padding:15px 20px;background:#fcfcfc;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #eee;">
-            <div style="display:flex;align-items:center;gap:12px;">
-              <button data-action="TOGGLE_COLLAPSE" data-name="${lvl.name}" style="background:none;border:none;font-size:1rem;cursor:pointer;">${lvl.collapsed ? '▶' : '▼'}</button>
-              ${editingLevel === lvl.name ? `
-                <input type="text" id="rename-input-${lvl.name}" value="${lvl.name}" style="padding:4px 8px;border:1px solid var(--primary);border-radius:6px;width:120px;">
-                <button data-action="CONFIRM_RENAME" data-oldname="${lvl.name}" style="background:#22c55e;color:white;border:none;padding:4px 10px;border-radius:6px;font-size:0.7rem;">OK</button>
-              ` : `
-                <strong style="color:var(--primary);cursor:pointer;" data-action="START_RENAME" data-name="${lvl.name}">${lvl.name}</strong>
-              `}
-            </div>
-            <button data-action="DELETE_LEVEL" data-name="${lvl.name}" style="color:#e63946;background:none;border:none;font-weight:900;font-size:0.7rem;cursor:pointer;">ELIMINAR</button>
-          </div>
-          ${!lvl.collapsed ? `
-            <div style="padding:15px;display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px;">
-              ${lvl.slots.map(s => `
-                <div style="background:#f9f9f9;padding:8px;border-radius:8px;text-align:center;position:relative;">
-                  <div style="font-weight:900;font-size:0.75rem;">${s.label}</div>
-                  <button data-action="DELETE_SLOT" data-levelname="${lvl.name}" data-label="${s.label}" style="position:absolute;top:-5px;right:-5px;background:#e63946;color:white;border:none;width:16px;height:16px;border-radius:50%;font-size:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;">×</button>
-                </div>
-              `).join('')}
-              <button data-action="ADD_SLOT" data-name="${lvl.name}" style="background:var(--accent);color:white;border:none;border-radius:8px;font-weight:900;cursor:pointer;height:40px;">+</button>
-            </div>
-          ` : ''}
-        </div>
-      `).join('')}
-    </div>`
-
-  const renderPersonnel = (state) => `
-    <div style="padding:20px;">
-      <h3 style="font-weight:900;margin-bottom:20px;">GESTIÓN DE PERSONAL</h3>
-      <div style="background:white;padding:25px;border-radius:20px;margin-bottom:30px;box-shadow:0 4px 12px rgba(0,0,0,0.05);">
-        <h4 style="font-size:0.8rem;color:#999;margin-bottom:15px;font-weight:900;letter-spacing:1px;">REGISTRAR NUEVO GUARDIA</h4>
-        <div style="margin-bottom:20px;">
-          <div style="display:flex; justify-content:center; margin-bottom:20px;">
-            <div id="photo-dropzone" style="width:100px;height:100px;border-radius:50%;background:#f4f4f4;border:2px dashed #ddd;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;flex-shrink:0;">
-              <img id="guard-photo-preview" style="width:100%;height:100%;object-fit:cover;display:none;">
-              <span id="photo-plus" style="font-size:2rem;color:#ccc;">+</span>
-            </div>
-            <input type="file" id="guard-photo-input" accept="image/*" style="display:none;">
-          </div>
-          <div style="width:100%;">
-            <input type="text" id="guard-name" placeholder="Nombre Completo" style="width:100%;padding:14px;border:1px solid #ddd;border-radius:12px;margin-bottom:12px;font-size:0.95rem;">
-            <input type="text" id="guard-phone" placeholder="Teléfono WhatsApp (Ej: 58412...)" style="width:100%;padding:14px;border:1px solid #ddd;border-radius:12px;margin-bottom:12px;font-size:0.95rem;">
-            <div style="display:flex;gap:12px;">
-              <input type="text" id="guard-pin" placeholder="PIN (4)" maxlength="4" style="flex:1;padding:14px;border:1px solid #ddd;border-radius:12px;font-size:0.95rem;">
-              <select id="guard-shift" style="flex:1.5;padding:14px;border:1px solid #ddd;border-radius:12px;background:white;font-size:0.95rem;">
-                <option value="Mañana">Mañana</option>
-                <option value="Tarde">Tarde</option>
-                <option value="Noche">Noche</option>
-                <option value="24h">24h</option>
-              </select>
-            </div>
-          </div>
-        </div>
-        <button id="btn-add-guard-trig" style="width:100%;padding:18px;background:var(--primary);color:white;border:none;border-radius:14px;font-weight:900;cursor:pointer;font-family:var(--font);">
-          AÑADIR A LA NOMINA
-        </button>
-      </div>
-
-      <div style="display:grid;gap:12px;">
-        ${(state.personnel || []).map(p => {
-          const isWorking = (state.movements || []).some(m => m.guardName === p.name && (Date.now() - new Date(m.timestamp)) < 8 * 3600 * 1000);
-          return `
-          <div style="background:white;padding:15px 20px;border-radius:16px;display:flex;justify-content:space-between;align-items:center;border:1px solid #eee;">
-            <div style="display:flex;align-items:center;gap:15px;">
-              <div style="width:50px;height:50px;border-radius:50%;background:#f0f0f0;overflow:hidden;flex-shrink:0;border:2px solid ${isWorking?'#22c55e':'#eee'};">
-                ${p.photo ? `<img src="${p.photo}" style="width:100%;height:100%;object-fit:cover;">` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#ccc;font-size:1.2rem;font-weight:900;">${p.name.charAt(0)}</div>`}
-              </div>
-              <div>
-                <div style="display:flex;align-items:center;gap:8px;">
-                  <div style="font-weight:900;color:var(--primary);">${p.name}</div>
-                  <span style="font-size:0.6rem;padding:2px 6px;border-radius:4px;background:#f4f4f4;color:#666;font-weight:900;">${p.shift || 'Mañana'}</span>
-                </div>
-                <div style="font-size:0.75rem;color:#999;margin-top:2px;">
-                  PIN: <strong style="color:var(--primary);">${p.pin}</strong> · 
-                  <span style="color:${isWorking?'#22c55e':'#999'};font-weight:700;">${isWorking?'● Trabajando':'○ Inactivo'}</span>
-                </div>
-              </div>
-            </div>
-            <div style="display:flex;gap:10px;align-items:center;">
-              ${p.phone ? `
-                <a href="https://wa.me/${p.phone.replace(/\D/g,'')}?text=${encodeURIComponent(`Hola ${p.name}, bienvenido a Sloty. Tu acceso para ${state.buildingName} es:\n\nCódigo Edificio: ${state.buildingCode}\nTu PIN: ${p.pin}\n\nIngresa aquí: ${window.location.origin}/?building=${state.buildingCode}`)}" 
-                   target="_blank" style="text-decoration:none;background:#25D366;color:white;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.2rem;font-weight:900;">
-                   W
-                </a>
-              ` : ''}
-              <button data-action="DELETE_GUARD" data-id="${p.id}" style="color:#e63946;background:none;border:none;font-weight:900;cursor:pointer;font-size:0.75rem;">Eliminar</button>
-            </div>
-          </div>`
-        }).join('<p style="text-align:center;color:#bbb;padding:20px;">No hay guardias registrados.</p>')}
-      </div>
-    </div>`
-
-
-  const renderAudit = (state) => `
-    <div style="padding:20px;">
-      <h3 style="font-weight:900;margin-bottom:20px;">BITÁCORA DE AUDITORÍA</h3>
-      <div style="background:white;border-radius:20px;overflow:hidden;border:1px solid #eee;">
-        <div style="padding:15px;background:#fcfcfc;font-size:0.75rem;font-weight:900;color:#999;border-bottom:1px solid #eee;">ACTIVIDADES RECIENTES</div>
-        <div style="max-height:500px;overflow-y:auto;">
-          ${(state.auditLog || []).map(a => `
-            <div style="padding:15px;border-bottom:1px solid #f9f9f9;">
-              <div style="font-size:0.85rem;font-weight:700;color:var(--primary);">${a.action}</div>
-              <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:0.7rem;color:#999;">
-                <span>👤 ${a.user}</span>
-                <span>📅 ${new Date(a.timestamp).toLocaleString()}</span>
-              </div>
-            </div>
-          `).join(state.auditLog?.length ? '' : '<p style="padding:20px;text-align:center;color:#bbb;">No hay registros de auditoría.</p>')}
-        </div>
-      </div>
-    </div>`
-
-  const renderFinance = (state) => {
-    const movs = state.movements || []
-    const paid = movs.filter(m => m.paymentStatus === 'PAGADO')
-    const debts = movs.filter(m => m.type === 'SALIDA' && m.paymentStatus === 'DEUDA')
-    
-    const usd = paid.filter(m => m.payMethod === 'EFECTIVO_USD').length
-    const bs = paid.filter(m => m.payMethod === 'EFECTIVO_BS').length
-    const pm = paid.filter(m => m.payMethod === 'PAGO_MOVIL').length
-
+  const renderReports = (state) => {
     const now = new Date()
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
-    const startOfWeek = new Date(startOfToday - now.getDay() * 86400000).getTime()
+    const movs = (state.movements || []).filter(m => {
+      const d = new Date(m.timestamp)
+      if (reportFilter === 'HOY') return d >= new Date().setHours(0,0,0,0)
+      if (reportFilter === 'SEMANA') return (now - d) / 86400000 <= 7
+      if (reportFilter === 'MES') return (now - d) / 86400000 <= 30
+      return true
+    })
 
-    const dailyIncome = paid.filter(m => new Date(m.timestamp).getTime() >= startOfToday).reduce((a, b) => a + (b.amount || 0), 0)
-    const weeklyIncome = paid.filter(m => new Date(m.timestamp).getTime() >= startOfWeek).reduce((a, b) => a + (b.amount || 0), 0)
-
-    const rawDaysElapsed = now.getDay() + (now.getHours() / 24)
-    const daysElapsed = rawDaysElapsed === 0 ? 0.1 : rawDaysElapsed
-    const projectedWeekly = Math.round((weeklyIncome / daysElapsed) * 7)
+    const totalRev = movs.reduce((a, m) => a + (m.amount || 0), 0)
 
     return `
-      <div style="padding:20px;">
-        <h3 style="font-weight:900;margin-bottom:20px;">RENDIMIENTO FINANCIERO</h3>
-        
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
-          <div style="background:var(--primary);color:white;padding:15px;border-radius:15px;text-align:center;box-shadow:0 4px 10px rgba(0,0,0,0.1);">
-            <div style="font-size:1.6rem;font-weight:900;">$${dailyIncome}.00</div>
-            <div style="font-size:0.6rem;font-weight:900;letter-spacing:1px;opacity:0.8;margin-top:2px;">INGRESOS DE HOY</div>
-          </div>
-          <div style="background:#F5C518;color:var(--primary);padding:15px;border-radius:15px;text-align:center;box-shadow:0 4px 10px rgba(0,0,0,0.1);">
-            <div style="font-size:1.6rem;font-weight:900;">$${weeklyIncome}.00</div>
-            <div style="font-size:0.6rem;font-weight:900;letter-spacing:1px;opacity:0.8;margin-top:2px;">ESTA SEMANA</div>
-          </div>
+      <div style="padding:20px; padding-bottom:100px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+          <h3 style="font-weight:900; margin:0;">HISTORIAL</h3>
+          <button data-action="DOWNLOAD_CSV" style="background:#1a1a2e; color:#F5C518; border:none; padding:8px 16px; border-radius:10px; font-weight:700; font-size:0.75rem; cursor:pointer;">EXCEL (CSV)</button>
         </div>
 
-        <div style="background:#f4f4f4;border:1px dashed #ccc;padding:12px;border-radius:12px;text-align:center;margin-bottom:25px;">
-          <div style="font-size:0.65rem;font-weight:900;color:#999;letter-spacing:1px;margin-bottom:4px;">PROYECCIÓN ESTIMADA (7 DÍAS)</div>
-          <div style="font-size:1.4rem;font-weight:900;color:#22c55e;">~$${projectedWeekly}.00</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:24px;">
+           <div style="background:white; padding:15px; border-radius:20px; border:1.5px solid #f0f0f0;">
+              <div style="font-size:0.6rem; font-weight:700; color:#999;">INGRESOS EN FILTRO</div>
+              <div style="font-size:1.4rem; font-weight:900;">${movs.length}</div>
+           </div>
+           <div style="background:white; padding:15px; border-radius:20px; border:1.5px solid #f0f0f0;">
+              <div style="font-size:0.6rem; font-weight:700; color:#999;">RECOLECTADO</div>
+              <div style="font-size:1.4rem; font-weight:900; color:#22c55e;">$${totalRev.toFixed(0)}</div>
+           </div>
         </div>
 
-        <h4 style="font-size:0.75rem;font-weight:900;color:#999;letter-spacing:1px;margin-bottom:12px;">INVENTARIO GLOBAL</h4>
-        <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:20px;">
-          <div style="flex:1 1 45%; background:white;border:1px solid #eee;color:var(--primary);padding:15px;border-radius:15px;text-align:center;">
-            <div style="font-size:1.6rem;font-weight:900;">${paid.length}</div>
-            <div style="font-size:0.6rem;font-weight:900;letter-spacing:1px;color:#999;">COBROS EXITOSOS</div>
-          </div>
-          <div style="flex:1 1 45%; background:white;border:1px solid #f9c2c5;color:#e63946;padding:15px;border-radius:15px;text-align:center;">
-            <div style="font-size:1.6rem;font-weight:900;">${debts.length}</div>
-            <div style="font-size:0.6rem;font-weight:900;letter-spacing:1px;opacity:0.8;">VEHÍCULOS EN DEUDA</div>
-          </div>
-        </div>
-
-        <h4 style="font-size:0.75rem;font-weight:900;color:#999;letter-spacing:1px;margin-bottom:12px;">USO POR MÉTODOS (GLOBAL)</h4>
-        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap:10px; margin-bottom:25px;">
-          <div style="background:white;border:1px solid #eee;padding:15px 10px;border-radius:12px;text-align:center;">
-            <div style="font-size:1.4rem;font-weight:900;color:#22c55e;margin-bottom:4px;">${usd}</div>
-            <div style="font-size:0.55rem;color:#999;font-weight:900;letter-spacing:0.5px;">EFECTIVO $</div>
-          </div>
-          <div style="background:white;border:1px solid #eee;padding:15px 10px;border-radius:12px;text-align:center;">
-            <div style="font-size:1.4rem;font-weight:900;color:#3b82f6;margin-bottom:4px;">${bs}</div>
-            <div style="font-size:0.55rem;color:#999;font-weight:900;letter-spacing:0.5px;">EFECTIVO Bs</div>
-          </div>
-          <div style="background:white;border:1px solid #eee;padding:15px 10px;border-radius:12px;text-align:center;">
-            <div style="font-size:1.4rem;font-weight:900;color:#a855f7;margin-bottom:4px;">${pm}</div>
-            <div style="font-size:0.55rem;color:#999;font-weight:900;letter-spacing:0.5px;">PAGO MÓVIL</div>
-          </div>
-        </div>
-
-        <h4 style="font-size:0.75rem;font-weight:900;color:#999;letter-spacing:1px;margin-bottom:12px;">ÚLTIMOS EXCEDENTES (+8H) COBRADOS</h4>
-        <div style="display:grid;gap:10px;">
-          ${paid.filter(p=>p.amount > 0).slice(0, 15).map(p => `
-            <div style="background:white;padding:15px;border-radius:12px;border:1px solid #eee;display:flex;justify-content:space-between;align-items:center;">
-              <div>
-                <div style="font-weight:900;color:var(--primary);font-size:0.95rem;">${p.plate || 'Anónimo'}</div>
-                <div style="font-size:0.65rem;color:#999;font-weight:700;margin-top:4px;">
-                  MÉTODO: <span style="color:#22c55e;">${({EFECTIVO_USD:'Efectivo $',EFECTIVO_BS:'Efectivo Bs',PAGO_MOVIL:'Pago Móvil'}[p.payMethod]||p.payMethod)}</span> ${p.ref ? ` | REF: <strong style="color:#1a1a2e;">${p.ref}</strong>` : ''}
-                </div>
-                <div style="font-size:0.6rem;color:#ccc;margin-top:2px;">Guardia: ${p.guardName||'—'}</div>
-              </div>
-              <div style="text-align:right;">
-                <div style="font-weight:900;color:#F5C518;font-size:1.2rem;">$${p.amount || 1}.00</div>
-                <div style="font-size:0.6rem;color:#ccc;margin-top:4px;">${new Date(p.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
-              </div>
-            </div>
-          `).join('') || '<div style="text-align:center;padding:25px;background:white;border-radius:12px;border:1px dashed #ddd;color:#bbb;font-size:0.8rem;font-weight:700;">No hay pagos registrados aún</div>'}
-        </div>
-        </div>
-      </div>
-    `
-  }
-
-  const renderReportes = (state) => {
-    let movs = [...(state.movements || [])]
-    const customFields = state.settings?.customFields || []
-    
-    const now = new Date()
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
-    const startOfWeek = new Date(startOfToday - now.getDay() * 86400000).getTime()
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
-    
-    if (reportFilter === 'HOY') {
-      movs = movs.filter(m => new Date(m.timestamp).getTime() >= startOfToday)
-    } else if (reportFilter === 'SEMANA') {
-      movs = movs.filter(m => new Date(m.timestamp).getTime() >= startOfWeek)
-    } else if (reportFilter === 'MES') {
-      movs = movs.filter(m => new Date(m.timestamp).getTime() >= startOfMonth)
-    }
-    
-    movs.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp))
-    
-    return `
-      <div style="padding:20px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
-          <h3 style="font-weight:900;">HISTORIAL DE TICKETS</h3>
-          <button data-action="DOWNLOAD_CSV" style="background:#22c55e;color:white;border:none;padding:10px 18px;border-radius:10px;font-weight:900;font-size:0.75rem;cursor:pointer;box-shadow:0 4px 10px rgba(34,197,94,0.2);">
-            📥 DESCARGAR CSV
-          </button>
-        </div>
-
-        <div style="display:flex;gap:10px;margin-bottom:20px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:5px;">
+        <div style="display:flex; gap:8px; margin-bottom:20px; overflow-x:auto; padding-bottom:4px;">
           ${['HOY','SEMANA','MES','TODO'].map(f => `
             <button data-action="FILTER_REPORTS" data-filter="${f}" 
-              style="padding:8px 16px;border-radius:20px;border:none;font-weight:900;font-size:0.7rem;cursor:pointer;
-                background:${reportFilter === f ? 'var(--primary)' : 'white'};
-                color:${reportFilter === f ? 'white' : '#999'};
-                box-shadow:0 2px 5px rgba(0,0,0,0.05);">
-              ${f}
+              style="padding:10px 18px; border-radius:12px; border:none; font-weight:700; font-size:0.75rem; 
+              background:${reportFilter === f ? '#1a1a2e' : '#f0f0f0'}; 
+              color:${reportFilter === f ? '#F5C518' : '#999'}; cursor:pointer; white-space:nowrap;">
+              ${f === 'HOY' ? 'Hoy' : f === 'SEMANA' ? '7 días' : f === 'MES' ? '30 días' : 'Todo'}
             </button>
           `).join('')}
         </div>
 
-        <div style="background:white;border-radius:20px;border:1px solid #eee;overflow-x:auto;-webkit-overflow-scrolling:touch;">
-          <table style="width:100%;border-collapse:collapse;font-size:0.75rem;">
-            <thead>
-              <tr style="background:#fcfcfc;border-bottom:1px solid #eee;color:#999;">
-                <th style="padding:15px;text-align:left;">FECHA</th>
-                <th style="padding:15px;text-align:left;">TIPO</th>
-                <th style="padding:15px;text-align:left;">PLACA</th>
-                <th style="padding:15px;text-align:left;">PUESTO</th>
-                ${customFields.map(f => `<th style="padding:15px;text-align:left;">${f.label.toUpperCase()}</th>`).join('')}
-                <th style="padding:15px;text-align:right;">COBRO</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${movs.map(m => `
-                <tr style="border-bottom:1px solid #f9f9f9;">
-                  <td style="padding:15px;white-space:nowrap;">
-                    <div style="font-weight:700;color:var(--primary);">${new Date(m.timestamp).toLocaleDateString()}</div>
-                    <div style="font-size:0.6rem;color:#ccc;">${new Date(m.timestamp).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>
-                  </td>
-                  <td style="padding:15px;">
-                    <span style="background:${m.type==='INGRESO'?'rgba(34,197,94,0.1)':'rgba(59,130,246,0.1)'};color:${m.type==='INGRESO'?'#22c55e':'#3b82f6'};padding:3px 8px;border-radius:6px;font-weight:900;font-size:0.55rem;">
-                      ${m.type}
-                    </span>
-                  </td>
-                  <td style="padding:15px;font-weight:900;color:var(--primary);">${m.plate || '---'}</td>
-                  <td style="padding:15px;font-weight:700;color:#666;">${m.slot || '---'}</td>
-                  ${customFields.map(f => `<td style="padding:15px;color:#888;">${m[f.id] || '---'}</td>`).join('')}
-                  <td style="padding:15px;text-align:right;font-weight:900;color:${m.amount>0?'#22c55e':'#ccc'};">
-                    ${m.amount > 0 ? `$${m.amount}.00` : (m.paymentStatus === 'PAGADO' ? 'PREPAGO' : '---')}
-                  </td>
-                </tr>
-              `).join('')}
-              ${movs.length === 0 ? `<tr><td colspan="${5 + customFields.length}" style="padding:40px;text-align:center;color:#bbb;">No hay movimientos registrados para este periodo.</td></tr>` : ''}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    `
-  }
-
-  const renderSettings = (state) => {
-    const s = state.settings || { freeHours: 8, baseRate: 1, extraPerHour: 0 }
-    return `
-    <div style="padding:20px;max-width:600px;margin:0 auto;">
-      <h3 style="font-weight:900;margin-bottom:20px;">CONFIGURACIÓN DE TARIFAS</h3>
-      <div style="background:white;padding:25px;border-radius:20px;box-shadow:0 10px 30px rgba(0,0,0,0.05);border:1px solid #eee;">
-        <p style="font-size:0.8rem;color:#666;line-height:1.5;margin-bottom:20px;font-weight:700;">
-          Define las reglas de facturación de visitantes. Si la permanencia supera tus <strong>Horas Libres</strong>, el sistema aplicará automáticamente la <strong>Tarifa Base</strong> fijada más la tarifa extra por el acumulado de horas excedidas (redondeo horario hacia arriba).
-        </p>
-
-        <div style="margin-bottom:15px;">
-          <label style="display:block;font-size:0.75rem;font-weight:900;color:var(--primary);margin-bottom:8px;letter-spacing:1px;">HORAS LIBRES (EXONERADAS)</label>
-          <div style="display:flex;align-items:center;background:#f9f9f9;border:2px solid #eee;border-radius:12px;padding:5px 15px;">
-            <span style="font-weight:900;color:#999;font-size:1.2rem;margin-right:10px;">⏱️</span>
-            <input type="number" id="set-freehours" value="${s.freeHours}" step="0.5" min="0" style="width:100%;padding:12px 0;background:transparent;border:none;font-weight:900;font-size:1.1rem;color:#1a1a2e;outline:none;" />
-            <span style="font-weight:900;color:#999;">hrs</span>
-          </div>
-        </div>
-
-        <div style="margin-bottom:15px;">
-          <label style="display:block;font-size:0.75rem;font-weight:900;color:var(--primary);margin-bottom:8px;letter-spacing:1px;">TARIFA BASE POR EXCEDENTE</label>
-          <div style="display:flex;align-items:center;background:#f9f9f9;border:2px solid #eee;border-radius:12px;padding:5px 15px;">
-            <span style="font-weight:900;color:#22c55e;font-size:1.2rem;margin-right:10px;">$</span>
-            <input type="number" id="set-baserate" value="${s.baseRate}" step="0.1" min="0" style="width:100%;padding:12px 0;background:transparent;border:none;font-weight:900;font-size:1.1rem;color:#1a1a2e;outline:none;" />
-            <span style="font-weight:900;color:#999;">USD</span>
-          </div>
-        </div>
-
-        <div style="margin-bottom:25px;">
-          <label style="display:block;font-size:0.75rem;font-weight:900;color:var(--primary);margin-bottom:8px;letter-spacing:1px;">RECARGO POR HORA EXTRA</label>
-          <div style="display:flex;align-items:center;background:#f9f9f9;border:2px solid #eee;border-radius:12px;padding:5px 15px;">
-            <span style="font-weight:900;color:#F5C518;font-size:1.2rem;margin-right:10px;">+$</span>
-            <input type="number" id="set-extra" value="${s.extraPerHour}" step="0.1" min="0" style="width:100%;padding:12px 0;background:transparent;border:none;font-weight:900;font-size:1.1rem;color:#1a1a2e;outline:none;" />
-            <span style="font-weight:900;color:#999;">/hr</span>
-          </div>
-        </div>
-
-        <button data-action="SAVE_SETTINGS" style="width:100%;padding:18px;background:var(--primary);color:#F5C518;border:none;border-radius:14px;font-weight:900;font-size:1rem;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,0.15);">
-          💾 GUARDAR AJUSTES
-        </button>
-      </div>
-
-      <h3 style="font-weight:900;margin:30px 0 20px;">CAMPOS DE REGISTRO (VISITANTES)</h3>
-      <div style="background:white;padding:25px;border-radius:20px;box-shadow:0 10px 30px rgba(0,0,0,0.05);border:1px solid #eee;">
-        <p style="font-size:0.8rem;color:#666;line-height:1.5;margin-bottom:20px;font-weight:700;">
-          Define qué información extra debe pedir el guardia al registrar un visitante (ej. Torre, Piso, Nro de Apto).
-        </p>
-
-        <div style="display:grid;gap:12px;margin-bottom:25px;">
-          ${(s.customFields || []).map(f => `
-            <div style="background:#f9f9f9;padding:12px 15px;border-radius:12px;display:flex;justify-content:space-between;align-items:center;border:1px solid #eee;">
-              <div style="font-weight:900;color:var(--primary);">${f.label}</div>
-              <button data-action="DELETE_FIELD" data-id="${f.id}" style="color:#e63946;background:none;border:none;font-weight:900;cursor:pointer;font-size:0.75rem;">Eliminar</button>
-            </div>
-          `).join('')}
-        </div>
-
-        <div style="display:flex;gap:10px;">
-          <input type="text" id="new-field-label" placeholder="Nombre del campo (ej. Torre)" style="flex:1;padding:14px;border:1px solid #ddd;border-radius:12px;font-family:var(--font);font-size:0.9rem;">
-          <button data-action="ADD_FIELD" style="background:var(--primary);color:white;border:none;padding:0 20px;border-radius:12px;font-weight:900;cursor:pointer;">AÑADIR</button>
-        </div>
-      </div>
-
-      <h3 style="font-weight:900;margin:30px 0 20px;">CATEGORÍAS DE VEHÍCULOS</h3>
-      <div style="background:white;padding:25px;border-radius:20px;box-shadow:0 10px 30px rgba(0,0,0,0.05);border:1px solid #eee;">
-        <p style="font-size:0.8rem;color:#666;line-height:1.5;margin-bottom:20px;font-weight:700;">
-          Configura los tipos de vehículos permitidos (ej: Visitante, Residente, Delivery).
-        </p>
-
-        <div style="display:grid;gap:12px;margin-bottom:25px;">
-          ${(s.categories || []).map(cat => `
-            <div style="background:#f9f9f9;padding:12px 15px;border-radius:12px;display:flex;justify-content:space-between;align-items:center;border:1px solid #eee;">
-              <div style="display:flex;align-items:center;gap:10px;">
-                <div style="width:24px;height:24px;border-radius:6px;background:${cat.color};display:flex;align-items:center;justify-content:center;color:white;font-size:0.6rem;font-weight:900;">${cat.tag}</div>
-                <div style="font-weight:900;color:var(--primary);">${cat.label}</div>
+        <div style="display:grid; gap:12px;">
+          ${movs.length ? movs.map(m => `
+            <div style="background:white; padding:18px; border-radius:24px; border:1px solid #f0f0f0; box-shadow:0 10px 30px rgba(0,0,0,0.02);">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
+                <div>
+                  <div style="font-size:1rem; font-weight:900; color:#1a1a2e;">${m.plate || '---'}</div>
+                  <div style="font-size:0.7rem; font-weight:700; color:#999; margin-top:2px;">${new Date(m.timestamp).toLocaleString()}</div>
+                </div>
+                <div style="text-align:right;">
+                  <div style="font-weight:900; color:${m.type==='INGRESO'?'#22c55e':'#3b82f6'}; font-size:0.6rem; letter-spacing:1px;">${m.type}</div>
+                  <div style="font-size:0.8rem; font-weight:900; color:#1a1a2e; margin-top:2px;">${m.slot || '--'}</div>
+                </div>
               </div>
-              <button data-action="DELETE_CAT" data-id="${cat.id}" style="color:#e63946;background:none;border:none;font-weight:900;cursor:pointer;font-size:0.75rem;">Eliminar</button>
-            </div>
-          `).join('')}
-        </div>
+              
+              <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+                <span style="background:#f4f4f4; padding:4px 10px; border-radius:6px; font-size:0.6rem; font-weight:700; color:#666;">${m.category}</span>
+                ${Object.entries(m.metadata || {}).map(([k,v]) => `
+                  <span style="background:rgba(245,197,24,0.1); color:#D97706; padding:4px 10px; border-radius:6px; font-size:0.6rem; font-weight:700;">${k.toUpperCase()}: ${v}</span>
+                `).join('')}
+              </div>
 
-        <div style="display:grid;grid-template-columns:1fr 80px 50px auto;gap:10px;">
-          <input type="text" id="new-cat-label" placeholder="Nombre (ej. Delivery)" style="padding:14px;border:1px solid #ddd;border-radius:12px;font-size:0.8rem;">
-          <input type="text" id="new-cat-tag" placeholder="Tag" maxlength="2" style="padding:14px;border:1px solid #ddd;border-radius:12px;font-size:0.8rem;text-align:center;">
-          <input type="color" id="new-cat-color" value="#3b82f6" style="width:100%;height:100%;border:none;padding:0;background:none;cursor:pointer;">
-          <button data-action="ADD_CAT" style="background:var(--primary);color:white;border:none;padding:0 20px;border-radius:12px;font-weight:900;cursor:pointer;">AÑADIR</button>
+              <div style="display:flex; justify-content:space-between; align-items:center; padding-top:12px; border-top:1px dashed #eee;">
+                <div style="font-size:0.65rem; font-weight:700; color:#999;">Guardia: <span style="color:#666;">${m.guardName || 'Admin'}</span></div>
+                <div style="font-size:0.65rem; font-weight:900; color:#1a1a2e;">${m.payMethod ? `PAGO: ${m.payMethod.replace('_', ' ')}` : '---'}</div>
+              </div>
+            </div>
+          `).join('') : '<div style="text-align:center; padding:40px; color:#bbb; font-weight:700;">No hay movimientos en este periodo</div>'}
         </div>
-      </div>
-    </div>
-    `
+      </div>`
   }
 
-  // -- LIVE SYNC & CAROUSEL LOGIC --
-  let lastSyncStr = localStorage.getItem('sloty_state')
-  let carouselIndex = 0
-  
-  setInterval(() => {
-    const freshSyncStr = localStorage.getItem('sloty_state')
-    if (freshSyncStr !== lastSyncStr) {
-      lastSyncStr = freshSyncStr
-      if (['HOME', 'FINANCE', 'REPORTES'].includes(activeTab)) render()
+  const renderPersonnel = (state) => `
+    <div style="padding:20px;padding-bottom:100px;">
+      <h3 style="font-weight:900;margin-bottom:20px;">NOMINA DE PERSONAL</h3>
+      <div style="background:white;padding:25px;border-radius:28px;margin-bottom:30px;box-shadow:0 10px 30px rgba(0,0,0,0.03);border:1.5px solid #f8f8f8;">
+        <div style="display:flex; justify-content:center; margin-bottom:20px;">
+          <div id="photo-dropzone" style="width:110px;height:110px;border-radius:50%;background:#f9f9f9;border:2.5px dashed #eee;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;"><img id="guard-photo-preview" style="width:100%;height:100%;object-fit:cover;display:none;"><span id="photo-plus" style="font-size:2rem;color:#ddd;">👤</span></div>
+          <input type="file" id="guard-photo-input" accept="image/*" style="display:none;">
+        </div>
+        <input type="text" id="guard-name" placeholder="Nombre completo" style="width:100%;padding:16px;border:1.5px solid #eee;border-radius:16px;margin-bottom:12px;font-family:'Montserrat',sans-serif;font-weight:700;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
+          <input type="text" id="guard-pin" placeholder="PIN (4 cifras)" maxlength="4" style="padding:16px;border:1.5px solid #eee;border-radius:16px;font-family:'Montserrat',sans-serif;font-weight:900;text-align:center;">
+          <select id="guard-shift" style="padding:16px;border:1.5px solid #eee;border-radius:16px;background:white;font-family:'Montserrat',sans-serif;font-weight:700;"><option value="Diurno">Diurno</option><option value="Nocturno">Nocturno</option><option value="24h">Rotativo</option></select>
+        </div>
+        <button data-action="ADD_GUARD" style="width:100%;padding:18px;background:var(--primary);color:#F5C518;border:none;border-radius:18px;font-weight:900;cursor:pointer;box-shadow:0 10px 25px rgba(0,0,0,0.1);">REGISTRAR GUARDIA</button>
+      </div>
+      <div style="display:grid;gap:12px;">
+        ${(state.personnel || []).map(p => `<div style="background:white;padding:15px;border-radius:20px;display:flex;justify-content:space-between;align-items:center;border:1px solid #f0f0f0;"><div style="display:flex;align-items:center;gap:15px;"><div style="width:55px;height:55px;border-radius:50%;background:#f0f0f0;overflow:hidden;">${p.photo ? `<img src="${p.photo}" style="width:100%;height:100%;object-fit:cover;">` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#ccc;font-weight:900;">${p.name.charAt(0)}</div>`}</div><div><div style="font-weight:900;color:var(--primary);">${p.name}</div><div style="font-size:0.7rem;color:#999;font-weight:700;">PIN: <span style="color:var(--primary);">${p.pin}</span> · ${p.shift}</div></div></div><button data-action="DELETE_GUARD" data-id="${p.id}" style="color:#e63946;background:none;border:none;font-weight:900;cursor:pointer;font-size:0.75rem;">ELIMINAR</button></div>`).join('')}
+      </div>
+    </div>`
+
+  const renderTabContent = (state) => {
+    if (!elMain) return; const cur = elMain.innerHTML; let html = ''
+    switch(activeTab) {
+      case 'HOME': html = renderHome(state); break
+      case 'PERSONAL': html = renderPersonnel(state); break
+      case 'STRUCTURE': html = `<div style="padding:20px;text-align:center;color:#666;">(Gestión de Niveles)</div>` ; break
+      case 'REPORTES': html = renderReports(state); break
+      case 'FINANCE': html = `<div style="padding:20px;text-align:center;color:#666;">(Resumen de Caja)</div>` ; break
+      case 'SETTINGS': html = `<div style="padding:20px;text-align:center;color:#666;">(Ajustes Globales)</div>` ; break
     }
-    
-    const track = document.getElementById('main-carousel')
-    if (track && track.children.length > 1) {
-      carouselIndex = (carouselIndex + 1) % track.children.length
-      track.style.transform = `translateX(-${carouselIndex * 100}%)`
+    if (cur !== html) { elMain.innerHTML = html; if(activeTab==='PERSONAL') setupPersonnelHooks() }
+  }
+
+  const setupPersonnelHooks = () => {
+    const dz = elMain?.querySelector('#photo-dropzone'), i = elMain?.querySelector('#guard-photo-input'), p = elMain?.querySelector('#guard-photo-preview'), s = elMain?.querySelector('#photo-plus')
+    if (dz && i) {
+      dz.onclick = () => i.click();
+      i.onchange = (e) => {
+        const file = e.target.files[0]; if (!file) return; const r = new FileReader()
+        r.onload = (re) => { p.src = re.target.result; p.style.display = 'block'; s.style.display = 'none' }
+        r.readAsDataURL(file)
+      }
     }
-  }, 4000)
+  }
+
+  const renderModal = () => {
+    const l = container.querySelector('#modal-layer'); if(!l) return; if(!pendingAction){ l.innerHTML=''; return }
+    l.innerHTML = `<div style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;backdrop-filter:blur(10px);"><div style="background:white;padding:30px;border-radius:32px;width:100%;max-width:380px;text-align:center;"><h3 style="font-weight:900;margin-bottom:10px;">Confirmar eliminación</h3><p style="color:#666;font-size:0.85rem;margin-bottom:30px;">Esta acción es permanente y afectará la base de datos.</p><div style="display:flex;flex-direction:column;gap:10px;"><button data-action="CONFIRM_DELETE" style="background:#e63946;color:white;border:none;padding:18px;border-radius:18px;font-weight:900;">ELIMINAR AHORA</button><button data-action="CANCEL_MODAL" style="background:#f4f4f4;color:#333;border:none;padding:18px;border-radius:18px;font-weight:900;">VOLVER</button></div></div></div>`
+  }
 
   const render = () => {
-    const state = getParkingState()
-    container.innerHTML = `
-      <div style="display:flex; flex-direction:column; min-height:100vh; background:#fcfcfc;">
-        ${renderModal()}
-        ${renderTopBar(state)}
-        <main style="flex:1; overflow-y:auto; padding-bottom:env(safe-area-inset-bottom, 30px);">
-          ${activeTab === 'HOME' ? renderHome(state) : ''}
-          ${activeTab === 'REPORTES' ? renderReportes(state) : ''}
-          ${activeTab === 'STRUCTURE' ? renderLayout(state) : ''}
-          ${activeTab === 'PERSONAL' ? renderPersonnel(state) : ''}
-          ${activeTab === 'AUDIT' ? renderAudit(state) : ''}
-          ${activeTab === 'FINANCE' ? renderFinance(state) : ''}
-          ${activeTab === 'SETTINGS' ? renderSettings(state) : ''}
-        </main>
-        ${renderBottomNav()}
-      </div>
-    `
-    
-    if (activeTab === 'PERSONAL') {
-      const dropzone = container.querySelector('#photo-dropzone');
-      const input = container.querySelector('#guard-photo-input');
-      const preview = container.querySelector('#guard-photo-preview');
-      const plus = container.querySelector('#photo-plus');
-      const btnAdd = container.querySelector('#btn-add-guard-trig');
-
-      if (dropzone && input) {
-        dropzone.onclick = () => input.click();
-        input.onchange = (e) => {
-          const file = e.target.files[0];
-          if (file) {
-            const reader = new FileReader();
-            reader.onload = (re) => {
-              preview.src = re.target.result;
-              preview.style.display = 'block';
-              plus.style.display = 'none';
-            };
-            reader.readAsDataURL(file);
-          }
-        };
-      }
-      if (btnAdd) btnAdd.onclick = () => actions.ADD_GUARD();
-    }
+    const s = getParkingState()
+    if (!elMain) renderShell(s)
+    else updateStats(s)
+    renderTabContent(s); renderModal()
+    container.querySelectorAll('.nav-item').forEach(v => {
+      const active = v.dataset.tab === activeTab
+      v.classList.toggle('active', active); const span = v.querySelector('span'); if(span && v.dataset.tab) span.style.opacity = active ? 0 : 1
+    })
   }
+
+  setInterval(() => {
+    const s = getParkingState(); updateStats(s)
+    if (['HOME','FINANCE','REPORTES'].includes(activeTab)) renderTabContent(s)
+    const t = container.querySelector('#main-carousel'); let carouselIndex = 0
+    if (t && t.children.length > 1) { carouselIndex = (window._cIdx || 0) + 1; window._cIdx = carouselIndex % t.children.length; t.style.transform = `translateX(-${window._cIdx * 100}%)` }
+  }, 4000)
+
   render()
 }
