@@ -227,6 +227,11 @@ export const initAdmin = (container) => {
     return `
       <div style="padding:20px; padding-bottom:120px; background:#f8f9fa;">
         
+        <!-- LOGO (RESTORED) -->
+        <div style="text-align:center; margin-bottom:20px;">
+           <img src="/icons/pwa sloty.png" style="max-width:140px; filter: drop-shadow(0 5px 15px rgba(0,0,0,0.1));">
+        </div>
+
         <!-- BUILDING IDENTITY CARD -->
         <div class="building-card-dark">
           <div style="font-size:0.6rem; font-weight:700; color:var(--accent); letter-spacing:2px; text-transform:uppercase; margin-bottom:4px;">EDIFICIO</div>
@@ -266,8 +271,8 @@ export const initAdmin = (container) => {
            
            <div class="mini-stat-card">
               <div style="font-size:0.55rem; font-weight:800; color:#999; text-transform:uppercase;">FLUJO DEL DÍA</div>
-              <div style="font-size:1.4rem; font-weight:900; color:var(--primary);">${(state.movements || []).length}</div>
-              <div style="font-size:0.5rem; color:#22c55e; font-weight:700;">+Movimientos</div>
+              <div style="font-size:1.4rem; font-weight:900; color:var(--primary);">${(state.movements || []).filter(m => new Date(m.timestamp) >= new Date().setHours(0,0,0,0)).length}</div>
+              <div style="font-size:0.5rem; color:#22c55e; font-weight:700;">Hoy</div>
            </div>
            
            <div class="mini-stat-card">
@@ -280,23 +285,21 @@ export const initAdmin = (container) => {
         <!-- QUICK FEATURES GRID -->
         <div style="font-size:0.7rem; font-weight:900; color:var(--primary); margin-bottom:15px; text-transform:uppercase; letter-spacing:1s;">GESTIÓN RÁPIDA</div>
         <div class="feature-grid-clean">
-           <div class="feature-item-clean" onclick="window._admin_tab('STRUCTURE')">
+           <div class="feature-item-clean" data-action="TAB" data-tab="STRUCTURE">
              ${ICONS.STRUCTURE} <span>Estructura</span>
            </div>
-           <div class="feature-item-clean" onclick="window._admin_tab('PERSONAL')">
+           <div class="feature-item-clean" data-action="TAB" data-tab="PERSONAL">
              ${ICONS.PERSONAL} <span>Personal</span>
            </div>
-           <div class="feature-item-clean" onclick="window._admin_tab('REPORTES')">
+           <div class="feature-item-clean" data-action="TAB" data-tab="REPORTES">
              ${ICONS.HISTORY} <span>Reportes</span>
            </div>
-           <div class="feature-item-clean" onclick="window._admin_tab('FINANCE')">
+           <div class="feature-item-clean" data-action="TAB" data-tab="FINANCE">
              ${ICONS.FINANCE} <span>Finanzas</span>
            </div>
-           <div class="feature-item-clean" onclick="window._admin_tab('SETTINGS')">
-             ${ICONS.LOGOUT} <span>Auditoría</span>
-           </div>
-           <div class="feature-item-clean">
-             <div style="font-size:1.2rem; opacity:0.3;">+</div> <span>Más</span>
+           <div class="feature-item-clean" data-action="TAB" data-tab="SETTINGS">
+             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"/><path d="m12 14 4-4"/><path d="m12 14-4-4"/><path d="m12 14 0-6"/></svg>
+             <span>Auditoría</span>
            </div>
         </div>
 
@@ -312,6 +315,103 @@ export const initAdmin = (container) => {
 
       </div>`
   }
+
+  const renderLevels = (state) => `
+    <div style="padding:20px; padding-bottom:120px;">
+      <h3 style="font-weight:900; margin-bottom:20px;">GESTIÓN DE ESTRUCTURA</h3>
+      
+      <!-- GENERAR PLANTA -->
+      <div style="background:white; padding:20px; border-radius:24px; margin-bottom:30px; box-shadow:var(--shadow-sm);">
+        <div style="font-size:0.7rem; font-weight:800; color:#999; margin-bottom:15px; text-transform:uppercase;">NUEVA PLANTA</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+          <input type="text" id="level-name" placeholder="Piso / Área" style="padding:14px; border:1.5px solid #eee; border-radius:14px; font-family:var(--font); font-weight:700;">
+          <input type="number" id="level-capacity" placeholder="Capacidad" style="padding:14px; border:1.5px solid #eee; border-radius:14px; font-family:var(--font); font-weight:700;">
+        </div>
+        <button data-action="GENERATE" style="width:100%; padding:14px; background:var(--primary); color:var(--accent); border:none; border-radius:14px; font-weight:900; cursor:pointer;">CREAR PLANTA</button>
+      </div>
+
+      <div style="display:grid; gap:15px;">
+        ${state.levels.map(l => `
+          <div style="background:white; border-radius:24px; overflow:hidden; border:1px solid #f0f0f0;">
+            <div style="padding:16px 20px; background:#fcfcfc; border-bottom:1px solid #f0f0f0; display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <div style="font-size:1rem; font-weight:900; color:var(--primary);">${l.name}</div>
+                <div style="font-size:0.6rem; font-weight:700; color:#999;">${l.slots.length} Puestos</div>
+              </div>
+              <div style="display:flex; gap:10px;">
+                <button data-action="ADD_SLOT" data-name="${l.name}" style="background:none; border:none; color:var(--primary); font-size:1.1rem; cursor:pointer;">+</button>
+                <button data-action="DELETE_LEVEL" data-name="${l.name}" style="background:none; border:none; color:#e63946; font-size:1rem; cursor:pointer;">🗑️</button>
+              </div>
+            </div>
+            <div style="padding:15px; display:flex; flex-wrap:wrap; gap:6px;">
+              ${l.slots.map(s => `
+                <div style="padding:8px 12px; background:#f4f4f4; border-radius:8px; font-size:0.6rem; font-weight:800; display:flex; align-items:center; gap:6px;">
+                  ${s.label}
+                  <button data-action="DELETE_SLOT" data-levelname="${l.name}" data-label="${s.label}" style="border:none; background:none; color:#ddd; font-size:0.7rem; cursor:pointer;">×</button>
+                </div>
+              `).join('')}
+              ${!l.slots.length ? '<div style="font-size:0.6rem; color:#bbb; padding:10px;">No hay puestos en esta planta</div>' : ''}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>`
+
+  const renderFinanceSummary = (state) => {
+    const totalUSD = state.movements.reduce((a, m) => a + (m.amount || 0), 0)
+    const methods = state.movements.reduce((acc, m) => {
+      if (m.payMethod) acc[m.payMethod] = (acc[m.payMethod] || 0) + (m.amount || 0)
+      return acc
+    }, {})
+
+    return `
+      <div style="padding:20px; padding-bottom:120px;">
+        <h3 style="font-weight:900; margin-bottom:20px;">RESUMEN DE CAJA</h3>
+        
+        <div style="background:var(--primary); color:white; padding:30px; border-radius:32px; margin-bottom:25px; text-align:center;">
+           <div style="font-size:0.7rem; font-weight:700; color:var(--accent); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">TOTAL RECOLECTADO</div>
+           <div style="font-size:3rem; font-weight:900;">$${totalUSD}</div>
+        </div>
+
+        <div style="display:grid; gap:12px;">
+          ${Object.entries(methods).map(([m, val]) => `
+            <div style="background:white; padding:18px; border-radius:20px; display:flex; justify-content:space-between; align-items:center; border:1px solid #f0f0f0;">
+              <div style="font-weight:900; color:var(--primary); text-transform:uppercase; font-size:0.75rem;">${m.replace('_', ' ')}</div>
+              <div style="font-size:1.1rem; font-weight:900; color:#22c55e;">$${val}</div>
+            </div>
+          `).join('')}
+          ${!Object.keys(methods).length ? '<div style="text-align:center; padding:40px; color:#bbb;">No hay registros de pago</div>' : ''}
+        </div>
+      </div>`
+  }
+
+  const renderAuditLog = (state) => `
+    <div style="padding:20px; padding-bottom:120px;">
+      <h3 style="font-weight:900; margin-bottom:20px;">BITÁCORA DE AUDITORÍA</h3>
+      
+      <!-- AJUSTES RÁPIDOS -->
+      <div style="background:white; padding:20px; border-radius:32px; margin-bottom:30px; box-shadow:var(--shadow-sm);">
+        <div style="font-size:0.65rem; font-weight:800; color:#999; margin-bottom:15px; text-transform:uppercase;">CONFIGURACIÓN TARIFAS</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:15px;">
+           <div><label style="font-size:0.55rem; font-weight:900; color:#999; display:block; margin-bottom:4px;">BASE $</label><input type="number" id="set-baserate" value="${state.settings.baseRate}" style="width:100%; padding:12px; border:1px solid #eee; border-radius:12px; font-weight:900; font-family:var(--font);"></div>
+           <div><label style="font-size:0.55rem; font-weight:900; color:#999; display:block; margin-bottom:4px;">LIBRE (Hrs)</label><input type="number" id="set-freehours" value="${state.settings.freeHours}" style="width:100%; padding:12px; border:1px solid #eee; border-radius:12px; font-weight:900; font-family:var(--font);"></div>
+        </div>
+        <button data-action="SAVE_SETTINGS" style="width:100%; padding:14px; background:var(--accent); color:var(--primary); border:none; border-radius:14px; font-weight:900; cursor:pointer;">ACTUALIZAR</button>
+      </div>
+
+      <div style="display:grid; gap:8px;">
+        ${(state.auditLog || []).map(l => `
+          <div style="background:white; padding:12px 16px; border-radius:16px; border:1px solid #f0f0f0;">
+             <div style="font-size:0.8rem; font-weight:900; color:var(--primary);">${l.action}</div>
+             <div style="display:flex; justify-content:space-between; margin-top:4px;">
+                <div style="font-size:0.6rem; font-weight:700; color:#bbb;">Usu: ${l.user}</div>
+                <div style="font-size:0.6rem; color:#bbb;">${new Date(l.timestamp).toLocaleString()}</div>
+             </div>
+          </div>
+        `).join('')}
+        ${!(state.auditLog || []).length ? '<div style="text-align:center; padding:40px; color:#bbb;">No hay registros de auditoría</div>' : ''}
+      </div>
+    </div>`
 
   const renderReports = (state) => {
     const now = new Date()
@@ -410,10 +510,10 @@ export const initAdmin = (container) => {
     switch(activeTab) {
       case 'HOME': html = renderHome(state); break
       case 'PERSONAL': html = renderPersonnel(state); break
-      case 'STRUCTURE': html = `<div style="padding:20px;text-align:center;color:#666;">(Gestión de Niveles)</div>` ; break
+      case 'STRUCTURE': html = renderLevels(state); break
       case 'REPORTES': html = renderReports(state); break
-      case 'FINANCE': html = `<div style="padding:20px;text-align:center;color:#666;">(Resumen de Caja)</div>` ; break
-      case 'SETTINGS': html = `<div style="padding:20px;text-align:center;color:#666;">(Ajustes Globales)</div>` ; break
+      case 'FINANCE': html = renderFinanceSummary(state); break
+      case 'SETTINGS': html = renderAuditLog(state); break
     }
     if (cur !== html) { elMain.innerHTML = html; if(activeTab==='PERSONAL') setupPersonnelHooks() }
   }
