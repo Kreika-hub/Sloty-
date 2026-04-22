@@ -43,15 +43,34 @@ export const initMaster = (container) => {
   window._master_toggleFeature = (k) => {
     const s = getState(); s.features = s.features||{}; s.features[k] = !s.features[k]; saveParkingState(s); render()
   }
-  window._master_addAd = () => {
-    const u = document.getElementById('ad-url').value.trim(), l = document.getElementById('ad-link').value.trim()
-    if(!u) return; const s = getState(); s.ads = s.ads||[]; s.ads.push({id:Date.now().toString(), imageUrl:u, link:l, active:true}); saveParkingState(s); render()
+  window._master_addAd = (imgData) => {
+    if(!imgData) return
+    const s = getState(); s.ads = s.ads||[]; 
+    s.ads.unshift({id:Date.now().toString(), imageUrl:imgData, active:true, timestamp: Date.now()}); 
+    saveParkingState(s); render()
   }
   window._master_toggleAd = (id) => {
     const s = getState(); const ad = s.ads.find(a=>a.id===id); if(ad) ad.active=!ad.active; saveParkingState(s); render()
   }
+  window._master_repostAd = (id) => {
+    const s = getState(); const adIdx = s.ads.findIndex(a=>a.id===id)
+    if(adIdx > -1) {
+      const [ad] = s.ads.splice(adIdx, 1)
+      ad.timestamp = Date.now()
+      s.ads.unshift(ad)
+      saveParkingState(s); render()
+    }
+  }
   window._master_deleteAd = (id) => {
-    if(!confirm('¿Borrar?')) return; const s = getState(); s.ads = s.ads.filter(a=>a.id!==id); saveParkingState(s); render()
+    if(!confirm('¿Borrar anuncio definitivamente?')) return; 
+    const s = getState(); s.ads = s.ads.filter(a=>a.id!==id); saveParkingState(s); render()
+  }
+  window._master_handleFileUpload = (input) => {
+    const file = input.files[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (e) => window._master_addAd(e.target.result)
+    reader.readAsDataURL(file)
   }
   window._master_clearMovements = () => {
     if(!confirm('¿Limpiar?')) return; const s = getState(); s.movements=[]; saveParkingState(s); render()
@@ -99,14 +118,47 @@ export const initMaster = (container) => {
     </div>`
   }
 
-  const renderAds = (state) => `<div style="padding:20px;">
-    <h3 style="color:white;font-weight:900;margin-bottom:15px;">ADS CAROUSEL</h3>
-    <div style="background:rgba(255,255,255,0.06);padding:15px;border-radius:16px;margin-bottom:20px;">
-      <input type="text" id="ad-url" placeholder="URL Imagen" style="width:100%;padding:12px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:white;border-radius:10px;margin-bottom:10px;">
-      <button onclick="_master_addAd()" style="width:100%;padding:14px;background:#F5C518;border:none;border-radius:10px;font-weight:900;">ADD AD</button>
-    </div>
-    ${(state.ads||[]).map(a=>`<div style="background:rgba(255,255,255,0.04);padding:10px;border-radius:12px;display:flex;align-items:center;margin-bottom:10px;gap:15px;"><img src="${a.imageUrl}" style="width:50px;height:30px;object-fit:cover;border-radius:5px;"><div style="flex:1;font-size:0.6rem;color:white;word-break:break-all;">${a.imageUrl.slice(0,30)}...</div><button onclick="_master_toggleAd('${a.id}')" style="background:none;border:none;color:white;font-size:1rem;">${a.active?'👁️':'🚫'}</button><button onclick="_master_deleteAd('${a.id}')" style="background:none;border:none;color:#e63946;font-size:0.6rem;font-weight:900;">DEL</button></div>`).join('')}
-  </div>`
+  const renderAds = (state) => `
+    <div style="padding:20px; padding-bottom:100px;">
+      <h3 style="color:white; font-weight:900; margin-bottom:8px;">GESTIÓN DE ANUNCIOS</h3>
+      <p style="color:rgba(255,255,255,0.4); font-size:0.65rem; line-height:1.4; margin-bottom:20px;">
+        Los anuncios se mostrarán en el carrusel principal de todos los usuarios.
+      </p>
+
+      <!-- UPLOAD AREA -->
+      <div style="background:rgba(255,255,255,0.06); padding:24px; border-radius:24px; border:1px dashed rgba(255,255,255,0.2); text-align:center; margin-bottom:30px;">
+        <div style="font-size:2rem; margin-bottom:10px;">📸</div>
+        <div style="color:white; font-weight:900; font-size:0.9rem; margin-bottom:4px;">Subir Nueva Imagen</div>
+        <div style="color:#F5C518; font-weight:700; font-size:0.6rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:15px;">Tamaño ideal: 800x400 px</div>
+        
+        <input type="file" id="ad-file-input" accept="image/*" onchange="_master_handleFileUpload(this)" style="display:none;">
+        <button onclick="document.getElementById('ad-file-input').click()" 
+          style="background:#F5C518; color:#1a1a2e; border:none; padding:12px 24px; border-radius:12px; font-weight:900; font-size:0.8rem; cursor:pointer; width:100%;">
+          SELECCIONAR DESDE TELÉFONO
+        </button>
+        
+        <div style="margin-top:15px; font-size:0.55rem; color:rgba(255,255,255,0.3); font-style:italic;">
+          Disclaimer: Asegúrese de tener los derechos de la imagen. La visibilidad es global.
+        </div>
+      </div>
+
+      <div style="font-size:0.7rem; font-weight:900; color:#F5C518; margin-bottom:15px; text-transform:uppercase; letter-spacing:1px;">HISTORIAL DE ANUNCIOS</div>
+      
+      <div class="ads-history-grid">
+        ${(state.ads || []).map(a => `
+          <div class="ad-history-item">
+            <img src="${a.imageUrl}">
+            <div class="ad-history-actions">
+               <button onclick="_master_repostAd('${a.id}')" style="background:white; border:none; width:30px; height:30px; border-radius:50%; font-size:0.8rem;" title="Repost">🔁</button>
+               <button onclick="_master_toggleAd('${a.id}')" style="background:white; border:none; width:30px; height:30px; border-radius:50%; font-size:0.8rem;" title="Toggle">${a.active ? '👁️' : '🚫'}</button>
+               <button onclick="_master_deleteAd('${a.id}')" style="background:#e63946; color:white; border:none; width:30px; height:30px; border-radius:50%; font-size:0.8rem;" title="Delete">🗑️</button>
+            </div>
+            ${!a.active ? `<div style="position:absolute; top:4px; right:4px; background:rgba(0,0,0,0.6); color:white; font-size:0.5rem; padding:2px 4px; border-radius:4px;">OCULTO</div>` : ''}
+          </div>
+        `).join('')}
+        ${!(state.ads || []).length ? '<div style="grid-column:span 3; text-align:center; padding:40px; color:rgba(255,255,255,0.2); font-size:0.8rem;">No hay anuncios subidos</div>' : ''}
+      </div>
+    </div>`
 
   const renderShell = () => {
     container.innerHTML = `<div id="master-shell" style="background:#1a1a2e;min-height:100vh;font-family:'Montserrat',sans-serif;">

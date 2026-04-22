@@ -6,6 +6,15 @@ export const initAdmin = (container) => {
   let pendingAction = null // { type, name, lName, sLabel, guardId }
   let editingLevel = null // Level name being renamed
 
+  const ICONS = {
+    HOME: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
+    HISTORY: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+    FINANCE: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`,
+    STRUCTURE: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>`,
+    PERSONAL: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+    LOGOUT: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>`
+  }
+
   // --- DOM Elements Cache ---
   let elMain = null
   let elStatus = null
@@ -175,6 +184,8 @@ export const initAdmin = (container) => {
     }
   }
 
+  window._admin_tab = (tab) => { activeTab = tab; render() }
+
   container.onclick = (e) => {
     const trigger = e.target.closest('[data-action]')
     if (trigger && actions[trigger.dataset.action]) actions[trigger.dataset.action](trigger)
@@ -182,56 +193,123 @@ export const initAdmin = (container) => {
 
   const renderShell = (state) => {
     container.innerHTML = `
-      <div id="admin-shell" style="display:flex; flex-direction:column; min-height:100vh; background:#fcfcfc; overflow:hidden;">
-        <div id="modal-layer"></div>
-        <header class="smart-header">
-          <div style="display:flex;align-items:center;gap:12px;">
-            <div style="font-size:1.1rem;font-weight:900;letter-spacing:-1px;color:white;">SLOTY</div>
-            <div style="height:20px;width:1.5px;background:rgba(255,255,255,0.2);"></div>
-            <div style="font-size:0.85rem;font-weight:900;color:white;opacity:0.9;">${state.buildingName.toUpperCase()}</div>
-          </div>
-          <div class="header-status">
-            <span style="color:#22c55e;">●</span> 
-            <span id="header-occupancy">${state.stats.occupied} / ${state.stats.totalSpots} OCUP.</span>
-          </div>
-        </header>
-        <main id="admin-content" style="flex:1; overflow-y:auto; padding-bottom:env(safe-area-inset-bottom, 30px);"></main>
-        <nav class="bottom-nav">
-          ${[{k:'HOME',l:'Inicio',i:'🏠'},{k:'REPORTES',l:'Historial',i:'🕒'},{k:'STRUCTURE',l:'Gestión',i:'🏢'},{k:'FINANCE',l:'Finanzas',i:'💰'}].map(i=>`
-            <div class="nav-item ${activeTab===i.k?'active':''}" data-action="TAB" data-tab="${i.k}">
-              <div class="nav-bubble">${i.i}</div><div class="nav-icon">${i.i}</div>
-              <span style="opacity:${activeTab===i.k?0:1}">${i.l}</span>
-            </div>`).join('')}
-          <div class="nav-item" data-action="LOGOUT"><div class="nav-icon">🚪</div><span>Salir</span></div>
-        </nav>
+      <div id="admin-shell" style="background:#f8f9fa; min-height:100vh;">
+        <div id="admin-content-area"></div>
+        
+        <!-- FLOATING PILL NAVIGATION -->
+        <div class="floating-nav-container">
+           <div class="floating-nav-item ${activeTab==='HOME'?'active':''}" onclick="window._admin_tab('HOME')">
+             ${ICONS.HOME}
+           </div>
+           <div class="floating-nav-item ${activeTab==='REPORTES'?'active':''}" onclick="window._admin_tab('REPORTES')">
+             ${ICONS.HISTORY}
+           </div>
+           <div class="floating-nav-item ${activeTab==='FINANCE'?'active':''}" onclick="window._admin_tab('FINANCE')">
+             ${ICONS.FINANCE}
+           </div>
+           <div class="floating-nav-item" onclick="localStorage.removeItem('sloty_session'); location.reload()">
+             ${ICONS.LOGOUT}
+           </div>
+        </div>
       </div>`
-    elMain = container.querySelector('#admin-content')
-    elStatus = container.querySelector('#header-occupancy')
+    elMain = container.querySelector('#admin-content-area')
   }
 
-  const updateStats = (state) => { if (elStatus) elStatus.textContent = `${state.stats.occupied} / ${state.stats.totalSpots} OCUP.` }
-
   const renderHome = (state) => {
-    const movsToday = (state.movements || []).filter(m => new Date(m.timestamp) >= new Date().setHours(0,0,0,0))
-    const ads = (state.ads || []).filter(a => a.active)
+    const total = state.stats?.totalSpots || 0
+    const occ = state.stats?.occupied || 0
+    const perc = total > 0 ? Math.round((occ / total) * 100) : 0
+    const dash = 251.2 // 2 * PI * 40
+    const offset = dash - (perc / 100) * dash
+    
+    const ads = state.ads?.filter(a => a.active) || []
+
     return `
-      <div style="padding-bottom:100px;">
-        ${ads.length ? `
-          <section class="carousel-container"><div class="carousel-track" id="main-carousel">
-            ${ads.map(ad => `<div class="ad-card"><img src="${ad.imageUrl}" onerror="this.src='https://images.unsplash.com/photo-1506521781263-d8422e82f27a?auto=format&fit=crop&q=80&w=800'"></div>`).join('')}
-          </div></section>` : ''}
-        <div style="padding:20px;">
-          <div style="background:white; border-radius:32px; padding:25px; box-shadow:0 10px 40px rgba(0,0,0,0.02); margin-bottom:25px; border:1px solid #f8f8f8; display:flex; justify-content:space-between; align-items:center;">
-             <div><div style="font-size:0.75rem; color:#999; font-weight:700; margin-bottom:6px;">INGRESOS EN CURSO</div><div style="font-size:2.2rem; font-weight:900; color:var(--primary);">${movsToday.length}</div></div>
-             <div style="width:60px; height:60px; background:#f4f4f4; border-radius:20px; display:flex; align-items:center; justify-content:center; font-size:1.8rem;">📦</div>
-          </div>
-          <div class="dashboard-grid">
-            ${[{k:'STRUCTURE',l:'Estructura',s:`${state.levels.length} Niveles`,i:'🏢',bg:'linear-gradient(135deg,#EEF2FF,#E0E7FF)',c:'#4F46E5'},
-               {k:'PERSONAL',l:'Personal',s:`${(state.personnel||[]).length} Guardias`,i:'👥',bg:'linear-gradient(135deg,#F0FDF4,#DCFCE7)',c:'#16A34A'},
-               {k:'SETTINGS',l:'Tarifas',s:'Ajustes de cobro',i:'⚡',bg:'linear-gradient(135deg,#FFFBEB,#FEF3C7)',c:'#D97706'}].map(f=>`
-              <div class="feature-btn" data-action="TAB" data-tab="${f.k}"><div class="f-icon" style="background:${f.bg}; color:${f.c};">${f.i}</div><div><div class="f-label">${f.l}</div><div class="f-stat">${f.s}</div></div></div>`).join('')}
+      <div style="padding:20px; padding-bottom:120px; background:#f8f9fa;">
+        
+        <!-- BUILDING IDENTITY CARD -->
+        <div class="building-card-dark">
+          <div style="font-size:0.6rem; font-weight:700; color:var(--accent); letter-spacing:2px; text-transform:uppercase; margin-bottom:4px;">EDIFICIO</div>
+          <div style="font-size:1.6rem; font-weight:900; color:white; margin-bottom:16px;">${state.buildingName}</div>
+          
+          <div style="background:rgba(255,255,255,0.05); padding:16px; border-radius:16px; display:flex; justify-content:space-between; align-items:center;">
+             <div>
+                <div style="font-size:0.5rem; font-weight:800; color:rgba(255,255,255,0.4); text-transform:uppercase; margin-bottom:4px;">CÓDIGO DE ACCESO</div>
+                <div style="font-size:1.2rem; font-weight:900; color:var(--accent);">${state.buildingCode}</div>
+             </div>
+             <button onclick="navigator.clipboard.writeText('${state.buildingCode}'); alert('Copiado!')" 
+               style="background:white; color:var(--primary); border:none; padding:8px 16px; border-radius:10px; font-size:0.6rem; font-weight:900; cursor:pointer;">
+               COPIAR
+             </button>
           </div>
         </div>
+
+        <!-- STATS DASHBOARD -->
+        <div class="stats-dashboard">
+           <div class="usage-circle-container">
+              <div style="font-size:0.6rem; font-weight:800; color:#999; margin-bottom:15px; text-transform:uppercase;">DENSIDAD DE USO</div>
+              <div style="position:relative; width:100px; height:100px;">
+                <svg width="100" height="100" viewBox="0 0 100 100" style="transform:rotate(-90deg);">
+                  <circle cx="50" cy="50" r="40" stroke="#eee" stroke-width="10" fill="none" />
+                  <circle cx="50" cy="50" r="40" stroke="#22c55e" stroke-width="10" fill="none" 
+                    stroke-dasharray="${dash}" stroke-dashoffset="${offset}" stroke-linecap="round" style="transition:all 1s;" />
+                </svg>
+                <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:1.2rem; font-weight:900; color:var(--primary);">
+                  ${perc}%
+                </div>
+              </div>
+              <div style="margin-top:15px; text-align:center;">
+                <div style="font-size:0.8rem; font-weight:900; color:var(--primary);">${occ} de ${total}</div>
+                <div style="font-size:0.55rem; font-weight:700; color:#999;">OCUPADOS</div>
+              </div>
+           </div>
+           
+           <div class="mini-stat-card">
+              <div style="font-size:0.55rem; font-weight:800; color:#999; text-transform:uppercase;">FLUJO DEL DÍA</div>
+              <div style="font-size:1.4rem; font-weight:900; color:var(--primary);">${(state.movements || []).length}</div>
+              <div style="font-size:0.5rem; color:#22c55e; font-weight:700;">+Movimientos</div>
+           </div>
+           
+           <div class="mini-stat-card">
+              <div style="font-size:0.55rem; font-weight:800; color:#999; text-transform:uppercase;">PERMANENCIA</div>
+              <div style="font-size:1.4rem; font-weight:900; color:var(--primary);">2.4h</div>
+              <div style="font-size:0.5rem; color:#bbb; font-weight:700;">Promedio</div>
+           </div>
+        </div>
+
+        <!-- QUICK FEATURES GRID -->
+        <div style="font-size:0.7rem; font-weight:900; color:var(--primary); margin-bottom:15px; text-transform:uppercase; letter-spacing:1s;">GESTIÓN RÁPIDA</div>
+        <div class="feature-grid-clean">
+           <div class="feature-item-clean" onclick="window._admin_tab('STRUCTURE')">
+             ${ICONS.STRUCTURE} <span>Estructura</span>
+           </div>
+           <div class="feature-item-clean" onclick="window._admin_tab('PERSONAL')">
+             ${ICONS.PERSONAL} <span>Personal</span>
+           </div>
+           <div class="feature-item-clean" onclick="window._admin_tab('REPORTES')">
+             ${ICONS.HISTORY} <span>Reportes</span>
+           </div>
+           <div class="feature-item-clean" onclick="window._admin_tab('FINANCE')">
+             ${ICONS.FINANCE} <span>Finanzas</span>
+           </div>
+           <div class="feature-item-clean" onclick="window._admin_tab('SETTINGS')">
+             ${ICONS.LOGOUT} <span>Auditoría</span>
+           </div>
+           <div class="feature-item-clean">
+             <div style="font-size:1.2rem; opacity:0.3;">+</div> <span>Más</span>
+           </div>
+        </div>
+
+        <!-- ADS CAROUSEL -->
+        ${ads.length ? `
+          <div style="font-size:0.7rem; font-weight:900; color:var(--primary); margin-bottom:15px; text-transform:uppercase;">NOTICIAS & ANUNCIOS</div>
+          <div class="carousel-container glass-card" style="border-radius:24px; padding:0; height:180px;">
+            <div class="carousel-track" id="main-carousel">
+              ${ads.map(ad => `<div class="ad-card" style="aspect-ratio:auto; height:180px;"><img src="${ad.imageUrl}" style="object-fit:cover;"></div>`).join('')}
+            </div>
+          </div>
+        ` : ''}
+
       </div>`
   }
 
