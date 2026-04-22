@@ -685,3 +685,69 @@ a {
   .no-print { display: none !important; }
 }
 
+/* --- MOBILE RESPONSIVENESS UPGRADE --- */
+.responsive-container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 15px;
+}
+
+@media (max-width: 500px) {
+  .feature-grid-clean {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  
+  .stats-dashboard {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .usage-circle-container {
+    grid-row: auto !important;
+  }
+  
+  .ads-history-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  
+  .building-card-dark {
+    padding: 15px !important;
+  }
+  
+  .mini-stat-card {
+    padding: 12px !important;
+  }
+
+  input, select, button {
+    font-size: 0.9rem !important;
+  }
+}
+
+@media (max-width: 400px) {
+  .feature-grid-clean {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .admin-tab-btn span {
+    font-size: 0.5rem !important;
+  }
+}
+
+.input-stack {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 480px) {
+  .input-stack {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@keyframes pulse {
+  0% { transform: scale(0.95); opacity: 0.5; }
+  50% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.5; }
+}
+

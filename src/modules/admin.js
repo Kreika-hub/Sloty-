@@ -180,6 +180,15 @@ export const initAdmin = (container) => {
     },
     CANCEL_MODAL: () => { pendingAction = null; render() },
     TAB: (btn) => { activeTab = btn.dataset.tab; render() },
+    SYNC: () => {
+      render();
+      const btn = container.querySelector('[data-action="SYNC"]');
+      if(btn) {
+        btn.style.transform = 'rotate(360deg)';
+        btn.style.transition = 'transform 0.5s';
+        setTimeout(() => { btn.style.transform = 'rotate(0deg)'; btn.style.transition = 'none' }, 500);
+      }
+    },
     SAVE_PROFILE: () => {
       const name = document.getElementById('edit-building-name').value.trim();
       const email = document.getElementById('edit-admin-email').value.trim();
@@ -195,10 +204,8 @@ export const initAdmin = (container) => {
       render();
     },
     LOGOUT: () => {
-      if (confirm('¿Cerrar sesión?')) {
-        localStorage.removeItem('sloty_session');
-        location.reload();
-      }
+      localStorage.removeItem('sloty_session');
+      location.reload();
     },
     FILTER_REPORTS: (btn) => { reportFilter = btn.dataset.filter; render() },
     SAVE_SETTINGS: () => {
@@ -251,7 +258,7 @@ export const initAdmin = (container) => {
     container.innerHTML = `
       <div id="admin-shell" style="background:#f8f9fa; min-height:100vh; font-family:var(--font); color:var(--primary);">
         <div id="admin-header"></div>
-        <main id="admin-main"></main>
+        <main id="admin-main" style="padding-top:10px;"></main>
         <div id="modal-layer"></div>
         
         <nav id="admin-nav" style="position:fixed; bottom:0; left:0; width:100%; background:#1a1a2e; padding:10px 15px calc(env(safe-area-inset-bottom, 8px) + 8px); display:flex; justify-content:space-around; align-items:center; z-index:1000; box-shadow:0 -5px 30px rgba(0,0,0,0.2);">
@@ -280,58 +287,83 @@ export const initAdmin = (container) => {
     const header = container.querySelector('#admin-header')
     if (!header) return
     const unread = (state.notifications || []).filter(n => n.unread).length
-    
-    if (activeTab === 'HOME') {
-      header.innerHTML = `
-        <div style="background:#1a1a2e; padding:env(safe-area-inset-top, 16px) 20px 24px; color:white;">
-          <!-- TOP ROW: Logo + Actions -->
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-            <div style="display:flex; align-items:center; gap:10px;">
-              <img src="/icons/Sloty logo negro.png" style="height:36px; filter:brightness(0) invert(1);" onerror="this.style.display='none'">
-              <div style="font-size:0.6rem; font-weight:800; color:rgba(255,255,255,0.4); letter-spacing:2px; text-transform:uppercase;">PANEL ADMIN</div>
-            </div>
-            <div style="display:flex; align-items:center; gap:14px;">
-              <div data-action="TAB" data-tab="NOTIFICATIONS" style="position:relative; cursor:pointer; color:white; width:22px; height:22px;">
-                ${ICONS.BELL}
-                ${unread ? `<div style="position:absolute; top:-3px; right:-3px; width:8px; height:8px; background:#e63946; border-radius:50%; border:2px solid #1a1a2e;"></div>` : ''}
-              </div>
-              <div data-action="LOGOUT" style="cursor:pointer; color:rgba(255,255,255,0.4); width:20px; height:20px;">
-                ${ICONS.LOGOUT}
+
+    // DYNAMIC METRICS FOR HEADER
+    let metricHtml = ''
+    if (activeTab === 'STRUCTURE') {
+      const total = state.levels.reduce((acc, l) => acc + l.slots.length, 0)
+      metricHtml = `<div class="header-status"><span>${total} PUESTOS</span></div>`
+    } else if (activeTab === 'FINANCE') {
+      const rev = (state.movements || []).filter(m => new Date(m.timestamp) >= new Date().setHours(0,0,0,0)).reduce((acc, m) => acc + (m.amount || 0), 0)
+      metricHtml = `<div class="header-status" style="background:rgba(34,197,94,0.15); color:#22c55e;"><span>$${rev.toFixed(2)}</span></div>`
+    } else if (activeTab === 'NOTIFICATIONS') {
+      metricHtml = `<div class="header-status" style="background:rgba(230,57,70,0.15); color:#e63946;"><span>${unread} ALERTAS</span></div>`
+    } else if (activeTab === 'HOME') {
+      metricHtml = `<div class="header-status"><span>ADMIN</span></div>`
+    } else {
+      metricHtml = `<div class="header-status"><span>ACTIVO</span></div>`
+    }
+
+    const titles = { STRUCTURE:'Estructura', FINANCE:'Finanzas', PERSONAL:'Personal', REPORTES:'Reportes', SETTINGS:'Auditoría', NOTIFICATIONS:'Notificaciones', PROFILE:'Perfil' }
+    const isHome = activeTab === 'HOME'
+
+    header.innerHTML = `
+      <div style="background:#1a1a2e; padding:calc(env(safe-area-inset-top, 0px) + 15px) 20px 20px; color:white; position:sticky; top:0; z-index:1100; box-shadow:0 10px 30px rgba(0,0,0,0.2);">
+        <!-- HEADER TOP: Logo & Context -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:${isHome ? '15px' : '0'};">
+          <div style="display:flex; align-items:center; gap:12px;">
+            ${!isHome ? `<div data-action="TAB" data-tab="HOME" style="cursor:pointer; color:rgba(255,255,255,0.4); width:24px; height:24px; display:flex; align-items:center; justify-content:center; margin-right:4px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="width:20px; height:20px;"><path d="m15 18-6-6 6-6"/></svg>
+            </div>` : ''}
+            <div data-action="TAB" data-tab="HOME" style="cursor:pointer; display:flex; flex-direction:column;">
+              <img src="/icons/Sloty logo negro.png" style="height:60px; filter:brightness(0) invert(1); margin-bottom:-5px; object-fit:contain; object-position:left;" onerror="this.style.display='none'">
+              <div style="display:flex; align-items:center; gap:8px; margin-left:2px;">
+                <div style="font-size:0.5rem; font-weight:800; color:rgba(255,255,255,0.4); letter-spacing:2px; text-transform:uppercase;">${isHome ? 'PANEL PRINCIPAL' : titles[activeTab].toUpperCase()}</div>
+                <div style="display:flex; align-items:center; gap:4px; background:rgba(34,197,94,0.1); padding:2px 6px; border-radius:6px; border:1px solid rgba(34,197,94,0.2);">
+                   <div style="width:4px; height:4px; background:#22c55e; border-radius:50%; animation: pulse 2s infinite;"></div>
+                   <div style="font-size:0.45rem; font-weight:900; color:#22c55e; letter-spacing:0.5px;">LIVE</div>
+                </div>
+                ${metricHtml}
               </div>
             </div>
           </div>
 
-          <!-- BUILDING NAME -->
-          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
-            <div style="font-size:1.6rem; font-weight:900;">${state.buildingName}</div>
+          <div style="display:flex; align-items:center; gap:16px;">
+            <button data-action="SYNC" style="background:none; border:none; cursor:pointer; color:rgba(255,255,255,0.4); width:28px; height:28px; display:flex; align-items:center; justify-content:center; padding:0; transition:transform 0.5s;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:18px; height:18px;"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+            </button>
+            <div data-action="TAB" data-tab="NOTIFICATIONS" style="position:relative; cursor:pointer; color:white; width:22px; height:22px;">
+              ${ICONS.BELL}
+              ${unread ? `<div style="position:absolute; top:-3px; right:-3px; width:8px; height:8px; background:#e63946; border-radius:50%; border:2px solid #1a1a2e;"></div>` : ''}
+            </div>
+            <button data-action="LOGOUT" style="background:none; border:none; cursor:pointer; color:rgba(255,255,255,0.4); width:28px; height:28px; display:flex; align-items:center; justify-content:center; padding:0;">
+              ${ICONS.LOGOUT}
+            </button>
+          </div>
+        </div>
+
+        ${isHome ? `
+          <!-- BUILDING IDENTITY (ONLY HOME) -->
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-top:20px; margin-bottom:4px;">
+            <div style="font-size:1.8rem; font-weight:900; line-height:1.1;">${state.buildingName.toLowerCase()}</div>
             <div data-action="TAB" data-tab="PROFILE" style="cursor:pointer; color:var(--accent); width:24px; height:24px;">
                ${ICONS.EDIT}
             </div>
           </div>
-          <div style="font-size:0.65rem; font-weight:700; color:rgba(255,255,255,0.4); margin-bottom:16px;">${state.adminInfo?.email || ''} ${state.adminInfo?.phone ? '· ' + state.adminInfo.phone : ''}</div>
+          <div style="font-size:0.75rem; font-weight:600; color:rgba(255,255,255,0.4); margin-bottom:20px;">${state.adminInfo?.email || ''}</div>
           
-          <!-- CODE + COPY -->
-          <div style="background:rgba(255,255,255,0.06); padding:14px 16px; border-radius:16px; display:flex; justify-content:space-between; align-items:center;">
+          <div style="background:rgba(255,255,255,0.06); padding:16px; border-radius:18px; display:flex; justify-content:space-between; align-items:center; border:1px solid rgba(255,255,255,0.05);">
             <div>
-              <div style="font-size:0.5rem; font-weight:800; color:rgba(255,255,255,0.35); text-transform:uppercase; margin-bottom:3px;">CÓDIGO DE ACCESO</div>
-              <div style="font-size:1.1rem; font-weight:900; color:var(--accent); letter-spacing:1px;">${state.buildingCode}</div>
+              <div style="font-size:0.55rem; font-weight:800; color:rgba(255,255,255,0.3); text-transform:uppercase; margin-bottom:4px; letter-spacing:1px;">CÓDIGO DE ACCESO</div>
+              <div style="font-size:1.2rem; font-weight:900; color:var(--accent); letter-spacing:1px;">${state.buildingCode}</div>
             </div>
-            <button onclick="navigator.clipboard.writeText('${state.buildingCode}'); this.textContent='✓ COPIADO'; setTimeout(()=>this.textContent='COPIAR',1500)" 
-              style="background:rgba(255,255,255,0.1); color:white; border:1px solid rgba(255,255,255,0.15); padding:8px 16px; border-radius:12px; font-size:0.6rem; font-weight:900; cursor:pointer; font-family:var(--font);">
+            <button onclick="navigator.clipboard.writeText('${state.buildingCode}'); this.textContent='✓'; setTimeout(()=>this.textContent='COPIAR',1500)" 
+              style="background:rgba(255,255,255,0.1); color:white; border:none; padding:10px 18px; border-radius:12px; font-size:0.6rem; font-weight:900; cursor:pointer;">
               COPIAR
             </button>
           </div>
-        </div>`
-    } else {
-      const titles = { STRUCTURE:'Estructura', FINANCE:'Finanzas', PERSONAL:'Personal', REPORTES:'Reportes', SETTINGS:'Auditoría', NOTIFICATIONS:'Notificaciones' }
-      header.innerHTML = `
-        <div style="background:white; padding:env(safe-area-inset-top, 12px) 20px 14px; display:flex; align-items:center; gap:14px; border-bottom:1px solid #f0f0f0; position:sticky; top:0; z-index:100;">
-          <div data-action="TAB" data-tab="HOME" style="cursor:pointer; color:var(--primary); width:22px; height:22px;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-          </div>
-          <div style="font-weight:900; font-size:1rem; color:var(--primary); text-transform:uppercase; letter-spacing:0.5px;">${titles[activeTab] || activeTab}</div>
-        </div>`
-    }
+        ` : ''}
+      </div>`
   }
 
   const renderHome = (state) => {
@@ -418,16 +450,16 @@ export const initAdmin = (container) => {
       <h2 style="font-weight:900; color:var(--primary); font-size:1.4rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:20px;">GESTIÓN DE ESTRUCTURA</h2>
       
       <!-- GENERAR PLANTA -->
-      <div style="background:white; padding:30px; border-radius:32px; margin-bottom:35px; box-shadow:0 15px 40px rgba(0,0,0,0.04); border:1.5px solid #f0f0f0;">
+      <div style="background:white; padding:30px; border-radius:32px; margin-bottom:-5px; box-shadow:0 15px 40px rgba(0,0,0,0.04); border:1.5px solid #f0f0f0;">
         <div style="font-size:0.7rem; font-weight:800; color:#999; text-align:center; margin-bottom:20px; text-transform:uppercase; letter-spacing:1px;">NUEVA PLANTA</div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px;">
+        <div class="input-stack" style="margin-bottom:20px;">
           <input type="text" id="level-name" placeholder="Piso / Área" style="padding:18px; border:1.5px solid #f0f0f0; border-radius:18px; font-family:var(--font); font-weight:700; background:#fafafa; outline:none;">
           <input type="number" id="level-capacity" placeholder="Capacidad" style="padding:18px; border:1.5px solid #f0f0f0; border-radius:18px; font-family:var(--font); font-weight:700; background:#fafafa; outline:none;">
         </div>
         <button data-action="GENERATE" style="width:100%; padding:20px; background:#1a1a2e; color:var(--accent); border:none; border-radius:20px; font-weight:900; cursor:pointer; font-size:0.85rem; letter-spacing:1px; text-transform:uppercase;">CREAR PLANTA</button>
       </div>
 
-      <div style="display:grid; gap:15px;">
+      <div style="display:grid; gap:15px; margin-top:35px;">
         ${state.levels.map(l => {
           const isEditing = editingLevel === l.name;
           const cardColor = l.color || '#1a1a2e';
@@ -777,7 +809,7 @@ export const initAdmin = (container) => {
       case 'NOTIFICATIONS': html = renderNotifications(state); break
       case 'PROFILE': html = renderProfile(state); break
     }
-    elMain.innerHTML = html; if(activeTab==='PERSONAL') setupPersonnelHooks()
+    elMain.innerHTML = `<div class="responsive-container" style="padding-bottom:100px;">${html}</div>`; if(activeTab==='PERSONAL') setupPersonnelHooks()
   }
 
   const setupPersonnelHooks = () => {
