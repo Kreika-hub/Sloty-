@@ -1,4 +1,4 @@
-import { getParkingState, updateParkingState, logMovement } from '../db.js'
+import { getParkingState, updateParkingState, logMovement, logNotification } from '../db.js'
 
 export const initGuard = (container, guardName = 'Guardia') => {
   let state = getParkingState()
@@ -161,7 +161,15 @@ export const initGuard = (container, guardName = 'Guardia') => {
     },
     EXIT_PAID: () => processExit('FREE'),
     EXIT_DEBT: () => processExit('DEBT'),
-    PRINT_TICKET: () => printTicket('SALIDA')
+    PRINT_TICKET: () => printTicket('SALIDA'),
+    CIERRE_CAJA: () => {
+      const state = getParkingState()
+      const total = state.movements?.filter(m => m.guardName === guardName && (new Date() - new Date(m.timestamp)) < 24 * 3600000).reduce((a,m)=>a+(m.amount||0), 0)
+      if (confirm(`¿Confirmar cierre de caja por un total de $${total.toFixed(2)}?`)) {
+        logNotification('CIERRE_CAJA', guardName, `Reportó un cierre de caja por $${total.toFixed(2)}`)
+        alert('Cierre reportado exitosamente')
+      }
+    }
   }
 
   const processExit = (newStatus) => {
@@ -185,7 +193,12 @@ export const initGuard = (container, guardName = 'Guardia') => {
           <div style="font-size:0.6rem;font-weight:700;color:rgba(255,255,255,0.4);letter-spacing:2px;">GARITA ACTIVA</div>
           <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
             <div style="font-size:1.2rem;font-weight:900;">${guardName}</div>
-            <button data-action="LOGOUT" style="background:#F5C518;color:#1a1a2e;border:none;padding:5px 12px;border-radius:8px;font-size:0.65rem;font-weight:900;cursor:pointer;">SALIR</button>
+            <div style="display:flex; gap:8px;">
+               <button data-action="CIERRE_CAJA" style="background:#22c55e;color:white;border:none;padding:5px 12px;border-radius:8px;font-size:0.65rem;font-weight:900;cursor:pointer;">CERRAR CAJA</button>
+               <button data-action="LOGOUT" style="background:#F5C518;color:#1a1a2e;border:none;padding:5px 12px;border-radius:8px;font-size:0.65rem;font-weight:900;cursor:pointer;">
+                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width:12px; height:12px;"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+               </button>
+            </div>
           </div>
           <div id="guard-clock" style="font-size:0.85rem;color:#F5C518;font-weight:700;margin-top:4px;">${new Date().toLocaleTimeString().toLowerCase()}</div>
         </div>

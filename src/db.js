@@ -21,6 +21,7 @@ const defaultState = {
   levels: [],
   movements: [],
   auditLog: [],
+  notifications: [], // { id, type, msg, guard, timestamp, unread }
   ads: [], // { id, imageUrl, link, active }
   stats: {
     totalSpots: 0,
@@ -125,6 +126,10 @@ export const getParkingState = () => {
         state.ads = []
         migrated = true
       }
+      if (!state.notifications) {
+        state.notifications = []
+        migrated = true
+      }
       
       const expectedPrefix = getCleanPrefix(state.buildingName)
       // Auto-migrate if old system was used (e.g. still has EDI- or LAS-)
@@ -181,6 +186,26 @@ export const logAudit = (action, user = 'ADMIN') => {
     id: `a-${Date.now()}`,
     timestamp: new Date().toISOString()
   })
+  saveParkingState(state)
+}
+
+export const logNotification = (type, guard, msg) => {
+  const state = getParkingState()
+  state.notifications = state.notifications || []
+  state.notifications.unshift({
+    id: `n-${Date.now()}`,
+    type,
+    guard,
+    msg,
+    timestamp: new Date().toISOString(),
+    unread: true
+  })
+  saveParkingState(state)
+}
+
+export const markNotificationsRead = () => {
+  const state = getParkingState()
+  state.notifications?.forEach(n => n.unread = false)
   saveParkingState(state)
 }
 

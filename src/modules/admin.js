@@ -5,6 +5,7 @@ export const initAdmin = (container) => {
   let reportFilter = 'HOY'
   let pendingAction = null // { type, name, lName, sLabel, guardId }
   let editingLevel = null // Level name being renamed
+  let editingGuard = null // Guard ID being edited
 
   const ICONS = {
     HOME: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
@@ -12,7 +13,12 @@ export const initAdmin = (container) => {
     FINANCE: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`,
     STRUCTURE: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>`,
     PERSONAL: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
-    LOGOUT: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>`
+    LOGOUT: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>`,
+    TRASH: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18m-2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6m4-4v6"/></svg>`,
+    EDIT: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
+    PLUS: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
+    SETTINGS: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+    BELL: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>`
   }
 
   // --- DOM Elements Cache ---
@@ -59,6 +65,11 @@ export const initAdmin = (container) => {
         editingLevel = null
         render()
       }
+    },
+    SET_LEVEL_COLOR: (btn) => {
+      const name = btn.dataset.name; const color = btn.dataset.color;
+      const state = getParkingState(); const level = state.levels.find(l => l.name === name);
+      if (level) { level.color = color; saveParkingState(state); render(); }
     },
     CANCEL_RENAME: () => {
       editingLevel = null
@@ -118,10 +129,36 @@ export const initAdmin = (container) => {
       if (!name || !pin) return alert('Nombre y PIN obligatorios');
       const state = getParkingState();
       state.personnel = state.personnel || [];
-      state.personnel.push({ id: Date.now().toString(), name, pin, phone, shift, photo });
-      logAudit(`Registró guardia: ${name}`);
+      
+      if (editingGuard) {
+        const idx = state.personnel.findIndex(p => p.id === editingGuard);
+        if (idx !== -1) state.personnel[idx] = { ...state.personnel[idx], name, pin, phone, shift, photo };
+        editingGuard = null;
+      } else {
+        state.personnel.push({ id: Date.now().toString(), name, pin, phone, shift, photo, status: 'Activo' });
+      }
+      
+      logAudit(`Actualizó/Registró guardia: ${name}`);
       saveParkingState(state);
       render();
+    },
+    EDIT_GUARD: (btn) => {
+      editingGuard = btn.dataset.id;
+      render();
+    },
+    CANCEL_EDIT: () => {
+      editingGuard = null;
+      render();
+    },
+    SEND_WHATSAPP: (btn) => {
+      const id = btn.dataset.id;
+      const state = getParkingState();
+      const g = state.personnel.find(p => p.id === id);
+      if (!g || !g.phone) return alert('El guardia no tiene teléfono registrado');
+      
+      const url = window.location.origin;
+      const msg = `Bienvenido a Sloty. Tu acceso de guardia para ${state.buildingName} es: ${url}\n\nCódigo Edificio: ${state.buildingCode}\nTu PIN: ${g.pin}`;
+      window.open(`https://wa.me/${g.phone.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`, '_blank');
     },
     DELETE_GUARD: (btn) => {
       const gId = btn.dataset.id;
@@ -143,7 +180,12 @@ export const initAdmin = (container) => {
     },
     CANCEL_MODAL: () => { pendingAction = null; render() },
     TAB: (btn) => { activeTab = btn.dataset.tab; render() },
-    LOGOUT: () => { if (confirm('¿Cerrar sesión?')) { localStorage.removeItem('sloty_session'); location.reload() } },
+    LOGOUT: () => {
+      if (confirm('¿Cerrar sesión?')) {
+        localStorage.removeItem('sloty_session');
+        location.reload();
+      }
+    },
     FILTER_REPORTS: (btn) => { reportFilter = btn.dataset.filter; render() },
     SAVE_SETTINGS: () => {
       const freeHours = parseFloat(document.getElementById('set-freehours').value) || 0
@@ -193,26 +235,22 @@ export const initAdmin = (container) => {
 
   const renderShell = (state) => {
     container.innerHTML = `
-      <div id="admin-shell" style="background:#f8f9fa; min-height:100vh;">
-        <div id="admin-content-area"></div>
+      <div id="admin-shell" style="background:#f8f9fa; min-height:100vh; font-family:var(--font); color:var(--primary);">
+        <main id="admin-main"></main>
+        <div id="modal-layer"></div>
         
-        <!-- FLOATING PILL NAVIGATION -->
-        <div class="floating-nav-container">
-           <div class="floating-nav-item ${activeTab==='HOME'?'active':''}" onclick="window._admin_tab('HOME')">
-             ${ICONS.HOME}
-           </div>
-           <div class="floating-nav-item ${activeTab==='REPORTES'?'active':''}" onclick="window._admin_tab('REPORTES')">
-             ${ICONS.HISTORY}
-           </div>
-           <div class="floating-nav-item ${activeTab==='FINANCE'?'active':''}" onclick="window._admin_tab('FINANCE')">
-             ${ICONS.FINANCE}
-           </div>
-           <div class="floating-nav-item" onclick="localStorage.removeItem('sloty_session'); location.reload()">
-             ${ICONS.LOGOUT}
-           </div>
+        <nav style="position:fixed; bottom:25px; left:50%; transform:translateX(-50%); background:#1a1a2e; padding:12px 25px; border-radius:35px; display:flex; gap:35px; align-items:center; box-shadow:0 15px 35px rgba(0,0,0,0.3); z-index:1000;">
+          <div class="nav-item" data-action="TAB" data-tab="HOME">${ICONS.HOME} <span style="font-size:0.6rem; font-weight:900; position:absolute; bottom:-12px; transition:0.3s; opacity:0; text-transform:uppercase;">INICIO</span></div>
+          <div class="nav-item" data-action="TAB" data-tab="STRUCTURE" style="position:relative;">${ICONS.STRUCTURE} <span style="font-size:0.6rem; font-weight:900; position:absolute; bottom:-12px; transition:0.3s; opacity:0; text-transform:uppercase;">PISOS</span></div>
+          <div class="nav-item" data-action="TAB" data-tab="FINANCE">${ICONS.FINANCE} <span style="font-size:0.6rem; font-weight:900; position:absolute; bottom:-12px; transition:0.3s; opacity:0; text-transform:uppercase;">CAJA</span></div>
+          <div class="nav-item" data-action="TAB" data-tab="PERSONAL">${ICONS.PERSONAL} <span style="font-size:0.6rem; font-weight:900; position:absolute; bottom:-12px; transition:0.3s; opacity:0; text-transform:uppercase;">EQUIPO</span></div>
+        </nav>
+
+        <div class="floating-nav-item" data-action="LOGOUT" style="position:fixed; right:20px; bottom:110px; width:55px; height:55px; background:white; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 10px 25px rgba(0,0,0,0.1); cursor:pointer; z-index:1000;">
+          ${ICONS.LOGOUT}
         </div>
       </div>`
-    elMain = container.querySelector('#admin-content-area')
+    elMain = container.querySelector('#admin-main')
   }
 
   const renderHome = (state) => {
@@ -227,9 +265,15 @@ export const initAdmin = (container) => {
     return `
       <div style="padding:20px; padding-bottom:120px; background:#f8f9fa;">
         
-        <!-- LOGO (RESTORED) -->
-        <div style="text-align:center; margin-bottom:20px;">
-           <img src="/icons/pwa sloty.png" style="max-width:140px; filter: drop-shadow(0 5px 15px rgba(0,0,0,0.1));">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <div data-action="TAB" data-tab="SETTINGS" style="cursor:pointer;">${ICONS.SETTINGS}</div>
+            <div style="font-weight:900; font-size:1.1rem; color:var(--primary); letter-spacing:-0.5px;">${state.buildingName.toUpperCase()}</div>
+          </div>
+          <div data-action="TAB" data-tab="NOTIFICATIONS" style="position:relative; cursor:pointer;">
+            ${ICONS.BELL}
+            ${state.notifications?.filter(n=>n.unread).length ? `<div style="position:absolute; top:-2px; right:-2px; width:10px; height:10px; background:#e63946; border-radius:50%; border:2px solid white;"></div>` : ''}
+          </div>
         </div>
 
         <!-- BUILDING IDENTITY CARD -->
@@ -298,7 +342,7 @@ export const initAdmin = (container) => {
              ${ICONS.FINANCE} <span>Finanzas</span>
            </div>
            <div class="feature-item-clean" data-action="TAB" data-tab="SETTINGS">
-             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"/><path d="m12 14 4-4"/><path d="m12 14-4-4"/><path d="m12 14 0-6"/></svg>
+             ${ICONS.SETTINGS}
              <span>Auditoría</span>
            </div>
         </div>
@@ -318,69 +362,169 @@ export const initAdmin = (container) => {
 
   const renderLevels = (state) => `
     <div style="padding:20px; padding-bottom:120px;">
-      <h3 style="font-weight:900; margin-bottom:20px;">GESTIÓN DE ESTRUCTURA</h3>
+      <h2 style="font-weight:900; color:var(--primary); font-size:1.4rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:20px;">GESTIÓN DE ESTRUCTURA</h2>
       
       <!-- GENERAR PLANTA -->
-      <div style="background:white; padding:20px; border-radius:24px; margin-bottom:30px; box-shadow:var(--shadow-sm);">
-        <div style="font-size:0.7rem; font-weight:800; color:#999; margin-bottom:15px; text-transform:uppercase;">NUEVA PLANTA</div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
-          <input type="text" id="level-name" placeholder="Piso / Área" style="padding:14px; border:1.5px solid #eee; border-radius:14px; font-family:var(--font); font-weight:700;">
-          <input type="number" id="level-capacity" placeholder="Capacidad" style="padding:14px; border:1.5px solid #eee; border-radius:14px; font-family:var(--font); font-weight:700;">
+      <div style="background:white; padding:30px; border-radius:32px; margin-bottom:35px; box-shadow:0 15px 40px rgba(0,0,0,0.04); border:1.5px solid #f0f0f0;">
+        <div style="font-size:0.7rem; font-weight:800; color:#999; text-align:center; margin-bottom:20px; text-transform:uppercase; letter-spacing:1px;">NUEVA PLANTA</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px;">
+          <input type="text" id="level-name" placeholder="Piso / Área" style="padding:18px; border:1.5px solid #f0f0f0; border-radius:18px; font-family:var(--font); font-weight:700; background:#fafafa; outline:none;">
+          <input type="number" id="level-capacity" placeholder="Capacidad" style="padding:18px; border:1.5px solid #f0f0f0; border-radius:18px; font-family:var(--font); font-weight:700; background:#fafafa; outline:none;">
         </div>
-        <button data-action="GENERATE" style="width:100%; padding:14px; background:var(--primary); color:var(--accent); border:none; border-radius:14px; font-weight:900; cursor:pointer;">CREAR PLANTA</button>
+        <button data-action="GENERATE" style="width:100%; padding:20px; background:#1a1a2e; color:var(--accent); border:none; border-radius:20px; font-weight:900; cursor:pointer; font-size:0.85rem; letter-spacing:1px; text-transform:uppercase;">CREAR PLANTA</button>
       </div>
 
       <div style="display:grid; gap:15px;">
-        ${state.levels.map(l => `
-          <div style="background:white; border-radius:24px; overflow:hidden; border:1px solid #f0f0f0;">
-            <div style="padding:16px 20px; background:#fcfcfc; border-bottom:1px solid #f0f0f0; display:flex; justify-content:space-between; align-items:center;">
-              <div>
-                <div style="font-size:1rem; font-weight:900; color:var(--primary);">${l.name}</div>
-                <div style="font-size:0.6rem; font-weight:700; color:#999;">${l.slots.length} Puestos</div>
+        ${state.levels.map(l => {
+          const isEditing = editingLevel === l.name;
+          const cardColor = l.color || '#1a1a2e';
+          
+          return `
+          <div style="background:white; border-radius:28px; overflow:hidden; border:1.5px solid #f0f0f0; box-shadow:0 10px 30px rgba(0,0,0,0.02); position:relative;">
+            <div style="height:6px; background:${cardColor}; width:100%;"></div>
+            
+            <!-- HEADER -->
+            <div style="padding:20px; display:flex; justify-content:space-between; align-items:center;">
+              <div style="flex:1;">
+                ${isEditing ? `
+                  <div style="display:flex; gap:8px;">
+                    <input type="text" id="rename-input-${l.name}" value="${l.name}" style="flex:1; padding:8px 12px; border-radius:10px; border:1.5px solid var(--accent); font-weight:900; outline:none;">
+                    <button data-action="CONFIRM_RENAME" data-oldname="${l.name}" style="background:var(--primary); color:white; border:none; border-radius:8px; padding:0 12px;">OK</button>
+                  </div>
+                ` : `
+                  <div style="display:flex; align-items:center; gap:10px;">
+                    <div style="font-size:1.1rem; font-weight:900; color:var(--primary);">${l.name}</div>
+                    <button data-action="START_RENAME" data-name="${l.name}" style="background:none; border:none; color:#bbb; cursor:pointer; width:16px; height:20px;">${ICONS.EDIT}</button>
+                  </div>
+                  <div style="font-size:0.6rem; font-weight:700; color:#999; margin-top:2px;">${l.slots.length} Puestos · <span style="color:${cardColor}; text-transform:uppercase;">${l.color ? 'Personalizado' : 'Básico'}</span></div>
+                `}
               </div>
-              <div style="display:flex; gap:10px;">
-                <button data-action="ADD_SLOT" data-name="${l.name}" style="background:none; border:none; color:var(--primary); font-size:1.1rem; cursor:pointer;">+</button>
-                <button data-action="DELETE_LEVEL" data-name="${l.name}" style="background:none; border:none; color:#e63946; font-size:1rem; cursor:pointer;">🗑️</button>
+              
+              <div style="display:flex; align-items:center; gap:12px;">
+                 <div style="display:flex; gap:4px; margin-right:10px;">
+                    ${['#1a1a2e','#e63946','#22c55e','#3b82f6','#a855f7'].map(c => `
+                      <div data-action="SET_LEVEL_COLOR" data-name="${l.name}" data-color="${c}" style="width:14px; height:14px; border-radius:50%; background:${c}; cursor:pointer; border:${l.color===c?'2px solid #ccc':'none'}"></div>
+                    `).join('')}
+                 </div>
+                 <button data-action="ADD_SLOT" data-name="${l.name}" style="background:#f4f4f4; border:none; color:var(--primary); width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer;">${ICONS.PLUS}</button>
+                 <button data-action="TOGGLE_COLLAPSE" data-name="${l.name}" style="background:none; border:none; color:#bbb; cursor:pointer; width:24px; transition:transform 0.3s; transform:${l.collapsed?'rotate(0deg)':'rotate(180deg)'};">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m6 9 6 6 6-6"/></svg>
+                 </button>
+                 <button data-action="DELETE_LEVEL" data-name="${l.name}" style="background:none; border:none; color:#ffccd5; cursor:pointer; width:24px;">${ICONS.TRASH}</button>
               </div>
             </div>
-            <div style="padding:15px; display:flex; flex-wrap:wrap; gap:6px;">
-              ${l.slots.map(s => `
-                <div style="padding:8px 12px; background:#f4f4f4; border-radius:8px; font-size:0.6rem; font-weight:800; display:flex; align-items:center; gap:6px;">
-                  ${s.label}
-                  <button data-action="DELETE_SLOT" data-levelname="${l.name}" data-label="${s.label}" style="border:none; background:none; color:#ddd; font-size:0.7rem; cursor:pointer;">×</button>
-                </div>
-              `).join('')}
-              ${!l.slots.length ? '<div style="font-size:0.6rem; color:#bbb; padding:10px;">No hay puestos en esta planta</div>' : ''}
+
+            <!-- SLOTS AREA -->
+            <div style="display:${l.collapsed ? 'none' : 'block'}; padding:0 20px 20px 20px;">
+              <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                ${l.slots.map(s => `
+                  <div style="padding:10px 14px; background:#f8f9fa; border-radius:12px; font-size:0.7rem; font-weight:900; color:var(--primary); display:flex; align-items:center; gap:8px; border:1px solid #f0f0f0;">
+                    ${s.label}
+                    <button data-action="DELETE_SLOT" data-levelname="${l.name}" data-label="${s.label}" style="border:none; background:none; color:#ddd; font-size:1.1rem; cursor:pointer; line-height:1; font-weight:400;">×</button>
+                  </div>
+                `).join('')}
+                ${!l.slots.length ? '<div style="font-size:0.7rem; color:#bbb; font-weight:700; width:100%; text-align:center; padding:20px;">No hay puestos asignados</div>' : ''}
+              </div>
             </div>
           </div>
-        `).join('')}
+          `;
+        }).join('')}
       </div>
     </div>`
 
   const renderFinanceSummary = (state) => {
-    const totalUSD = state.movements.reduce((a, m) => a + (m.amount || 0), 0)
-    const methods = state.movements.reduce((acc, m) => {
-      if (m.payMethod) acc[m.payMethod] = (acc[m.payMethod] || 0) + (m.amount || 0)
+    const now = new Date()
+    const todayStart = new Date().setHours(0,0,0,0)
+    const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000)
+
+    const movs = state.movements || []
+    
+    // Revenue calculations
+    const revToday = movs.filter(m => new Date(m.timestamp) >= todayStart).reduce((a, m) => a + (m.amount || 0), 0)
+    const revWeek = movs.filter(m => new Date(m.timestamp) >= sevenDaysAgo).reduce((a, m) => a + (m.amount || 0), 0)
+    const projection = revWeek > 0 ? (revWeek / 7) * 7 : 0 // Simplified projection
+
+    // Inventory
+    const successfulCollections = movs.filter(m => (m.amount || 0) > 0).length
+    const vehiclesInDebt = state.stats?.dead || 0
+
+    // Methods breakdown
+    const methods = movs.reduce((acc, m) => {
+      if (m.payMethod && m.amount) {
+        const key = m.payMethod.toUpperCase().replace(/\s/g, '_')
+        acc[key] = (acc[key] || 0) + (m.amount || 0)
+      }
       return acc
-    }, {})
+    }, { "EFECTIVO_USD": 0, "EFECTIVO_BS": 0, "PAGO_MOVIL": 0 })
+
+    // Recent Excedents (> baseRate)
+    const baseRate = state.settings?.baseRate || 1
+    const excedents = movs.filter(m => (m.amount || 0) > baseRate).slice(0, 3)
 
     return `
-      <div style="padding:20px; padding-bottom:120px;">
-        <h3 style="font-weight:900; margin-bottom:20px;">RESUMEN DE CAJA</h3>
+      <div style="padding:20px; padding-bottom:120px; background:#f8f9fa;">
+        <h2 style="font-weight:900; color:var(--primary); font-size:1.4rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:20px;">RENDIMIENTO FINANCIERO</h2>
         
-        <div style="background:var(--primary); color:white; padding:30px; border-radius:32px; margin-bottom:25px; text-align:center;">
-           <div style="font-size:0.7rem; font-weight:700; color:var(--accent); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">TOTAL RECOLECTADO</div>
-           <div style="font-size:3rem; font-weight:900;">$${totalUSD}</div>
+        <!-- REVENUE CARDS -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:15px;">
+           <div style="background:#1a1a2e; color:white; padding:25px 15px; border-radius:28px; text-align:center; box-shadow:0 10px 25px rgba(26,26,46,0.2);">
+              <div style="font-size:1.8rem; font-weight:900;">$${revToday.toFixed(2)}</div>
+              <div style="font-size:0.6rem; font-weight:700; color:var(--accent); text-transform:uppercase; margin-top:5px; opacity:0.8;">INGRESOS DE HOY</div>
+           </div>
+           <div style="background:#F5C518; color:var(--primary); padding:25px 15px; border-radius:28px; text-align:center; box-shadow:0 10px 25px rgba(245,197,24,0.2);">
+              <div style="font-size:1.8rem; font-weight:900;">$${revWeek.toFixed(2)}</div>
+              <div style="font-size:0.6rem; font-weight:700; text-transform:uppercase; margin-top:5px; opacity:0.8;">ESTA SEMANA</div>
+           </div>
         </div>
 
-        <div style="display:grid; gap:12px;">
-          ${Object.entries(methods).map(([m, val]) => `
-            <div style="background:white; padding:18px; border-radius:20px; display:flex; justify-content:space-between; align-items:center; border:1px solid #f0f0f0;">
-              <div style="font-weight:900; color:var(--primary); text-transform:uppercase; font-size:0.75rem;">${m.replace('_', ' ')}</div>
-              <div style="font-size:1.1rem; font-weight:900; color:#22c55e;">$${val}</div>
-            </div>
-          `).join('')}
-          ${!Object.keys(methods).length ? '<div style="text-align:center; padding:40px; color:#bbb;">No hay registros de pago</div>' : ''}
+        <!-- PROJECTION -->
+        <div style="border:2px dashed #ddd; background:rgba(255,255,255,0.5); padding:15px; border-radius:20px; text-align:center; margin-bottom:30px;">
+           <div style="font-size:0.6rem; font-weight:800; color:#999; text-transform:uppercase; margin-bottom:4px;">PROYECCIÓN ESTIMADA (7 DÍAS)</div>
+           <div style="font-size:1.4rem; font-weight:900; color:#22c55e;">~$${projection.toFixed(2)}</div>
+        </div>
+
+        <!-- GLOBAL INVENTORY -->
+        <div style="font-size:0.7rem; font-weight:900; color:var(--primary); margin-bottom:15px; text-transform:uppercase; letter-spacing:1px;">INVENTARIO GLOBAL</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:30px;">
+           <div style="background:white; padding:20px; border-radius:24px; border:1px solid #f0f0f0; text-align:center;">
+              <div style="font-size:1.6rem; font-weight:900; color:var(--primary);">${successfulCollections}</div>
+              <div style="font-size:0.5rem; font-weight:800; color:#999; text-transform:uppercase; margin-top:5px;">COBROS EXITOSOS</div>
+           </div>
+           <div style="background:white; padding:20px; border-radius:24px; border:1px solid #ffccd5; text-align:center;">
+              <div style="font-size:1.6rem; font-weight:900; color:#e63946;">${vehiclesInDebt}</div>
+              <div style="font-size:0.5rem; font-weight:800; color:#e63946; text-transform:uppercase; margin-top:5px;">VEHÍCULOS EN DEUDA</div>
+           </div>
+        </div>
+
+        <!-- USAGE BY METHODS -->
+        <div style="font-size:0.7rem; font-weight:900; color:var(--primary); margin-bottom:15px; text-transform:uppercase; letter-spacing:1px;">USO POR MÉTODOS (GLOBAL)</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:30px;">
+           <div style="background:white; padding:15px 10px; border-radius:20px; border:1px solid #f0f0f0; text-align:center;">
+              <div style="font-size:1.1rem; font-weight:900; color:#22c55e;">${movs.filter(m => m.payMethod?.includes('USD')).length}</div>
+              <div style="font-size:0.45rem; font-weight:800; color:#999; text-transform:uppercase; margin-top:4px;">EFECTIVO $</div>
+           </div>
+           <div style="background:white; padding:15px 10px; border-radius:20px; border:1px solid #f0f0f0; text-align:center;">
+              <div style="font-size:1.1rem; font-weight:900; color:#3b82f6;">${movs.filter(m => m.payMethod?.includes('BS')).length}</div>
+              <div style="font-size:0.45rem; font-weight:800; color:#999; text-transform:uppercase; margin-top:4px;">EFECTIVO BS</div>
+           </div>
+           <div style="background:white; padding:15px 10px; border-radius:20px; border:1px solid #f0f0f0; text-align:center;">
+              <div style="font-size:1.1rem; font-weight:900; color:#a855f7;">${movs.filter(m => m.payMethod?.includes('PAGO')).length}</div>
+              <div style="font-size:0.45rem; font-weight:800; color:#999; text-transform:uppercase; margin-top:4px;">PAGO MÓVIL</div>
+           </div>
+        </div>
+
+        <!-- RECENT EXCEDENTS -->
+        <div style="font-size:0.7rem; font-weight:900; color:var(--primary); margin-bottom:15px; text-transform:uppercase; letter-spacing:1px;">ÚLTIMOS EXCEDENTES (+8H) COBRADOS</div>
+        <div style="background:white; border-radius:24px; padding:10px; border:1px solid #f0f0f0;">
+           ${excedents.length ? excedents.map(m => `
+             <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; border-bottom:1px solid #f9f9f9;">
+                <div>
+                   <div style="font-size:0.75rem; font-weight:900; color:var(--primary);">${m.plate || '---'}</div>
+                   <div style="font-size:0.55rem; color:#bbb; font-weight:700;">${new Date(m.timestamp).toLocaleTimeString()}</div>
+                </div>
+                <div style="font-size:0.9rem; font-weight:900; color:#22c55e;">+$${m.amount.toFixed(2)}</div>
+             </div>
+           `).join('') : '<div style="text-align:center; padding:30px; color:#ccc; font-size:0.7rem; font-weight:700;">No hay pagos registrados aún</div>'}
         </div>
       </div>`
   }
@@ -485,28 +629,91 @@ export const initAdmin = (container) => {
       </div>`
   }
 
-  const renderPersonnel = (state) => `
-    <div style="padding:20px;padding-bottom:100px;">
-      <h3 style="font-weight:900;margin-bottom:20px;">NOMINA DE PERSONAL</h3>
-      <div style="background:white;padding:25px;border-radius:28px;margin-bottom:30px;box-shadow:0 10px 30px rgba(0,0,0,0.03);border:1.5px solid #f8f8f8;">
-        <div style="display:flex; justify-content:center; margin-bottom:20px;">
-          <div id="photo-dropzone" style="width:110px;height:110px;border-radius:50%;background:#f9f9f9;border:2.5px dashed #eee;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;"><img id="guard-photo-preview" style="width:100%;height:100%;object-fit:cover;display:none;"><span id="photo-plus" style="font-size:2rem;color:#ddd;">👤</span></div>
+  const renderPersonnel = (state) => {
+    const editG = editingGuard ? state.personnel.find(p => p.id === editingGuard) : null;
+    const now = new Date();
+    const todayStart = new Date().setHours(0,0,0,0);
+
+    return `
+    <div style="padding:20px;padding-bottom:120px; background:#f8f9fa;">
+      <h2 style="font-weight:900; color:var(--primary); font-size:1.4rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:20px;">GESTIÓN DE PERSONAL</h2>
+      
+      <div style="background:white; padding:30px; border-radius:32px; margin-bottom:35px; box-shadow:0 15px 40px rgba(0,0,0,0.04); border:1.5px solid #f0f0f0;">
+        <div style="font-size:0.7rem; font-weight:800; color:#999; text-align:center; margin-bottom:20px; text-transform:uppercase; letter-spacing:1px;">
+           ${editingGuard ? 'EDITAR PERFIL' : 'REGISTRAR NUEVO GUARDIA'}
+        </div>
+        
+        <div style="display:flex; justify-content:center; margin-bottom:30px;">
+          <div id="photo-dropzone" style="width:120px; height:120px; border-radius:50%; background:#f9f9f9; border:2.5px dashed #ddd; display:flex; align-items:center; justify-content:center; cursor:pointer; overflow:hidden; position:relative; transition:all 0.3s ease;">
+            <img id="guard-photo-preview" src="${editG?.photo || ''}" style="width:100%; height:100%; object-fit:cover; display:${editG?.photo ? 'block' : 'none'};">
+            <div id="photo-placeholder" style="text-align:center; color:#ccc; display:${editG?.photo ? 'none' : 'block'};">
+              <div style="font-size:2rem; line-height:1;">+</div>
+            </div>
+          </div>
           <input type="file" id="guard-photo-input" accept="image/*" style="display:none;">
         </div>
-        <input type="text" id="guard-name" placeholder="Nombre completo" style="width:100%;padding:16px;border:1.5px solid #eee;border-radius:16px;margin-bottom:12px;font-family:'Montserrat',sans-serif;font-weight:700;">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
-          <input type="text" id="guard-pin" placeholder="PIN (4 cifras)" maxlength="4" style="padding:16px;border:1.5px solid #eee;border-radius:16px;font-family:'Montserrat',sans-serif;font-weight:900;text-align:center;">
-          <select id="guard-shift" style="padding:16px;border:1.5px solid #eee;border-radius:16px;background:white;font-family:'Montserrat',sans-serif;font-weight:700;"><option value="Diurno">Diurno</option><option value="Nocturno">Nocturno</option><option value="24h">Rotativo</option></select>
+
+        <input type="text" id="guard-name" value="${editG?.name || ''}" placeholder="Nombre Completo" style="width:100%; padding:18px; border:1.5px solid #f0f0f0; border-radius:18px; margin-bottom:12px; font-family:var(--font); font-weight:700; outline:none; background:#fafafa;">
+        <input type="tel" id="guard-phone" value="${editG?.phone || ''}" placeholder="Teléfono WhatsApp (Ej: 58412...)" style="width:100%; padding:18px; border:1.5px solid #f0f0f0; border-radius:18px; margin-bottom:12px; font-family:var(--font); font-weight:700; outline:none; background:#fafafa;">
+        
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:25px;">
+          <input type="text" id="guard-pin" value="${editG?.pin || ''}" placeholder="PIN (4)" maxlength="4" style="padding:18px; border:1.5px solid #f0f0f0; border-radius:18px; font-family:var(--font); font-weight:900; text-align:center; background:#fafafa; outline:none;">
+          <select id="guard-shift" style="padding:18px; border:1.5px solid #f0f0f0; border-radius:18px; background:#fafafa; font-family:var(--font); font-weight:700; outline:none; appearance:none;">
+            <option value="Mañana" ${editG?.shift==='Mañana'?'selected':''}>Mañana</option>
+            <option value="Tarde" ${editG?.shift==='Tarde'?'selected':''}>Tarde</option>
+            <option value="Noche" ${editG?.shift==='Noche'?'selected':''}>Noche</option>
+            <option value="Rotativo" ${editG?.shift==='Rotativo'?'selected':''}>Rotativo</option>
+          </select>
         </div>
-        <button data-action="ADD_GUARD" style="width:100%;padding:18px;background:var(--primary);color:#F5C518;border:none;border-radius:18px;font-weight:900;cursor:pointer;box-shadow:0 10px 25px rgba(0,0,0,0.1);">REGISTRAR GUARDIA</button>
+
+        <div style="display:flex; gap:10px;">
+          <button data-action="ADD_GUARD" style="flex:2; padding:20px; background:#1a1a2e; color:var(--accent); border:none; border-radius:20px; font-weight:900; cursor:pointer; font-size:0.85rem; letter-spacing:1px; text-transform:uppercase; box-shadow:0 10px 20px rgba(26,26,46,0.15);">
+            ${editingGuard ? 'GUARDAR CAMBIOS' : 'AÑADIR A LA NOMINA'}
+          </button>
+          ${editingGuard ? `<button data-action="CANCEL_EDIT" style="flex:1; padding:20px; background:#f4f4f4; color:#666; border:none; border-radius:20px; font-weight:900; cursor:pointer; font-size:0.85rem; text-transform:uppercase;">CANCELAR</button>` : ''}
+        </div>
       </div>
-      <div style="display:grid;gap:12px;">
-        ${(state.personnel || []).map(p => `<div style="background:white;padding:15px;border-radius:20px;display:flex;justify-content:space-between;align-items:center;border:1px solid #f0f0f0;"><div style="display:flex;align-items:center;gap:15px;"><div style="width:55px;height:55px;border-radius:50%;background:#f0f0f0;overflow:hidden;">${p.photo ? `<img src="${p.photo}" style="width:100%;height:100%;object-fit:cover;">` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#ccc;font-weight:900;">${p.name.charAt(0)}</div>`}</div><div><div style="font-weight:900;color:var(--primary);">${p.name}</div><div style="font-size:0.7rem;color:#999;font-weight:700;">PIN: <span style="color:var(--primary);">${p.pin}</span> · ${p.shift}</div></div></div><button data-action="DELETE_GUARD" data-id="${p.id}" style="color:#e63946;background:none;border:none;font-weight:900;cursor:pointer;font-size:0.75rem;">ELIMINAR</button></div>`).join('')}
+
+      <div style="display:grid; gap:12px;">
+        ${(state.personnel || []).map(p => {
+          const gMovs = (state.movements || []).filter(m => m.guardName === p.name);
+          const todayCount = gMovs.filter(m => new Date(m.timestamp) >= todayStart).length;
+          const lastActive = gMovs.length > 0 ? new Date(gMovs[0].timestamp) : null;
+          const activeNow = lastActive && (now - lastActive) < 12 * 60 * 60 * 1000;
+
+          return `
+            <div style="background:white; padding:15px 20px; border-radius:24px; display:flex; justify-content:space-between; align-items:center; border:1.5px solid #f8f8f8; box-shadow:0 10px 30px rgba(0,0,0,0.02);">
+              <div style="display:flex; align-items:center; gap:15px;">
+                <div style="width:60px; height:60px; border-radius:50%; background:#f0f0f0; overflow:hidden; border:2px solid #fff; box-shadow:0 5px 15px rgba(0,0,0,0.05); position:relative;">
+                  ${p.photo ? `<img src="${p.photo}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#ccc; font-weight:900; background:#eee;">${p.name.charAt(0)}</div>`}
+                  ${activeNow ? `<div style="position:absolute; bottom:4px; right:4px; width:12px; height:12px; background:#22c55e; border:2px solid white; border-radius:50%; box-shadow:0 0 10px rgba(34,197,94,0.5);"></div>` : ''}
+                </div>
+                <div>
+                  <div style="display:flex; align-items:center; gap:8px;">
+                     <div style="font-weight:900; color:var(--primary); font-size:1rem;">${p.name}</div>
+                     <div style="font-size:0.5rem; background:#f0f0f0; padding:2px 8px; border-radius:10px; font-weight:800; color:#999; text-transform:uppercase;">${p.shift}</div>
+                  </div>
+                  <div style="font-size:0.7rem; color:#bbb; font-weight:700; margin-top:2px;">
+                     PIN: <span style="color:var(--primary);">${p.pin}</span> · 
+                     <span style="color:#22c55e; font-weight:800;">${todayCount} movs hoy</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div style="display:flex; align-items:center; gap:10px;">
+                 <button data-action="SEND_WHATSAPP" data-id="${p.id}" style="background:#22c55e; color:white; border:none; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; font-weight:900; font-size:1rem; box-shadow:0 5px 15px rgba(34,197,94,0.2);">W</button>
+                 <button data-action="EDIT_GUARD" data-id="${p.id}" style="background:#f4f4f4; color:#999; border:none; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:0.8rem;">✎</button>
+                 <button data-action="DELETE_GUARD" data-id="${p.id}" style="color:#ffccd5; background:none; border:none; font-weight:900; cursor:pointer; font-size:0.65rem; text-transform:uppercase;">×</button>
+              </div>
+            </div>
+          `;
+        }).join('')}
       </div>
-    </div>`
+    </div>`;
+  }
 
   const renderTabContent = (state) => {
-    if (!elMain) return; const cur = elMain.innerHTML; let html = ''
+    if (!elMain) return; let html = ''
     switch(activeTab) {
       case 'HOME': html = renderHome(state); break
       case 'PERSONAL': html = renderPersonnel(state); break
@@ -514,12 +721,13 @@ export const initAdmin = (container) => {
       case 'REPORTES': html = renderReports(state); break
       case 'FINANCE': html = renderFinanceSummary(state); break
       case 'SETTINGS': html = renderAuditLog(state); break
+      case 'NOTIFICATIONS': html = renderNotifications(state); break
     }
-    if (cur !== html) { elMain.innerHTML = html; if(activeTab==='PERSONAL') setupPersonnelHooks() }
+    elMain.innerHTML = html; if(activeTab==='PERSONAL') setupPersonnelHooks()
   }
 
   const setupPersonnelHooks = () => {
-    const dz = elMain?.querySelector('#photo-dropzone'), i = elMain?.querySelector('#guard-photo-input'), p = elMain?.querySelector('#guard-photo-preview'), s = elMain?.querySelector('#photo-plus')
+    const dz = elMain?.querySelector('#photo-dropzone'), i = elMain?.querySelector('#guard-photo-input'), p = elMain?.querySelector('#guard-photo-preview'), s = elMain?.querySelector('#photo-placeholder')
     if (dz && i) {
       dz.onclick = () => i.click();
       i.onchange = (e) => {
@@ -530,6 +738,33 @@ export const initAdmin = (container) => {
     }
   }
 
+  const renderNotifications = (state) => {
+    import('../db.js').then(db => db.markNotificationsRead())
+    return `
+    <div style="padding:20px; padding-bottom:120px; background:#f8f9fa;">
+      <h2 style="font-weight:900; color:var(--primary); font-size:1.4rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:20px;">NOTIFICACIONES</h2>
+      
+      <div style="display:grid; gap:12px;">
+        ${(state.notifications || []).map(n => `
+          <div style="background:white; padding:20px; border-radius:24px; border:1.5px solid #f0f0f0; box-shadow:0 8px 25px rgba(0,0,0,0.02); display:flex; gap:15px; align-items:center;">
+             <div style="width:45px; height:45px; border-radius:50%; background:${n.type==='CIERRE_CAJA'?'#22c55e':'#3b82f6'}; display:flex; align-items:center; justify-content:center; color:white; font-size:1.2rem;">
+               ${n.type==='CIERRE_CAJA' ? '$' : '!'}
+             </div>
+             <div style="flex:1;">
+               <div style="display:flex; justify-content:space-between; align-items:center;">
+                 <div style="font-weight:900; color:var(--primary); font-size:0.85rem;">${n.type === 'CIERRE_CAJA' ? 'CIERRE DE CAJA' : 'ALERTA'}</div>
+                 <div style="font-size:0.6rem; color:#bbb; font-weight:700;">${new Date(n.timestamp).toLocaleTimeString()}</div>
+               </div>
+               <div style="font-size:0.75rem; color:#666; margin-top:4px; font-weight:700;">${n.msg}</div>
+               <div style="font-size:0.6rem; color:#999; font-weight:800; margin-top:6px; text-transform:uppercase;">GUARDIA: ${n.guard}</div>
+             </div>
+          </div>
+        `).join('')}
+        ${!state.notifications?.length ? '<div style="text-align:center; padding:100px 20px; color:#ccc; font-weight:900;">NO HAY NOTIFICACIONES</div>' : ''}
+      </div>
+    </div>`
+  }
+
   const renderModal = () => {
     const l = container.querySelector('#modal-layer'); if(!l) return; if(!pendingAction){ l.innerHTML=''; return }
     l.innerHTML = `<div style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;backdrop-filter:blur(10px);"><div style="background:white;padding:30px;border-radius:32px;width:100%;max-width:380px;text-align:center;"><h3 style="font-weight:900;margin-bottom:10px;">Confirmar eliminación</h3><p style="color:#666;font-size:0.85rem;margin-bottom:30px;">Esta acción es permanente y afectará la base de datos.</p><div style="display:flex;flex-direction:column;gap:10px;"><button data-action="CONFIRM_DELETE" style="background:#e63946;color:white;border:none;padding:18px;border-radius:18px;font-weight:900;">ELIMINAR AHORA</button><button data-action="CANCEL_MODAL" style="background:#f4f4f4;color:#333;border:none;padding:18px;border-radius:18px;font-weight:900;">VOLVER</button></div></div></div>`
@@ -538,7 +773,6 @@ export const initAdmin = (container) => {
   const render = () => {
     const s = getParkingState()
     if (!elMain) renderShell(s)
-    else updateStats(s)
     renderTabContent(s); renderModal()
     container.querySelectorAll('.nav-item').forEach(v => {
       const active = v.dataset.tab === activeTab
@@ -547,7 +781,7 @@ export const initAdmin = (container) => {
   }
 
   setInterval(() => {
-    const s = getParkingState(); updateStats(s)
+    const s = getParkingState()
     if (['HOME','FINANCE','REPORTES'].includes(activeTab)) renderTabContent(s)
     const t = container.querySelector('#main-carousel'); let carouselIndex = 0
     if (t && t.children.length > 1) { carouselIndex = (window._cIdx || 0) + 1; window._cIdx = carouselIndex % t.children.length; t.style.transform = `translateX(-${window._cIdx * 100}%)` }
