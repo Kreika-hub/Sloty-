@@ -180,6 +180,20 @@ export const initAdmin = (container) => {
     },
     CANCEL_MODAL: () => { pendingAction = null; render() },
     TAB: (btn) => { activeTab = btn.dataset.tab; render() },
+    SAVE_PROFILE: () => {
+      const name = document.getElementById('edit-building-name').value.trim();
+      const email = document.getElementById('edit-admin-email').value.trim();
+      const phone = document.getElementById('edit-admin-phone').value.trim();
+      if (!name) return alert('El nombre del edificio es obligatorio');
+      const state = getParkingState();
+      state.buildingName = name;
+      state.adminInfo = { ...state.adminInfo, email, phone };
+      saveParkingState(state);
+      logAudit(`Actualizó perfil del edificio: ${name}`);
+      alert('Perfil actualizado correctamente');
+      activeTab = 'HOME';
+      render();
+    },
     LOGOUT: () => {
       if (confirm('¿Cerrar sesión?')) {
         localStorage.removeItem('sloty_session');
@@ -236,21 +250,88 @@ export const initAdmin = (container) => {
   const renderShell = (state) => {
     container.innerHTML = `
       <div id="admin-shell" style="background:#f8f9fa; min-height:100vh; font-family:var(--font); color:var(--primary);">
+        <div id="admin-header"></div>
         <main id="admin-main"></main>
         <div id="modal-layer"></div>
         
-        <nav style="position:fixed; bottom:25px; left:50%; transform:translateX(-50%); background:#1a1a2e; padding:12px 25px; border-radius:35px; display:flex; gap:35px; align-items:center; box-shadow:0 15px 35px rgba(0,0,0,0.3); z-index:1000;">
-          <div class="nav-item" data-action="TAB" data-tab="HOME">${ICONS.HOME} <span style="font-size:0.6rem; font-weight:900; position:absolute; bottom:-12px; transition:0.3s; opacity:0; text-transform:uppercase;">INICIO</span></div>
-          <div class="nav-item" data-action="TAB" data-tab="STRUCTURE" style="position:relative;">${ICONS.STRUCTURE} <span style="font-size:0.6rem; font-weight:900; position:absolute; bottom:-12px; transition:0.3s; opacity:0; text-transform:uppercase;">PISOS</span></div>
-          <div class="nav-item" data-action="TAB" data-tab="FINANCE">${ICONS.FINANCE} <span style="font-size:0.6rem; font-weight:900; position:absolute; bottom:-12px; transition:0.3s; opacity:0; text-transform:uppercase;">CAJA</span></div>
-          <div class="nav-item" data-action="TAB" data-tab="PERSONAL">${ICONS.PERSONAL} <span style="font-size:0.6rem; font-weight:900; position:absolute; bottom:-12px; transition:0.3s; opacity:0; text-transform:uppercase;">EQUIPO</span></div>
+        <nav id="admin-nav" style="position:fixed; bottom:0; left:0; width:100%; background:#1a1a2e; padding:10px 15px calc(env(safe-area-inset-bottom, 8px) + 8px); display:flex; justify-content:space-around; align-items:center; z-index:1000; box-shadow:0 -5px 30px rgba(0,0,0,0.2);">
+          <div class="admin-tab-btn" data-action="TAB" data-tab="HOME" style="display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; color:rgba(255,255,255,0.4); transition:color 0.3s; flex:1;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px; height:22px;"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            <span style="font-size:0.55rem; font-weight:800; letter-spacing:0.5px;">INICIO</span>
+          </div>
+          <div class="admin-tab-btn" data-action="TAB" data-tab="STRUCTURE" style="display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; color:rgba(255,255,255,0.4); transition:color 0.3s; flex:1;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px; height:22px;"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            <span style="font-size:0.55rem; font-weight:800; letter-spacing:0.5px;">PISOS</span>
+          </div>
+          <div class="admin-tab-btn" data-action="TAB" data-tab="FINANCE" style="display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; color:rgba(255,255,255,0.4); transition:color 0.3s; flex:1;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px; height:22px;"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            <span style="font-size:0.55rem; font-weight:800; letter-spacing:0.5px;">CAJA</span>
+          </div>
+          <div class="admin-tab-btn" data-action="TAB" data-tab="PERSONAL" style="display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; color:rgba(255,255,255,0.4); transition:color 0.3s; flex:1;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px; height:22px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <span style="font-size:0.55rem; font-weight:800; letter-spacing:0.5px;">EQUIPO</span>
+          </div>
         </nav>
-
-        <div class="floating-nav-item" data-action="LOGOUT" style="position:fixed; right:20px; bottom:110px; width:55px; height:55px; background:white; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 10px 25px rgba(0,0,0,0.1); cursor:pointer; z-index:1000;">
-          ${ICONS.LOGOUT}
-        </div>
       </div>`
     elMain = container.querySelector('#admin-main')
+  }
+
+  const renderHeader = (state) => {
+    const header = container.querySelector('#admin-header')
+    if (!header) return
+    const unread = (state.notifications || []).filter(n => n.unread).length
+    
+    if (activeTab === 'HOME') {
+      header.innerHTML = `
+        <div style="background:#1a1a2e; padding:env(safe-area-inset-top, 16px) 20px 24px; color:white;">
+          <!-- TOP ROW: Logo + Actions -->
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            <div style="display:flex; align-items:center; gap:10px;">
+              <img src="/icons/Sloty logo negro.png" style="height:36px; filter:brightness(0) invert(1);" onerror="this.style.display='none'">
+              <div style="font-size:0.6rem; font-weight:800; color:rgba(255,255,255,0.4); letter-spacing:2px; text-transform:uppercase;">PANEL ADMIN</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:14px;">
+              <div data-action="TAB" data-tab="NOTIFICATIONS" style="position:relative; cursor:pointer; color:white; width:22px; height:22px;">
+                ${ICONS.BELL}
+                ${unread ? `<div style="position:absolute; top:-3px; right:-3px; width:8px; height:8px; background:#e63946; border-radius:50%; border:2px solid #1a1a2e;"></div>` : ''}
+              </div>
+              <div data-action="LOGOUT" style="cursor:pointer; color:rgba(255,255,255,0.4); width:20px; height:20px;">
+                ${ICONS.LOGOUT}
+              </div>
+            </div>
+          </div>
+
+          <!-- BUILDING NAME -->
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+            <div style="font-size:1.6rem; font-weight:900;">${state.buildingName}</div>
+            <div data-action="TAB" data-tab="PROFILE" style="cursor:pointer; color:var(--accent); width:24px; height:24px;">
+               ${ICONS.EDIT}
+            </div>
+          </div>
+          <div style="font-size:0.65rem; font-weight:700; color:rgba(255,255,255,0.4); margin-bottom:16px;">${state.adminInfo?.email || ''} ${state.adminInfo?.phone ? '· ' + state.adminInfo.phone : ''}</div>
+          
+          <!-- CODE + COPY -->
+          <div style="background:rgba(255,255,255,0.06); padding:14px 16px; border-radius:16px; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="font-size:0.5rem; font-weight:800; color:rgba(255,255,255,0.35); text-transform:uppercase; margin-bottom:3px;">CÓDIGO DE ACCESO</div>
+              <div style="font-size:1.1rem; font-weight:900; color:var(--accent); letter-spacing:1px;">${state.buildingCode}</div>
+            </div>
+            <button onclick="navigator.clipboard.writeText('${state.buildingCode}'); this.textContent='✓ COPIADO'; setTimeout(()=>this.textContent='COPIAR',1500)" 
+              style="background:rgba(255,255,255,0.1); color:white; border:1px solid rgba(255,255,255,0.15); padding:8px 16px; border-radius:12px; font-size:0.6rem; font-weight:900; cursor:pointer; font-family:var(--font);">
+              COPIAR
+            </button>
+          </div>
+        </div>`
+    } else {
+      const titles = { STRUCTURE:'Estructura', FINANCE:'Finanzas', PERSONAL:'Personal', REPORTES:'Reportes', SETTINGS:'Auditoría', NOTIFICATIONS:'Notificaciones' }
+      header.innerHTML = `
+        <div style="background:white; padding:env(safe-area-inset-top, 12px) 20px 14px; display:flex; align-items:center; gap:14px; border-bottom:1px solid #f0f0f0; position:sticky; top:0; z-index:100;">
+          <div data-action="TAB" data-tab="HOME" style="cursor:pointer; color:var(--primary); width:22px; height:22px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+          </div>
+          <div style="font-weight:900; font-size:1rem; color:var(--primary); text-transform:uppercase; letter-spacing:0.5px;">${titles[activeTab] || activeTab}</div>
+        </div>`
+    }
   }
 
   const renderHome = (state) => {
@@ -263,35 +344,7 @@ export const initAdmin = (container) => {
     const ads = state.ads?.filter(a => a.active) || []
 
     return `
-      <div style="padding:20px; padding-bottom:120px; background:#f8f9fa;">
-        
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-          <div style="display:flex; align-items:center; gap:12px;">
-            <div data-action="TAB" data-tab="SETTINGS" style="cursor:pointer;">${ICONS.SETTINGS}</div>
-            <div style="font-weight:900; font-size:1.1rem; color:var(--primary); letter-spacing:-0.5px;">${state.buildingName.toUpperCase()}</div>
-          </div>
-          <div data-action="TAB" data-tab="NOTIFICATIONS" style="position:relative; cursor:pointer;">
-            ${ICONS.BELL}
-            ${state.notifications?.filter(n=>n.unread).length ? `<div style="position:absolute; top:-2px; right:-2px; width:10px; height:10px; background:#e63946; border-radius:50%; border:2px solid white;"></div>` : ''}
-          </div>
-        </div>
-
-        <!-- BUILDING IDENTITY CARD -->
-        <div class="building-card-dark">
-          <div style="font-size:0.6rem; font-weight:700; color:var(--accent); letter-spacing:2px; text-transform:uppercase; margin-bottom:4px;">EDIFICIO</div>
-          <div style="font-size:1.6rem; font-weight:900; color:white; margin-bottom:16px;">${state.buildingName}</div>
-          
-          <div style="background:rgba(255,255,255,0.05); padding:16px; border-radius:16px; display:flex; justify-content:space-between; align-items:center;">
-             <div>
-                <div style="font-size:0.5rem; font-weight:800; color:rgba(255,255,255,0.4); text-transform:uppercase; margin-bottom:4px;">CÓDIGO DE ACCESO</div>
-                <div style="font-size:1.2rem; font-weight:900; color:var(--accent);">${state.buildingCode}</div>
-             </div>
-             <button onclick="navigator.clipboard.writeText('${state.buildingCode}'); alert('Copiado!')" 
-               style="background:white; color:var(--primary); border:none; padding:8px 16px; border-radius:10px; font-size:0.6rem; font-weight:900; cursor:pointer;">
-               COPIAR
-             </button>
-          </div>
-        </div>
+      <div style="padding:20px; padding-bottom:100px; background:#f8f9fa;">
 
         <!-- STATS DASHBOARD -->
         <div class="stats-dashboard">
@@ -327,7 +380,7 @@ export const initAdmin = (container) => {
         </div>
 
         <!-- QUICK FEATURES GRID -->
-        <div style="font-size:0.7rem; font-weight:900; color:var(--primary); margin-bottom:15px; text-transform:uppercase; letter-spacing:1s;">GESTIÓN RÁPIDA</div>
+        <div style="font-size:0.7rem; font-weight:900; color:var(--primary); margin-bottom:15px; text-transform:uppercase; letter-spacing:1px;">GESTIÓN RÁPIDA</div>
         <div class="feature-grid-clean">
            <div class="feature-item-clean" data-action="TAB" data-tab="STRUCTURE">
              ${ICONS.STRUCTURE} <span>Estructura</span>
@@ -722,6 +775,7 @@ export const initAdmin = (container) => {
       case 'FINANCE': html = renderFinanceSummary(state); break
       case 'SETTINGS': html = renderAuditLog(state); break
       case 'NOTIFICATIONS': html = renderNotifications(state); break
+      case 'PROFILE': html = renderProfile(state); break
     }
     elMain.innerHTML = html; if(activeTab==='PERSONAL') setupPersonnelHooks()
   }
@@ -765,6 +819,31 @@ export const initAdmin = (container) => {
     </div>`
   }
 
+  const renderProfile = (state) => `
+    <div style="padding:20px; padding-bottom:120px; background:#f8f9fa;">
+      <h2 style="font-weight:900; color:var(--primary); font-size:1.4rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:20px;">PERFIL DEL EDIFICIO</h2>
+      
+      <div style="background:white; padding:30px; border-radius:32px; box-shadow:0 15px 40px rgba(0,0,0,0.04); border:1.5px solid #f0f0f0;">
+        <div style="display:grid; gap:20px; margin-bottom:30px;">
+          <div>
+            <label style="font-size:0.65rem; font-weight:800; color:#999; text-transform:uppercase; display:block; margin-bottom:8px;">Nombre del Edificio</label>
+            <input type="text" id="edit-building-name" value="${state.buildingName}" style="width:100%; padding:18px; border:1.5px solid #f0f0f0; border-radius:18px; font-family:var(--font); font-weight:700; background:#fafafa; outline:none;">
+          </div>
+          <div>
+            <label style="font-size:0.65rem; font-weight:800; color:#999; text-transform:uppercase; display:block; margin-bottom:8px;">Correo Electrónico</label>
+            <input type="email" id="edit-admin-email" value="${state.adminInfo?.email || ''}" style="width:100%; padding:18px; border:1.5px solid #f0f0f0; border-radius:18px; font-family:var(--font); font-weight:700; background:#fafafa; outline:none;">
+          </div>
+          <div>
+            <label style="font-size:0.65rem; font-weight:800; color:#999; text-transform:uppercase; display:block; margin-bottom:8px;">Teléfono de Contacto</label>
+            <input type="tel" id="edit-admin-phone" value="${state.adminInfo?.phone || ''}" placeholder="+58..." style="width:100%; padding:18px; border:1.5px solid #f0f0f0; border-radius:18px; font-family:var(--font); font-weight:700; background:#fafafa; outline:none;">
+          </div>
+        </div>
+        
+        <button data-action="SAVE_PROFILE" style="width:100%; padding:20px; background:var(--primary); color:var(--accent); border:none; border-radius:20px; font-weight:900; cursor:pointer; font-size:0.85rem; letter-spacing:1px; text-transform:uppercase; box-shadow:0 10px 25px rgba(26,26,46,0.2);">GUARDAR CAMBIOS</button>
+        <button data-action="TAB" data-tab="HOME" style="width:100%; padding:18px; background:none; color:#666; border:none; margin-top:10px; font-weight:700; cursor:pointer; font-size:0.75rem;">CANCELAR</button>
+      </div>
+    </div>`
+
   const renderModal = () => {
     const l = container.querySelector('#modal-layer'); if(!l) return; if(!pendingAction){ l.innerHTML=''; return }
     l.innerHTML = `<div style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;backdrop-filter:blur(10px);"><div style="background:white;padding:30px;border-radius:32px;width:100%;max-width:380px;text-align:center;"><h3 style="font-weight:900;margin-bottom:10px;">Confirmar eliminación</h3><p style="color:#666;font-size:0.85rem;margin-bottom:30px;">Esta acción es permanente y afectará la base de datos.</p><div style="display:flex;flex-direction:column;gap:10px;"><button data-action="CONFIRM_DELETE" style="background:#e63946;color:white;border:none;padding:18px;border-radius:18px;font-weight:900;">ELIMINAR AHORA</button><button data-action="CANCEL_MODAL" style="background:#f4f4f4;color:#333;border:none;padding:18px;border-radius:18px;font-weight:900;">VOLVER</button></div></div></div>`
@@ -773,10 +852,11 @@ export const initAdmin = (container) => {
   const render = () => {
     const s = getParkingState()
     if (!elMain) renderShell(s)
+    renderHeader(s)
     renderTabContent(s); renderModal()
-    container.querySelectorAll('.nav-item').forEach(v => {
+    container.querySelectorAll('.admin-tab-btn').forEach(v => {
       const active = v.dataset.tab === activeTab
-      v.classList.toggle('active', active); const span = v.querySelector('span'); if(span && v.dataset.tab) span.style.opacity = active ? 0 : 1
+      v.style.color = active ? '#F5C518' : 'rgba(255,255,255,0.4)'
     })
   }
 

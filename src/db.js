@@ -15,6 +15,7 @@ const defaultState = {
   adminInfo: {
     name: "Administrador Sloty",
     email: "admin@sloty.com",
+    phone: "",
     registered: true
   },
   personnel: [], // { id, name, pin }
@@ -128,6 +129,14 @@ export const getParkingState = () => {
       }
       if (!state.notifications) {
         state.notifications = []
+        migrated = true
+      }
+      if (!state.adminInfo) {
+        state.adminInfo = { name: "Administrador", email: "", phone: "", registered: true }
+        migrated = true
+      }
+      if (state.adminInfo && state.adminInfo.phone === undefined) {
+        state.adminInfo.phone = ""
         migrated = true
       }
       
