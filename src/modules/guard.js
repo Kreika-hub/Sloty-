@@ -6,10 +6,45 @@ export const initGuard = (container, guardName = 'Guardia') => {
   let currentView = 'MAP'
   let activeLevel = null
   let qrScanner = null
+  let scannerActive = false
   
-  // --- DOM Elements Cache ---
   let elContent = null
   let elShell = null
+  let elToast = null
+  let elModal = null
+
+  const showToast = (msg, type = 'info') => {
+    if (!elToast) {
+      elToast = document.createElement('div')
+      elToast.style = "position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:9999;padding:12px 24px;border-radius:12px;font-weight:700;font-size:0.8rem;transition:all 0.3s;box-shadow:0 10px 20px rgba(0,0,0,0.1);display:none;"
+      container.appendChild(elToast)
+    }
+    elToast.textContent = msg
+    elToast.style.background = type === 'error' ? '#e63946' : (type === 'success' ? '#22c55e' : '#1a1a2e')
+    elToast.style.color = 'white'
+    elToast.style.display = 'block'
+    setTimeout(() => { elToast.style.display = 'none' }, 3000)
+  }
+
+  const showModal = (title, msg, onConfirm) => {
+    if (!elModal) {
+      elModal = document.createElement('div')
+      elModal.style = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);backdrop-filter:blur(5px);z-index:9998;display:none;align-items:center;justify-content:center;padding:20px;"
+      container.appendChild(elModal)
+    }
+    elModal.innerHTML = `
+      <div style="background:white;border-radius:24px;padding:24px;width:100%;max-width:320px;text-align:center;">
+        <div style="font-weight:900;font-size:1.2rem;margin-bottom:10px;color:#1a1a2e;">${title}</div>
+        <div style="font-size:0.85rem;color:#666;margin-bottom:24px;">${msg}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+           <button id="modal-cancel" style="padding:14px;border:none;border-radius:12px;background:#f0f2f5;font-weight:700;color:#999;">CANCELAR</button>
+           <button id="modal-ok" style="padding:14px;border:none;border-radius:12px;background:#1a1a2e;font-weight:700;color:#F5C518;">CONFIRMAR</button>
+        </div>
+      </div>`
+    elModal.style.display = 'flex'
+    elModal.querySelector('#modal-cancel').onclick = () => { elModal.style.display = 'none' }
+    elModal.querySelector('#modal-ok').onclick = () => { elModal.style.display = 'none'; onConfirm() }
+  }
 
   const CAT = [
     { cat:'VISITANTE',    color:'#1a1a2e', label:'Visitante'  },
@@ -47,31 +82,51 @@ export const initGuard = (container, guardName = 'Guardia') => {
   // ── SCANNER LOGIC ──────────────────────────────────────────
   const stopScanner = async () => {
     if (qrScanner) {
-      try { await qrScanner.clear(); qrScanner = null } catch (e) {}
+      try { 
+        await qrScanner.stop(); 
+        document.getElementById('qr-reader').innerHTML = '';
+        qrScanner = null 
+      } catch (e) {}
     }
   }
 
   const initQRScanner = () => {
-    setTimeout(() => {
+    setTimeout(async () => {
       const el = document.getElementById('qr-reader')
-      if (!el) return
-      qrScanner = new Html5QrcodeScanner("qr-reader", { fps: 10, qrbox: 250 })
-      qrScanner.render((text) => {
-        try {
-          const data = JSON.parse(text)
-          if (data.plate && data.slot) {
-            stopScanner()
-            state.levels.forEach(lvl => {
-              const sIdx = lvl.slots.findIndex(s => s.label === data.slot)
-              if (sIdx !== -1) {
-                selectedSlot = { ...lvl.slots[sIdx], levelName: lvl.name, sIdx }
-                currentView = selectedSlot.status === 'FREE' ? 'ENTRY' : 'EXIT'
-                render()
+      if (!el || qrScanner) return
+      
+      qrScanner = new Html5Qrcode("qr-reader")
+      try {
+        await qrScanner.start(
+          { facingMode: "environment" }, 
+          { fps: 10, qrbox: { width: 250, height: 250 } },
+          (text) => {
+            try {
+              const data = JSON.parse(text)
+              if (data.plate && data.slot) {
+                stopScanner()
+                state.levels.forEach(lvl => {
+                  const sIdx = lvl.slots.findIndex(s => s.label === data.slot)
+                  if (sIdx !== -1) {
+                    selectedSlot = { ...lvl.slots[sIdx], levelName: lvl.name, sIdx }
+                    if (selectedSlot.status === 'FREE') {
+                       showToast("Este puesto está vacío", "error")
+                    } else {
+                       currentView = 'EXIT'
+                       scannerActive = false
+                       render()
+                    }
+                  }
+                })
               }
-            })
+            } catch (e) { showToast("QR no reconocido", "error") }
           }
-        } catch (e) {}
-      })
+        )
+      } catch (err) {
+        showToast("Error al abrir cámara", "error")
+        scannerActive = false
+        render()
+      }
     }, 100)
   }
 
@@ -95,22 +150,24 @@ export const initGuard = (container, guardName = 'Guardia') => {
       currentView = selectedSlot.status==='FREE' ? 'ENTRY' : 'EXIT'
       render()
     },
-    BACK_MAP: () => { stopScanner(); currentView = 'MAP'; render() },
-    LOGOUT: () => { if(confirm('¿Cerrar sesión?')) location.reload() },
+    BACK_MAP: () => { stopScanner(); currentView = 'MAP'; scannerActive = false; render() },
+    LOGOUT: () => { showModal('¿Cerrar sesión?', 'Tu progreso se guardará automáticamente.', () => location.reload()) },
     SHOW_SCANNER: () => {
-      stopScanner(); currentView = 'ENTRY'
-      if (!selectedSlot || selectedSlot.status !== 'FREE') {
-        const level = state.levels.find(l => l.name === (activeLevel || state.levels[0].name))
-        const freeIdx = level.slots.findIndex(s => s.status === 'FREE')
-        if (freeIdx !== -1) selectedSlot = { ...level.slots[freeIdx], levelName: level.name, sIdx: freeIdx }
-        else return alert("No hay puestos libres")
-      }
-      render()
+      stopScanner(); scannerActive = true; render()
+    },
+    SHOW_MANUAL_ENTRY: () => {
+       const level = state.levels.find(l => l.name === (activeLevel || state.levels[0].name))
+       const freeIdx = level.slots.findIndex(s => s.status === 'FREE')
+       if (freeIdx !== -1) {
+          selectedSlot = { ...level.slots[freeIdx], levelName: level.name, sIdx: freeIdx }
+          currentView = 'ENTRY'
+          render()
+       } else showToast("No hay puestos libres", "error")
     },
     CONFIRM_ENTRY: () => {
       const plate = document.getElementById('entry-plate')?.value.trim().toUpperCase()
       const phone = document.getElementById('entry-phone')?.value.trim()
-      if (!plate) return alert('Ingresa la placa')
+      if (!plate) return showToast('Ingresa la placa', 'error')
 
       // COLLECT CUSTOM FIELDS
       const metadata = {}
@@ -120,7 +177,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
         if (!val) missingField = f.label
         metadata[f.id] = val
       })
-      if (missingField) return alert(`El campo ${missingField} es obligatorio`)
+      if (missingField) return showToast(`Falta el campo ${missingField}`, 'error')
 
       const category = document.querySelector('.cat-active')?.dataset.cat || 'VISITANTE'
       const timing = document.querySelector('.timing-active')?.dataset.timing || 'EXIT'
@@ -141,34 +198,43 @@ export const initGuard = (container, guardName = 'Guardia') => {
       }
       
       lvl.slots[selectedSlot.sIdx] = entryData
+      selectedSlot = { ...entryData, levelName: selectedSlot.levelName, sIdx: selectedSlot.sIdx }
       updateParkingState(state)
       
-      logMovement({ 
-        type:'INGRESO', 
-        plate, 
-        slot:selectedSlot.label, 
-        category, 
-        guardName, 
-        phone, 
-        metadata,
-        paymentStatus: timing === 'PRE' ? 'PAGADO' : 'PENDIENTE', 
-        payMethod,
-        amount: timing === 'PRE' ? (state.settings?.baseRate || 1) : 0 
-      })
+      if (timing === 'PRE') {
+         logMovement({ 
+          type:'PREPAGO', 
+          plate, 
+          slot:selectedSlot.label, 
+          category, 
+          guardName, 
+          phone, 
+          metadata,
+          paymentStatus: 'PAGADO', 
+          payMethod,
+          amount: (state.settings?.baseRate || 1) 
+        })
+      }
       
-      if (confirm('¿Deseas imprimir ticket?')) printTicket('INGRESO')
-      currentView='MAP'; render()
+      currentView='TICKET'; render()
+    },
+    PRINT_TICKET: () => {
+       const area = document.getElementById('ticket-printable')
+       if (!area) return
+       const win = window.open('', '_blank', 'width=400,height=600')
+       win.document.write(`<html><head><title>Ticket Sloty</title><style>body{font-family:sans-serif;margin:0;padding:20px;text-align:center;} .card{border:2px solid #eee;border-radius:20px;padding:20px;}</style></head><body><div class="card">${area.innerHTML}</div><script>setTimeout(()=> {window.print(); window.close();}, 500)</script></body></html>`)
+       win.document.close()
     },
     EXIT_PAID: () => processExit('FREE'),
     EXIT_DEBT: () => processExit('DEBT'),
-    PRINT_TICKET: () => printTicket('SALIDA'),
+    FORMA_PRINT: () => printTicket('SALIDA'),
     CIERRE_CAJA: () => {
       const state = getParkingState()
       const total = state.movements?.filter(m => m.guardName === guardName && (new Date() - new Date(m.timestamp)) < 24 * 3600000).reduce((a,m)=>a+(m.amount||0), 0)
-      if (confirm(`¿Confirmar cierre de caja por un total de $${total.toFixed(2)}?`)) {
+      showModal('¿Cerrar Caja?', `Monto total: $${total.toFixed(2)}`, () => {
         logNotification('CIERRE_CAJA', guardName, `Reportó un cierre de caja por $${total.toFixed(2)}`)
-        alert('Cierre reportado exitosamente')
-      }
+        showToast('Cierre reportado exitosamente', 'success')
+      })
     }
   }
 
@@ -191,11 +257,14 @@ export const initGuard = (container, guardName = 'Guardia') => {
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;">
         <div>
           <div style="font-size:0.6rem;font-weight:700;color:rgba(255,255,255,0.4);letter-spacing:2px;">GARITA ACTIVA</div>
-          <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
             <div style="font-size:1.2rem;font-weight:900;">${guardName}</div>
-            <div style="display:flex; gap:8px;">
+            <div style="display:flex; gap:8px; align-items:center;">
                <button data-action="CIERRE_CAJA" style="background:#22c55e;color:white;border:none;padding:5px 12px;border-radius:8px;font-size:0.65rem;font-weight:900;cursor:pointer;">CERRAR CAJA</button>
-               <button data-action="LOGOUT" style="background:#F5C518;color:#1a1a2e;border:none;padding:5px 12px;border-radius:8px;font-size:0.65rem;font-weight:900;cursor:pointer;">
+               <button data-action="SHOW_SCANNER" style="background:#F5C518; color:#1a1a2e; border:none; width:36px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 4px 10px rgba(245,197,24,0.3);">
+                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px; height:18px;"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+               </button>
+               <button data-action="LOGOUT" style="background:rgba(255,255,255,0.1);color:white;border:none;padding:5px 12px;border-radius:8px;font-size:0.65rem;font-weight:900;cursor:pointer;">
                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width:12px; height:12px;"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                </button>
             </div>
@@ -204,7 +273,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
         </div>
         <div style="text-align:right;">
           <div style="font-size:0.6rem;color:rgba(255,255,255,0.4);font-weight:700;">DISPONIBLES</div>
-          <div id="header-disp" style="font-size:2.8rem;font-weight:900;color:#F5C518;line-height:0.9;">${total-occ}</div>
+          <div id="header-disp" style="font-size:2.4rem;font-weight:900;color:#F5C518;line-height:0.9;">${total-occ}<span style="font-size:0.6rem; color:rgba(255,255,255,0.3); display:block;">de ${total} puestos</span></div>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
@@ -235,7 +304,25 @@ export const initGuard = (container, guardName = 'Guardia') => {
         <div class="parking-lane"><div style="opacity:0.1; font-size:3rem;">↑</div></div>
         <div class="parking-column">${level.slots.slice(half).map((s,i)=>renderSpot(s,level.name,i+half)).join('')}</div>
       </div>
-      <div class="bottom-bar"><button data-action="SHOW_SCANNER" class="btn-new-entry">+ NUEVO INGRESO</button></div>
+      
+      <div style="position:fixed; bottom:0; left:0; width:100%; padding:20px; z-index:1000; background: linear-gradient(0deg, #f0f2f5 70%, transparent);">
+         <div id="scanner-wrapper" style="margin-bottom:15px; ${scannerActive ? '' : 'display:none;'}">
+            <div id="qr-reader" style="border-radius:24px; overflow:hidden; background: #000; aspect-ratio: 1/1; box-shadow:0 10px 30px rgba(0,0,0,0.2);"></div>
+            <button data-action="BACK_MAP" style="width:100%; padding:14px; background:white; color:#e63946; border:2px solid #e63946; border-radius:14px; margin-top:15px; font-weight:800; font-size:0.75rem;">CANCELAR ESCANEO</button>
+         </div>
+         
+         ${!scannerActive ? `
+           <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+              <button data-action="SHOW_SCANNER" style="background:#1a1a2e; color:#F5C518; padding:18px; border:none; border-radius:18px; font-weight:900; font-size:0.8rem; display:flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 10px 20px rgba(26,26,46,0.3);">
+                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:20px; height:20px;"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                 SALIDA QR
+              </button>
+              <button data-action="SHOW_MANUAL_ENTRY" style="background:#22c55e; color:white; padding:18px; border:none; border-radius:18px; font-weight:900; font-size:0.8rem; box-shadow:0 10px 20px rgba(34,197,94,0.3);">
+                 NUEVO INGRESO
+              </button>
+           </div>
+         ` : ''}
+      </div>
     </div>`
   }
 
@@ -245,14 +332,38 @@ export const initGuard = (container, guardName = 'Guardia') => {
       ${occ?`<div style="font-size:1.1rem;">🚗</div>`:''}<span class="spot-label">${slot.label}</span></div>`
   }
 
-  const renderEntryForm = () => `
+  const renderEntryForm = () => {
+    const now = new Date()
+    const limit = new Date(now.getTime() + (state.settings?.freeHours || 8) * 3600000)
+    
+    return `
     <div style="padding:20px;padding-bottom:100px;">
-      <div id="qr-reader" style="margin-bottom:20px;border-radius:20px;overflow:hidden;"></div>
-      <div style="background:white;border-radius:32px;padding:24px;box-shadow:0 10px 30px rgba(0,0,0,0.05);">
-        <div style="display:flex;justify-content:space-between;margin-bottom:20px;">
-          <h2 style="font-weight:900;color:var(--primary);">INGRESO</h2>
-          <div style="font-size:1.8rem;font-weight:900;color:#22c55e;">${selectedSlot.label}</div>
+      
+      <!-- PREMIUM TICKET HEADER -->
+      <div style="background:#1a1a2e; color:white; border-radius:32px 32px 0 0; padding:30px 24px; position:relative; overflow:hidden;">
+        <div style="font-size:0.6rem; font-weight:800; color:var(--accent); letter-spacing:2px; margin-bottom:5px;">TICKET DE INGRESO</div>
+        <div style="display:flex; justify-content:space-between; align-items:flex-end;">
+          <div>
+            <div style="font-size:2rem; font-weight:900; letter-spacing:-1px; color:var(--accent);">${state.buildingName.toUpperCase()}</div>
+            <div style="display:flex; gap:15px; margin-top:8px;">
+               <div>
+                 <div style="font-size:0.55rem; font-weight:800; color:rgba(255,255,255,0.4); text-transform:uppercase;">INGRESO</div>
+                 <div style="font-size:0.9rem; font-weight:900;">${now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}).toLowerCase()}</div>
+               </div>
+               <div>
+                 <div style="font-size:0.55rem; font-weight:800; color:#F5C518; text-transform:uppercase;">VENCE LÍMITE (8h)</div>
+                 <div style="font-size:0.9rem; font-weight:900; color:#F5C518;">${limit.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}).toLowerCase()}</div>
+               </div>
+            </div>
+          </div>
+          <div style="text-align:right;">
+             <div style="font-size:0.6rem; font-weight:800; color:rgba(255,255,255,0.4); margin-bottom:4px;">ASIGNADO A</div>
+             <div style="font-size:2.4rem; font-weight:900; color:#22c55e; line-height:0.8;">${selectedSlot.label}</div>
+          </div>
         </div>
+        <div style="position:absolute; top:-20px; right:-20px; width:100px; height:100px; background:rgba(34,197,94,0.05); border-radius:50%; pointer-events:none;"></div>
+      </div>
+
         <input type="text" id="entry-plate" placeholder="PLACA" style="width:100%;padding:18px;border:2px solid #eee;border-radius:16px;font-size:1.8rem;font-weight:900;text-align:center;margin-bottom:15px;">
         <input type="tel" id="entry-phone" placeholder="WHATSAPP (Opcional)" style="width:100%;padding:14px;border:2px solid #eee;border-radius:14px;margin-bottom:15px;">
         
@@ -288,8 +399,85 @@ export const initGuard = (container, guardName = 'Guardia') => {
         <button data-action="CONFIRM_ENTRY" class="btn-new-entry" style="background:#1a1a2e;color:#F5C518;box-shadow: 0 10px 20px rgba(26,26,46,0.2);">↓ CONFIRMAR INGRESO</button>
       </div>
     </div>`
+  }
 
-  const renderExitForm = () => `
+  const renderSuccessTicket = () => {
+    const slot = selectedSlot
+    const qrData = JSON.stringify({ plate: slot.plate, slot: slot.label })
+    const now = new Date()
+    const limit = new Date(now.getTime() + (state.settings?.freeHours || 8) * 3600000)
+    
+    return `
+    <div style="padding:20px; padding-bottom:120px;">
+      <div id="ticket-printable" style="background:white; border-radius:32px; overflow:hidden; box-shadow:0 20px 50px rgba(0,0,0,0.1); text-align:center;">
+        <div style="background:#1a1a2e; padding:40px 20px; color:white;">
+           <div style="font-size:0.7rem; font-weight:800; color:var(--accent); letter-spacing:3px; margin-bottom:10px;">${state.buildingName.toUpperCase()}</div>
+           <div style="font-size:3.5rem; font-weight:950; letter-spacing:-2px; margin-bottom:15px;">${slot.plate || '---'}</div>
+           <div style="display:inline-block; background:var(--accent); color:var(--primary); padding:6px 20px; border-radius:20px; font-weight:900; font-size:0.8rem;">${slot.category}</div>
+        </div>
+        
+        <div style="padding:30px 24px;">
+           <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:30px;">
+              <div style="text-align:left;">
+                 <div style="font-size:0.6rem; font-weight:800; color:#bbb; text-transform:uppercase; margin-bottom:5px;">PUESTO ASIGNADO</div>
+                 <div style="font-size:1.6rem; font-weight:900; color:var(--primary);">${slot.label}</div>
+                 <div style="font-size:0.65rem; color:#ccc; font-weight:700;">${slot.levelName}</div>
+              </div>
+              <div style="text-align:right;">
+                 <div style="font-size:0.6rem; font-weight:800; color:#bbb; text-transform:uppercase; margin-bottom:5px;">VENCE LÍMITE (8h)</div>
+                 <div style="font-size:1.6rem; font-weight:900; color:#e63946;">${limit.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}).toLowerCase()}</div>
+                 <div style="font-size:0.65rem; color:#ccc; font-weight:700;">${limit.toLocaleDateString()}</div>
+              </div>
+           </div>
+           
+           <div style="border-top:1.5px dashed #eee; margin:0 20px 30px;"></div>
+           
+           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:30px;">
+              <div style="text-align:left;">
+                 <div style="font-size:0.6rem; font-weight:800; color:#bbb; margin-bottom:2px;">HORA INGRESO</div>
+                 <div style="font-size:0.9rem; font-weight:900; color:#1a1a2e;">${now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}).toLowerCase()}</div>
+              </div>
+              <div style="background:#f8f9fa; padding:15px; border-radius:20px;">
+                 <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(qrData)}" style="width:100px; height:100px; display:block;">
+              </div>
+           </div>
+           
+           <div style="font-size:0.7rem; color:#999; font-weight:700; padding:0 30px; line-height:1.4;">
+              Escanee este código al salir para agilizar su cobro.<br><b>Guarde su ticket.</b>
+           </div>
+        </div>
+      </div>
+      ...
+      
+      <div style="margin-top:25px; display:grid; gap:12px;">
+         <button data-action="PRINT_TICKET" style="width:100%; padding:20px; background:#1a1a2e; color:white; border:none; border-radius:20px; font-weight:900; display:flex; align-items:center; justify-content:center; gap:10px;">
+            <svg viewBox="0 0 24 24" fill="none; stroke="currentColor" stroke-width="2.5" style="width:20px; height:20px;"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            IMPRIMIR TICKET
+         </button>
+         <button data-action="BACK_MAP" style="width:100%; padding:20px; background:#22c55e; color:white; border:none; border-radius:20px; font-weight:900; display:flex; align-items:center; justify-content:center; gap:10px;">
+            <svg viewBox="0 0 24 24" fill="none; stroke="currentColor" stroke-width="3" style="width:18px; height:18px;"><polyline points="20 6 9 17 4 12"/></svg>
+            CONTINUAR AL MAPA
+         </button>
+      </div>
+    </div>`
+  }
+
+  const renderExitForm = () => {
+    const entryTime = new Date(selectedSlot.entryTime)
+    const hoursStayed = (new Date() - entryTime) / 3600000
+    const freeHours = state.settings?.freeHours || 8
+    let totalOwed = 0
+    
+    if (hoursStayed > freeHours) {
+       totalOwed = state.settings?.baseRate || 1
+    }
+    
+    if (selectedSlot.paymentStatus === 'PAGADO') {
+       totalOwed = Math.max(0, totalOwed - (state.settings?.baseRate || 1))
+    }
+    if (selectedSlot.status === 'DEBT') totalOwed = 1 // Already marked as debt
+    
+    return `
     <div style="padding:20px;padding-bottom:100px;">
       <div style="background:white;border-radius:32px;padding:24px;box-shadow:0 10px 30px rgba(0,0,0,0.05);">
         <div style="display:flex;justify-content:space-between;margin-bottom:20px;">
@@ -300,15 +488,23 @@ export const initGuard = (container, guardName = 'Guardia') => {
           <div><label style="font-size:0.6rem;font-weight:900;color:#999;">PLACA</label><div style="font-size:1.4rem;font-weight:900;">${selectedSlot.plate||'---'}</div></div>
           <div style="text-align:right;"><label style="font-size:0.6rem;font-weight:900;color:#999;">TIEMPO</label><div id="exit-timer" style="font-size:1.4rem;font-weight:900;color:#22c55e;">${formatTime(selectedSlot.entryTime)}</div></div>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:25px;">
+
+        <div style="background:#f8f9fa; border-radius:16px; padding:15px; margin-bottom:24px; text-align:center; border:2px solid ${totalOwed > 0 ? '#e63946' : '#22c55e'};">
+           <div style="font-size:0.6rem; font-weight:900; color:#999; text-transform:uppercase;">MONTO A COBRAR</div>
+           <div style="font-size:2.2rem; font-weight:950; color:${totalOwed > 0 ? '#e63946' : '#22c55e'};">$${totalOwed.toFixed(2)}</div>
+           ${totalOwed > 0 ? `<div style="font-size:0.6rem; font-weight:700; color:#e63946; margin-top:4px;">EXCESO DE TIEMPO (+8H)</div>` : `<div style="font-size:0.6rem; font-weight:700; color:#22c55e; margin-top:4px;">CORTESÍA / PAGADO</div>`}
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:25px; ${totalOwed === 0 ? 'display:none;' : ''}">
           ${PAY.map((p,i)=>`<button class="pay-chip ${i===0?'pay-active':''}" data-method="${p.m}" style="padding:10px;border-radius:10px;border:2px solid #eee;background:white;font-size:0.65rem;font-weight:900;">${p.label}</button>`).join('')}
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-          <button data-action="EXIT_PAID" style="padding:18px;background:#22c55e;color:white;border:none;border-radius:16px;font-weight:900;">PAGADO</button>
-          <button data-action="EXIT_DEBT" style="padding:18px;background:#e63946;color:white;border:none;border-radius:16px;font-weight:900;">DEUDA</button>
+          <button data-action="EXIT_PAID" style="padding:18px;background:#22c55e;color:white;border:none;border-radius:16px;font-weight:900;">${totalOwed > 0 ? 'MARCAR PAGADO' : 'LIBERAR PUESTO'}</button>
+          <button data-action="EXIT_DEBT" style="padding:18px;background:#e63946;color:white;border:none;border-radius:16px;font-weight:900;">${totalOwed > 0 ? 'SALIDA DEUDA' : 'SOLO SALIDA'}</button>
         </div>
       </div>
     </div>`
+  }
 
   // ── CORE LOGIC ───────────────────────────────────────────────
   const renderShell = (state) => {
@@ -331,10 +527,11 @@ export const initGuard = (container, guardName = 'Guardia') => {
     if (currentView === 'MAP') html = renderMap(freshState)
     else if (currentView === 'ENTRY') html = renderEntryForm()
     else if (currentView === 'EXIT') html = renderExitForm()
+    else if (currentView === 'TICKET') html = renderSuccessTicket()
     
     if (elContent.innerHTML !== html) {
       elContent.innerHTML = html
-      if (currentView === 'ENTRY') initQRScanner()
+      if (scannerActive) initQRScanner()
       setupLocalInteractions()
     }
     
