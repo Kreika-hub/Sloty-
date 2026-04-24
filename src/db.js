@@ -23,6 +23,7 @@ const defaultState = {
   movements: [],
   auditLog: [],
   notifications: [], // { id, type, msg, guard, timestamp, unread }
+  closures: [], // { id, guard, timestamp, total, methods, movements }
   ads: [], // { id, imageUrl, link, active }
   stats: {
     totalSpots: 0,
@@ -131,6 +132,10 @@ export const getParkingState = () => {
         state.notifications = []
         migrated = true
       }
+      if (!state.closures) {
+        state.closures = []
+        migrated = true
+      }
       if (!state.adminInfo) {
         state.adminInfo = { name: "Administrador", email: "", phone: "", registered: true }
         migrated = true
@@ -176,13 +181,35 @@ export const logMovement = (movement) => {
   const entry = {
     ...movement,
     id: `m-${Date.now()}`,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    closed: false // Initially open for the current shift
   }
   state.movements.unshift(entry)
+  
   if (movement.type === 'SALIDA') {
-    if (movement.paymentStatus === 'PAGADO') state.stats.totalCollected += 1
+    if (movement.amount) state.stats.totalCollected += movement.amount
     if (movement.paymentStatus === 'DEUDA') state.stats.totalDebt += 1
   }
+  saveParkingState(state)
+}
+
+export const saveClosure = (closure) => {
+  const state = getParkingState()
+  state.closures = state.closures || []
+  
+  // Mark movements in this closure as closed
+  const closedIds = closure.movements.map(m => m.id)
+  state.movements.forEach(m => {
+    if (closedIds.includes(m.id)) m.closed = true
+  })
+
+  state.closures.unshift({
+    ...closure,
+    id: `c-${Date.now()}`,
+    timestamp: new Date().toISOString()
+  })
+  
+  // Reset daily stats if needed (usually stats are calculated on the fly from open movs)
   saveParkingState(state)
 }
 

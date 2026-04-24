@@ -1,4 +1,5 @@
-import { getParkingState, updateParkingState, logMovement, logNotification } from '../db.js'
+import { getParkingState, updateParkingState, logMovement, logNotification, saveClosure } from '../db.js'
+// Html5Qrcode is loaded via CDN in index.html, accessible globally
 
 export const initGuard = (container, guardName = 'Guardia') => {
   let state = getParkingState()
@@ -7,6 +8,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
   let activeLevel = null
   let qrScanner = null
   let scannerActive = false
+  let pendingPayment = null // { amount, method, type, slot, plate, category, metadata, phone, entryData }
   
   let elContent = null
   let elShell = null
@@ -95,7 +97,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
       const el = document.getElementById('qr-reader')
       if (!el || qrScanner) return
       
-      qrScanner = new Html5Qrcode("qr-reader")
+      qrScanner = new window.Html5Qrcode("qr-reader")
       try {
         await qrScanner.start(
           { facingMode: "environment" }, 
@@ -136,7 +138,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
     const win = window.open('', '_blank', 'width=400,height=600')
     win.document.write('<html><head><title>Ticket Sloty</title><style>body{font-family:sans-serif;text-align:center;padding:10px;} .qr{margin:20px 0;} .label{font-size:32px;font-weight:bold;}</style><script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></scr' + 'ipt></head><body>')
     win.document.write('<h2>'+state.buildingName+'</h2><p>TICKET DE '+type+'</p><div class="label">'+slot.label+'</div><p>PLACA: '+(slot.plate||'---')+'</p><div id="qrcode" class="qr"></div><p>'+new Date().toLocaleString()+'</p><p>¡Gracias por usar Sloty!</p>')
-    win.document.write('<script>setTimeout(function(){new QRCode(document.getElementById("qrcode"),{text:JSON.stringify({plate:"'+slot.plate+'",slot:"'+slot.label+'"}),width:180,height:180});setTimeout(function(){window.print();window.close();},500);},500);</script></body></html>')
+    win.document.write('<script>setTimeout(function(){new QRCode(document.getElementById("qrcode"),{text:JSON.stringify({plate:"'+slot.plate+'",slot:"'+slot.label+'"}),width:180,height:180});setTimeout(function(){window.print();window.close();},500);},500);<\/script></body></html>')
     win.document.close()
   }
 
@@ -202,39 +204,103 @@ export const initGuard = (container, guardName = 'Guardia') => {
       updateParkingState(state)
       
       if (timing === 'PRE') {
-         logMovement({ 
-          type:'PREPAGO', 
-          plate, 
-          slot:selectedSlot.label, 
-          category, 
-          guardName, 
-          phone, 
-          metadata,
-          paymentStatus: 'PAGADO', 
-          payMethod,
-          amount: (state.settings?.baseRate || 1) 
-        })
+         pendingPayment = { 
+           type:'PREPAGO', 
+           plate, 
+           slot:selectedSlot.label, 
+           category, 
+           guardName, 
+           phone, 
+           metadata,
+           amount: (state.settings?.baseRate || 1),
+           method: payMethod,
+           entryData: entryData // Save to update slot after payment
+         }
+         currentView = 'PAYMENT'; render()
+      } else {
+         currentView='TICKET'; render()
       }
-      
-      currentView='TICKET'; render()
     },
     PRINT_TICKET: () => {
        const area = document.getElementById('ticket-printable')
        if (!area) return
        const win = window.open('', '_blank', 'width=400,height=600')
-       win.document.write(`<html><head><title>Ticket Sloty</title><style>body{font-family:sans-serif;margin:0;padding:20px;text-align:center;} .card{border:2px solid #eee;border-radius:20px;padding:20px;}</style></head><body><div class="card">${area.innerHTML}</div><script>setTimeout(()=> {window.print(); window.close();}, 500)</script></body></html>`)
+       win.document.write(`<html><head><title>Ticket Sloty</title><style>body{font-family:sans-serif;margin:0;padding:20px;text-align:center;} .card{border:2px solid #eee;border-radius:20px;padding:20px;}</style></head><body><div class="card">${area.innerHTML}</div><script>setTimeout(()=> {window.print(); window.close();}, 500)<\/script></body></html>`)
        win.document.close()
     },
-    EXIT_PAID: () => processExit('FREE'),
+    EXIT_PAID: () => {
+      const entryTime = new Date(selectedSlot.entryTime)
+      const hoursStayed = (new Date() - entryTime) / 3600000
+      const freeHours = state.settings?.freeHours || 8
+      let totalOwed = (hoursStayed > freeHours || selectedSlot.status === 'DEBT') ? (state.settings?.baseRate || 1) : 0
+      
+      if (selectedSlot.paymentStatus === 'PAGADO') totalOwed = Math.max(0, totalOwed - (state.settings?.baseRate || 1))
+
+      if (totalOwed > 0) {
+        pendingPayment = {
+          type: 'SALIDA',
+          plate: selectedSlot.plate,
+          slot: selectedSlot.label,
+          category: selectedSlot.category,
+          guardName,
+          amount: totalOwed,
+          method: document.querySelector('.pay-active')?.dataset.method || 'EFECTIVO_USD',
+          targetStatus: 'FREE'
+        }
+        currentView = 'PAYMENT'; render()
+      } else {
+        processExit('FREE')
+      }
+    },
     EXIT_DEBT: () => processExit('DEBT'),
     FORMA_PRINT: () => printTicket('SALIDA'),
     CIERRE_CAJA: () => {
-      const state = getParkingState()
-      const total = state.movements?.filter(m => m.guardName === guardName && (new Date() - new Date(m.timestamp)) < 24 * 3600000).reduce((a,m)=>a+(m.amount||0), 0)
-      showModal('¿Cerrar Caja?', `Monto total: $${total.toFixed(2)}`, () => {
-        logNotification('CIERRE_CAJA', guardName, `Reportó un cierre de caja por $${total.toFixed(2)}`)
-        showToast('Cierre reportado exitosamente', 'success')
+      currentView = 'CLOSURE'; render()
+    },
+    SUBMIT_PAYMENT: () => {
+      const amountRec = parseFloat(document.getElementById('pay-amount')?.value) || 0
+      const ref = document.getElementById('pay-ref')?.value?.trim() || ''
+      const method = pendingPayment.method
+      
+      if (method === 'PAGO_MOVIL' && !ref) return showToast('Introduce la referencia', 'error')
+      if (amountRec < pendingPayment.amount) return showToast('Monto insuficiente', 'error')
+
+      const mov = {
+        ...pendingPayment,
+        amountRec,
+        reference: ref,
+        paymentStatus: 'PAGADO',
+        payMethod: method
+      }
+      
+      logMovement(mov)
+      
+      if (pendingPayment.type === 'SALIDA') {
+        processExit(pendingPayment.targetStatus)
+      } else {
+        // PREPAGO case: finalizing the entry
+        currentView = 'TICKET'; render()
+      }
+      pendingPayment = null
+      showToast('Pago registrado correctamente', 'success')
+    },
+    FINALIZE_CLOSURE: () => {
+      const openMovs = state.movements.filter(m => !m.closed && m.guardName === guardName)
+      const total = openMovs.reduce((a,m) => a + (m.amount || 0), 0)
+      const breakdown = openMovs.reduce((acc, m) => {
+        acc[m.payMethod] = (acc[m.payMethod] || 0) + (m.amount || 0)
+        return acc
+      }, {})
+
+      saveClosure({
+        guard: guardName,
+        total,
+        methods: breakdown,
+        movements: openMovs
       })
+
+      logNotification('CIERRE_CAJA', guardName, `Cierre completado: $${total.toFixed(2)} acumulados.`)
+      showModal('Cierre Exitoso', 'El reporte ha sido enviado a administración. El contador ha vuelto a 0.', () => location.reload())
     }
   }
 
@@ -262,10 +328,10 @@ export const initGuard = (container, guardName = 'Guardia') => {
             <div style="display:flex; gap:8px; align-items:center;">
                <button data-action="CIERRE_CAJA" style="background:#22c55e;color:white;border:none;padding:5px 12px;border-radius:8px;font-size:0.65rem;font-weight:900;cursor:pointer;">CERRAR CAJA</button>
                <button data-action="SHOW_SCANNER" style="background:#F5C518; color:#1a1a2e; border:none; width:36px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 4px 10px rgba(245,197,24,0.3);">
-                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px; height:18px;"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px; height:18px;"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
                </button>
                <button data-action="LOGOUT" style="background:rgba(255,255,255,0.1);color:white;border:none;padding:5px 12px;border-radius:8px;font-size:0.65rem;font-weight:900;cursor:pointer;">
-                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width:12px; height:12px;"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:12px; height:12px;"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                </button>
             </div>
           </div>
@@ -314,7 +380,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
          ${!scannerActive ? `
            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
               <button data-action="SHOW_SCANNER" style="background:#1a1a2e; color:#F5C518; padding:18px; border:none; border-radius:18px; font-weight:900; font-size:0.8rem; display:flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 10px 20px rgba(26,26,46,0.3);">
-                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:20px; height:20px;"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px; height:20px;"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
                  SALIDA QR
               </button>
               <button data-action="SHOW_MANUAL_ENTRY" style="background:#22c55e; color:white; padding:18px; border:none; border-radius:18px; font-weight:900; font-size:0.8rem; box-shadow:0 10px 20px rgba(34,197,94,0.3);">
@@ -447,15 +513,14 @@ export const initGuard = (container, guardName = 'Guardia') => {
            </div>
         </div>
       </div>
-      ...
       
       <div style="margin-top:25px; display:grid; gap:12px;">
          <button data-action="PRINT_TICKET" style="width:100%; padding:20px; background:#1a1a2e; color:white; border:none; border-radius:20px; font-weight:900; display:flex; align-items:center; justify-content:center; gap:10px;">
-            <svg viewBox="0 0 24 24" fill="none; stroke="currentColor" stroke-width="2.5" style="width:20px; height:20px;"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px; height:20px;"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
             IMPRIMIR TICKET
          </button>
          <button data-action="BACK_MAP" style="width:100%; padding:20px; background:#22c55e; color:white; border:none; border-radius:20px; font-weight:900; display:flex; align-items:center; justify-content:center; gap:10px;">
-            <svg viewBox="0 0 24 24" fill="none; stroke="currentColor" stroke-width="3" style="width:18px; height:18px;"><polyline points="20 6 9 17 4 12"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:22px; height:22px;"><polyline points="20 6 9 17 4 12"/></svg>
             CONTINUAR AL MAPA
          </button>
       </div>
@@ -506,6 +571,101 @@ export const initGuard = (container, guardName = 'Guardia') => {
     </div>`
   }
 
+  const renderPaymentForm = () => `
+    <div style="padding:20px; padding-bottom:120px;">
+      <div style="background:white; border-radius:32px; padding:30px; box-shadow:0 15px 45px rgba(0,0,0,0.1);">
+         <div style="text-align:center; margin-bottom:25px;">
+            <div style="font-size:0.7rem; font-weight:900; color:#999; letter-spacing:1px; text-transform:uppercase;">DETALLE DE PAGO</div>
+            <div style="font-size:2.5rem; font-weight:950; color:var(--primary); margin:5px 0;">$${(pendingPayment?.amount || 0).toFixed(2)}</div>
+            <div style="display:inline-block; background:#f4f4f4; padding:5px 15px; border-radius:20px; font-weight:900; font-size:0.65rem; color:#666;">
+               ${(pendingPayment?.method || '').replace('_', ' ')}
+            </div>
+         </div>
+
+         <div style="display:grid; gap:20px; margin-bottom:30px;">
+            <div style="text-align:left;">
+               <label style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:8px; display:block;">CANTIDAD RECIBIDA</label>
+               <input id="pay-amount" type="number" step="0.01" value="${pendingPayment?.amount || 0}" placeholder="0.00" 
+                  style="width:100%; border:2px solid #eee; border-radius:18px; padding:18px; font-size:1.4rem; font-weight:900; outline:none; font-family:'Montserrat';">
+            </div>
+
+            ${pendingPayment?.method === 'PAGO_MOVIL' ? `
+              <div style="text-align:left;">
+                 <label style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:8px; display:block;">REFERENCIA (Últimos 4-6)</label>
+                 <input id="pay-ref" type="text" placeholder="Ej: 4522" 
+                    style="width:100%; border:2px solid #eee; border-radius:18px; padding:18px; font-size:1.4rem; font-weight:900; outline:none; font-family:'Montserrat';">
+              </div>
+            ` : ''}
+         </div>
+
+         <button data-action="SUBMIT_PAYMENT" style="width:100%; padding:22px; background:#22c55e; color:white; border:none; border-radius:22px; font-weight:900; font-size:1rem; box-shadow:0 10px 25px rgba(34,197,94,0.3);">
+            CONFIRMAR Y REGISTRAR
+         </button>
+      </div>
+    </div>
+  `
+
+  const renderClosureSummary = () => {
+    const openMovs = state.movements.filter(m => !m.closed && m.guardName === guardName)
+    const total = openMovs.reduce((a,m) => a + (m.amount || 0), 0)
+    const breakdown = openMovs.reduce((acc, m) => {
+      acc[m.payMethod] = (acc[m.payMethod] || 0) + (m.amount || 0)
+      return acc
+    }, {})
+
+    return `
+    <div style="padding:20px; padding-bottom:120px;">
+       <div style="background:white; border-radius:32px; padding:25px; box-shadow:0 10px 30px rgba(0,0,0,0.05);">
+          <h2 style="font-weight:950; color:var(--primary); margin-bottom:5px; text-align:center;">CORTE DE CAJA</h2>
+          <div style="font-size:0.65rem; font-weight:800; color:#bbb; text-align:center; margin-bottom:25px; text-transform:uppercase;">${guardName.toUpperCase()} · ${new Date().toLocaleDateString()}</div>
+
+          <!-- TOTALS -->
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:25px;">
+             <div style="background:#1a1a2e; color:white; padding:20px 10px; border-radius:24px; text-align:center;">
+                <div style="font-size:1.6rem; font-weight:950;">$${total.toFixed(2)}</div>
+                <div style="font-size:0.5rem; font-weight:800; color:var(--accent); text-transform:uppercase;">RECAUDO TOTAL</div>
+             </div>
+             <div style="background:#f8f9fa; padding:20px 10px; border-radius:24px; text-align:center;">
+                <div style="font-size:1.6rem; font-weight:950;">${openMovs.length}</div>
+                <div style="font-size:0.5rem; font-weight:800; color:#999; text-transform:uppercase;">MOVIMIENTOS</div>
+             </div>
+          </div>
+
+          <!-- METHODS -->
+          <div style="background:#fdfdfd; border:1.5px solid #f8f8f8; border-radius:20px; padding:15px; margin-bottom:25px;">
+             ${Object.entries(breakdown).map(([m, val]) => `
+               <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #f4f4f4;">
+                  <span style="font-size:0.65rem; font-weight:800; color:#666;">${(m||'OTROS').replace('_', ' ')}</span>
+                  <span style="font-size:0.85rem; font-weight:900; color:var(--primary);">$${val.toFixed(2)}</span>
+               </div>
+             `).join('') || '<div style="text-align:center; padding:10px; color:#ccc; font-size:0.75rem;">Sin recaudos hoy</div>'}
+          </div>
+
+          <!-- RECENT LIST -->
+          <div style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:10px; text-transform:uppercase;">ÚLTIMOS MOVIMIENTOS</div>
+          <div style="display:grid; gap:8px; margin-bottom:30px; max-height:200px; overflow-y:auto;">
+             ${openMovs.slice(0, 10).map(m => `
+               <div style="background:#fafafa; border-radius:12px; padding:10px 15px; display:flex; justify-content:space-between; align-items:center;">
+                  <div>
+                    <div style="font-size:0.8rem; font-weight:900; color:var(--primary);">${m.plate || '---'}</div>
+                    <div style="font-size:0.5rem; color:#999; font-weight:700;">${m.type} · ${m.slot}</div>
+                  </div>
+                  <div style="text-align:right;">
+                    <div style="font-size:0.8rem; font-weight:900; color:#22c55e;">+$${(m.amount||0).toFixed(2)}</div>
+                    <div style="font-size:0.45rem; color:#bbb; font-weight:800;">Ref: ${m.reference || 'EFEC'}</div>
+                  </div>
+               </div>
+             `).join('')}
+          </div>
+
+          <button data-action="FINALIZE_CLOSURE" style="width:100%; padding:20px; background:#1a1a2e; color:var(--accent); border:none; border-radius:20px; font-weight:900; font-size:0.9rem; box-shadow:0 10px 25px rgba(26,26,46,0.3);">
+            CONFIRMAR Y ENVIAR CIERRE
+          </button>
+       </div>
+    </div>
+    `
+  }
+
   // ── CORE LOGIC ───────────────────────────────────────────────
   const renderShell = (state) => {
     container.innerHTML = `
@@ -528,6 +688,8 @@ export const initGuard = (container, guardName = 'Guardia') => {
     else if (currentView === 'ENTRY') html = renderEntryForm()
     else if (currentView === 'EXIT') html = renderExitForm()
     else if (currentView === 'TICKET') html = renderSuccessTicket()
+    else if (currentView === 'PAYMENT') html = renderPaymentForm()
+    else if (currentView === 'CLOSURE') html = renderClosureSummary()
     
     if (elContent.innerHTML !== html) {
       elContent.innerHTML = html

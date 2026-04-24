@@ -6,6 +6,7 @@ export const initAdmin = (container) => {
   let pendingAction = null // { type, name, lName, sLabel, guardId }
   let editingLevel = null // Level name being renamed
   let editingGuard = null // Guard ID being edited
+  let openPaletteLevel = null // Level name with open palette
 
   const ICONS = {
     HOME: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
@@ -18,7 +19,8 @@ export const initAdmin = (container) => {
     EDIT: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
     PLUS: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
     SETTINGS: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
-    BELL: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>`
+    BELL: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>`,
+    PALETTE: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.647-.494 2.091-1.243.221-.374.332-.811.391-1.242.16-.58.148-1.167.373-1.607.453-.88 1.447-1.408 2.51-1.408H20c1.1 0 2-.9 2-2 0-5.5-4.5-10-10-10z"/></svg>`
   }
 
   // --- DOM Elements Cache ---
@@ -69,7 +71,12 @@ export const initAdmin = (container) => {
     SET_LEVEL_COLOR: (btn) => {
       const name = btn.dataset.name; const color = btn.dataset.color;
       const state = getParkingState(); const level = state.levels.find(l => l.name === name);
-      if (level) { level.color = color; saveParkingState(state); render(); }
+      if (level) { level.color = color; saveParkingState(state); openPaletteLevel = null; render(); }
+    },
+    TOGGLE_PALETTE: (btn) => {
+      const name = btn.dataset.name
+      openPaletteLevel = (openPaletteLevel === name) ? null : name
+      render()
     },
     CANCEL_RENAME: () => {
       editingLevel = null
@@ -221,7 +228,7 @@ export const initAdmin = (container) => {
       if (!movs.length) return alert('No hay movimientos')
       
       const customHeaders = (state.settings?.customFields || []).map(f => f.label.toUpperCase())
-      const headers = ['ID','FECHA','TIPO','PLACA','PUESTO', ...customHeaders, 'MÉTODO PAGO', 'COBRO']
+      const headers = ['ID','FECHA','TIPO','PLACA','PUESTO', ...customHeaders, 'MÉTODO PAGO', 'COBRO', 'REFERENCIA']
       
       const rows = movs.map(m => {
         const metaValues = (state.settings?.customFields || []).map(f => (m.metadata && m.metadata[f.id]) || '---')
@@ -233,7 +240,8 @@ export const initAdmin = (container) => {
           m.slot || '---', 
           ...metaValues,
           m.payMethod || '---',
-          m.amount || 0
+          m.amount || 0,
+          m.reference || '---'
         ].join(',')
       })
       
@@ -244,6 +252,50 @@ export const initAdmin = (container) => {
       link.setAttribute("href", url)
       link.setAttribute("download", `reporte-sloty-${new Date().toISOString().split('T')[0]}.csv`)
       link.click()
+    },
+    VIEW_CLOSURE: (btn) => {
+      const id = btn.dataset.id
+      const state = getParkingState()
+      const c = state.closures.find(x => x.id === id)
+      if (!c) return
+      
+      const methodsHtml = Object.entries(c.methods || {}).map(([m, val]) => `
+         <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+           <span style="font-size:0.75rem; color:#666; font-weight:700;">${m.replace('_', ' ')}</span>
+           <span style="font-size:0.85rem; color:var(--primary); font-weight:900;">$${val.toFixed(2)}</span>
+         </div>
+      `).join('')
+
+      const movsHtml = (c.movements || []).map(m => `
+         <div style="padding:10px; border-bottom:1px solid #f8f8f8; display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-size:0.75rem; font-weight:900;">${m.plate} <span style="font-weight:700; color:#bbb; margin-left:5px;">${m.slot}</span></div>
+            <div style="text-align:right;">
+               <div style="font-size:0.75rem; font-weight:900; color:#22c55e;">$${(m.amount||0).toFixed(2)}</div>
+               <div style="font-size:0.5rem; color:#bbb;">Ref: ${m.reference || 'EFEC'}</div>
+            </div>
+         </div>
+      `).join('')
+
+      pendingAction = {
+        type: 'CUSTOM_MODAL',
+        title: 'Detalle de Cierre',
+        content: `
+          <div style="padding:15px; text-align:left;">
+             <div style="background:#f8f9fa; border-radius:16px; padding:15px; margin-bottom:20px;">
+                ${methodsHtml || '<div style="font-size:0.7rem; color:#999; text-align:center;">Sin detalles por método</div>'}
+                <div style="border-top:1.5px solid #eee; margin-top:10px; padding-top:10px; display:flex; justify-content:space-between; font-weight:950;">
+                   <span>TOTAL CIERRE</span>
+                   <span style="color:#22c55e;">$${(c.total || 0).toFixed(2)}</span>
+                </div>
+             </div>
+             <div style="font-size:0.6rem; font-weight:900; color:#999; text-transform:uppercase; margin-bottom:10px;">MOVIMIENTOS DE LA SESIÓN</div>
+             <div style="max-height:250px; overflow-y:auto; border:1px solid #f4f4f4; border-radius:12px;">
+                ${movsHtml || '<div style="padding:20px; text-align:center; color:#ccc;">No hay movimientos registrados</div>'}
+             </div>
+          </div>
+        `
+      }
+      render()
     }
   }
 
@@ -485,17 +537,28 @@ export const initAdmin = (container) => {
                 `}
               </div>
               
-              <div style="display:flex; align-items:center; gap:12px;">
-                 <div style="display:flex; gap:4px; margin-right:10px;">
-                    ${['#1a1a2e','#e63946','#22c55e','#3b82f6','#a855f7'].map(c => `
-                      <div data-action="SET_LEVEL_COLOR" data-name="${l.name}" data-color="${c}" style="width:14px; height:14px; border-radius:50%; background:${c}; cursor:pointer; border:${l.color===c?'2px solid #ccc':'none'}"></div>
-                    `).join('')}
+              <div style="display:flex; align-items:center; gap:8px;">
+                 <!-- PALETTE WRAPPER -->
+                 <div style="display:flex; align-items:center; position:relative;">
+                    <div style="display:${openPaletteLevel === l.name ? 'flex' : 'none'}; gap:4px; padding:6px; background:#f4f4f4; border-radius:12px; margin-right:8px; border:1px solid #eee; position:absolute; right:100%; top:50%; transform:translateY(-50%); z-index:10;">
+                       ${['#1a1a2e','#e63946','#22c55e','#3b82f6','#a855f7'].map(c => `
+                         <div data-action="SET_LEVEL_COLOR" data-name="${l.name}" data-color="${c}" style="width:16px; height:16px; border-radius:50%; background:${c}; cursor:pointer; border:${l.color===c?'2.5px solid white':'none'}; box-shadow:0 2px 5px rgba(0,0,0,0.1);"></div>
+                       `).join('')}
+                    </div>
+                    <button data-action="TOGGLE_PALETTE" data-name="${l.name}" style="background:none; border:none; color:${openPaletteLevel===l.name?'var(--primary)':'#bbb'}; width:22px; height:22px; cursor:pointer; transition:all 0.2s;">
+                       ${ICONS.PALETTE}
+                    </button>
                  </div>
-                 <button data-action="ADD_SLOT" data-name="${l.name}" style="background:#f4f4f4; border:none; color:var(--primary); width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer;">${ICONS.PLUS}</button>
+
+                 <button data-action="ADD_SLOT" data-name="${l.name}" style="background:#f4f4f4; border:none; color:var(--primary); width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; margin-left:4px;">${ICONS.PLUS}</button>
+                 
                  <button data-action="TOGGLE_COLLAPSE" data-name="${l.name}" style="background:none; border:none; color:#bbb; cursor:pointer; width:24px; transition:transform 0.3s; transform:${l.collapsed?'rotate(0deg)':'rotate(180deg)'};">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m6 9 6 6 6-6"/></svg>
                  </button>
-                 <button data-action="DELETE_LEVEL" data-name="${l.name}" style="background:none; border:none; color:#ffccd5; cursor:pointer; width:24px;">${ICONS.TRASH}</button>
+                 
+                 <button data-action="DELETE_LEVEL" data-name="${l.name}" style="background:rgba(230,57,70,0.08); border:none; color:#e63946; cursor:pointer; width:36px; height:36px; border-radius:12px; display:flex; align-items:center; justify-content:center; margin-left:4px; transition:all 0.2s;">
+                    <span style="width:20px;">${ICONS.TRASH}</span>
+                 </button>
               </div>
             </div>
 
@@ -596,6 +659,27 @@ export const initAdmin = (container) => {
               <div style="font-size:1.1rem; font-weight:900; color:#a855f7;">${movs.filter(m => m.payMethod?.includes('PAGO')).length}</div>
               <div style="font-size:0.45rem; font-weight:800; color:#999; text-transform:uppercase; margin-top:4px;">PAGO MÓVIL</div>
            </div>
+        </div>
+
+        <!-- CLOSURES HISTORY -->
+        <div style="font-size:0.7rem; font-weight:900; color:var(--primary); margin-bottom:15px; text-transform:uppercase; letter-spacing:1px; display:flex; justify-content:space-between; align-items:center;">
+           CIERRES DE CAJA (CORTES)
+           <span style="font-size:0.5rem; color:#bbb;">Últimos ${state.closures?.length || 0}</span>
+        </div>
+        <div style="display:grid; gap:12px; margin-bottom:40px;">
+           ${(state.closures || []).map(c => `
+             <div style="background:white; border-radius:18px; padding:18px; border:1px solid #eee; display:flex; justify-content:space-between; align-items:center; box-shadow:0 4px 6px rgba(0,0,0,0.02);">
+                <div>
+                   <div style="font-size:0.85rem; font-weight:900; color:#1a1a2e;">$${(c.total || 0).toFixed(2)}</div>
+                   <div style="font-size:0.55rem; color:#bbb; font-weight:800;">Guardián: ${c.guard}</div>
+                </div>
+                <div style="text-align:right;">
+                   <div style="font-size:0.6rem; font-weight:700; color:#1a1a2e;">${new Date(c.timestamp).toLocaleDateString()}</div>
+                   <div style="font-size:0.55rem; color:#bbb; font-weight:700;">${new Date(c.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+                </div>
+                <button data-action="VIEW_CLOSURE" data-id="${c.id}" style="background:var(--primary); color:white; border:none; border-radius:10px; padding:8px 12px; font-size:0.5rem; font-weight:900; cursor:pointer;">DETALLES</button>
+             </div>
+           `).join('') || '<div style="text-align:center; padding:20px; color:#ccc; font-size:0.75rem; border:2px dashed #eee; border-radius:20px;">No hay cierres registrados</div>'}
         </div>
 
         <!-- RECENT EXCEDENTS -->
