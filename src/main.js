@@ -27,7 +27,7 @@ const renderWelcome = () => {
     <div style="min-height:100vh;min-height:100dvh;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:env(safe-area-inset-top, 40px) 24px env(safe-area-inset-bottom, 40px);">
       <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;gap:0;">
         <img src="/sloty-logo-v2.png.png" alt="Sloty" style="width:75%;max-width:300px;height:auto;display:block;margin:0 auto;" />
-        <p style="color:rgba(255,255,255,0.5);font-size:0.8rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;margin:20px 0 0;text-align:center;">GESTIÓN INTELIGENTE DE<br>ESTACIONAMIENTOS</p>
+        <p aria-label="Gestión inteligente de estacionamientos" style="color:rgba(255,255,255,0.7);font-size:0.8rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;margin:20px 0 0;text-align:center;">GESTIÓN INTELIGENTE DE<br>ESTACIONAMIENTOS</p>
       </div>
       <div style="width:100%;max-width:420px;display:flex;flex-direction:column;gap:14px;padding-bottom:20px;">
         <button id="btn-goto-register" style="width:100%;padding:20px;background:#F5C518;color:#1a1a2e;border:none;border-radius:18px;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:900;cursor:pointer;letter-spacing:1px;">
@@ -36,10 +36,10 @@ const renderWelcome = () => {
         <button id="btn-goto-login" style="width:100%;padding:20px;background:transparent;color:white;border:2px solid rgba(255,255,255,0.2);border-radius:18px;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:700;cursor:pointer;">
           YA TENGO CUENTA
         </button>
-        <button id="btn-goto-guard" style="width:100%;padding:14px;background:transparent;color:rgba(255,255,255,0.4);border:none;font-family:'Montserrat',sans-serif;font-size:0.85rem;font-weight:600;cursor:pointer;letter-spacing:1px;">
+        <button id="btn-goto-guard" style="width:100%;padding:14px;background:transparent;color:rgba(255,255,255,0.75);border:1px solid rgba(255,255,255,0.15);font-family:'Montserrat',sans-serif;font-size:0.85rem;font-weight:700;cursor:pointer;letter-spacing:1px;border-radius:14px;">
           SOY GUARDIA →
         </button>
-        <p style="color:rgba(255,255,255,0.15);font-size:0.65rem;font-weight:600;text-align:center;letter-spacing:2px;margin-top:4px;">POWERED BY KREIKA</p>
+        <p aria-hidden="true" tabindex="-1" style="color:rgba(255,255,255,0.35);font-size:0.65rem;font-weight:600;text-align:center;letter-spacing:2px;margin-top:4px;">POWERED BY KREIKA</p>
       </div>
     </div>
   `
