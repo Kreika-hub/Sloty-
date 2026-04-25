@@ -4,7 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 export default defineConfig({
   plugins: [
     VitePWA({
-      registerType: 'prompt', // ← cambiado: permite mostrar "hay nueva versión"
+      registerType: 'autoUpdate',
       includeAssets: ['icons/icon-192.png', 'icons/icon-512.png', 'sloty-logo-v2.png.png'],
       manifest: {
         name: 'Sloty - Estacionamientos',
