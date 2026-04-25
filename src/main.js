@@ -2,7 +2,7 @@ import { login, getSession, getUserRole, setDevRole } from './auth.js'
 import { initGuard } from './modules/guard.js'
 import { initAdmin } from './modules/admin.js'
 import { initMaster } from './modules/master.js'
-import { getParkingState, saveParkingState } from './db.js'
+import { getParkingState, saveParkingState, resetState } from './db.js'
 import { initUpdateBanner } from './pwa-update.js'
 
 const $ = id => document.getElementById(id)
@@ -239,6 +239,8 @@ const renderRegister = () => {
   const finishRegister = async () => {
     $('btn-reg-next').textContent = 'Creando cuenta...'
     $('btn-reg-next').disabled = true
+    // Limpiar estado anterior para que el nuevo edificio empiece en 0
+    resetState()
     const state = getParkingState()
     state.buildingName = data.buildingName
     state.adminInfo = { name: data.adminName, email: data.email, registered: true }
