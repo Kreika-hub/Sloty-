@@ -3,6 +3,7 @@ import { initGuard } from './modules/guard.js'
 import { initAdmin } from './modules/admin.js'
 import { initMaster } from './modules/master.js'
 import { getParkingState, saveParkingState } from './db.js'
+import { initUpdateBanner } from './pwa-update.js'
 
 const $ = id => document.getElementById(id)
 
@@ -406,10 +407,9 @@ const renderGuardPin = () => {
         updateDisplay()
         if (pin.length === 4) {
           const guard = (state.personnel || []).find(p => p.pin === pin)
-          if (guard || pin.length === 4) { // Relaxed: allows any 4-digit PIN
-            const loggedName = guard ? guard.name : 'Guardia de Prueba'
+          if (guard) {
             showOnly('main')
-            initGuard(screens.main, loggedName)
+            initGuard(screens.main, guard.name)
           } else {
             $('pin-error').textContent = 'PIN incorrecto. Intenta de nuevo.'
             setTimeout(() => {
@@ -452,12 +452,14 @@ async function init() {
     localStorage.setItem('sloty_active_building', bParam)
     renderGuardPin(); showOnly('guardPin'); return
   }
-  // Mostrar login inmediatamente, sin esperar la sesión
-  renderLogin(); showOnly('login')
+  // Primero mostramos la pantalla de bienvenida (PWA feel)
+  renderWelcome(); showOnly('welcome')
   
-  // Verificar sesión en paralelo
+  // Verificar sesión en segundo plano
   const session = await getSession()
   if (session) await redirectByRole(session.user.id)
+  
+  initUpdateBanner()
 }
 
 init()

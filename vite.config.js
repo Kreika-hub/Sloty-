@@ -4,8 +4,8 @@ import { VitePWA } from 'vite-plugin-pwa';
 export default defineConfig({
   plugins: [
     VitePWA({
-      registerType: 'autoUpdate',
-      includeAssets: ['icons/icon-192.jpg', 'icons/icon-512.jpg'],
+      registerType: 'prompt', // ← cambiado: permite mostrar "hay nueva versión"
+      includeAssets: ['icons/icon-192.png', 'icons/icon-512.png', 'sloty-logo-v2.png.png'],
       manifest: {
         name: 'Sloty - Estacionamientos',
         short_name: 'Sloty',
@@ -17,29 +17,55 @@ export default defineConfig({
         theme_color: '#1a1a2e',
         icons: [
           {
-            src: '/icons/pwa sloty.png',
+            src: '/icons/pwa-sloty.png',  // ← sin espacio
             sizes: '192x192',
             type: 'image/png',
-            purpose: 'any maskable'
+            purpose: 'any'               // ← separado
           },
           {
-            src: '/icons/pwa sloty.png',
+            src: '/icons/pwa-sloty.png',
             sizes: '512x512',
             type: 'image/png',
-            purpose: 'any maskable'
+            purpose: 'any'
           },
+          {
+            src: '/icons/pwa-sloty.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable'          // ← separado
+          }
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,jpg,svg}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,jpg,svg,webp}'],
         runtimeCaching: [
           {
+            // Supabase API — NetworkFirst con fallback a caché
             urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
             handler: 'NetworkFirst',
             options: {
               cacheName: 'supabase-cache',
               expiration: { maxEntries: 50, maxAgeSeconds: 300 },
-              networkTimeoutSeconds: 5
+              networkTimeoutSeconds: 5,
+              cacheableResponse: { statuses: [0, 200] }
+            }
+          },
+          {
+            // Google Fonts — CacheFirst (raramente cambian)
+            urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'google-fonts',
+              expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 }
+            }
+          },
+          {
+            // QR libs (cdnjs/unpkg) — StaleWhileRevalidate
+            urlPattern: /^https:\/\/(cdnjs\.cloudflare\.com|unpkg\.com)\/.*/i,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'cdn-libs',
+              expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 30 }
             }
           }
         ]
