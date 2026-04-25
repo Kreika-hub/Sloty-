@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "gen-icons": "pwa-assets-generator --preset minimal public/icons/pwa-sloty.png"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.0.0",
