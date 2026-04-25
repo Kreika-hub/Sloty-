@@ -1,4 +1,5 @@
 import { getParkingState, updateParkingState, logMovement, logNotification, saveClosure } from '../db.js'
+import { searchVisitorByPlate, saveVisitor, logAccess } from '../visitors.js'
 // Html5Qrcode is loaded via CDN in index.html, accessible globally
 
 export const initGuard = (container, guardName = 'Guardia') => {
@@ -76,9 +77,10 @@ export const initGuard = (container, guardName = 'Guardia') => {
     return null
   }
 
-  const findVisitorByPlate = plate => {
-    const all = (state.movements||[]).filter(m => m.plate === plate && m.phone)
-    return all.length ? { plate: all[0].plate, phone: all[0].phone, category: all[0].category } : null
+  const findVisitorByPlate = async (plate) => {
+    if (!plate || plate.length < 2) return null
+    const results = await searchVisitorByPlate(plate)
+    return results?.[0] || null
   }
 
   // ── SCANNER LOGIC ──────────────────────────────────────────
@@ -202,6 +204,26 @@ export const initGuard = (container, guardName = 'Guardia') => {
       lvl.slots[selectedSlot.sIdx] = entryData
       selectedSlot = { ...entryData, levelName: selectedSlot.levelName, sIdx: selectedSlot.sIdx }
       updateParkingState(state)
+
+      // Guardar visitante en Supabase y registrar acceso
+      const visitorName = metadata?.nombre || plate
+      saveVisitor({
+        full_name: visitorName,
+        phone: phone || '',
+        visits_to: metadata?.apto ? `Apto ${metadata.apto}` : '',
+        notes: '',
+        plate,
+        vehicle_desc: ''
+      }).then(visitor_id => {
+        logAccess({
+          visitor_id,
+          guard_name: guardName,
+          full_name: visitorName,
+          plate,
+          visits_to: metadata?.apto ? `Apto ${metadata.apto}` : '',
+          type: 'entry'
+        })
+      })
       
       if (timing === 'PRE') {
          pendingPayment = { 
@@ -707,10 +729,42 @@ export const initGuard = (container, guardName = 'Guardia') => {
   const setupLocalInteractions = () => {
     const plateEl = document.getElementById('entry-plate')
     if (plateEl) {
-      plateEl.oninput = () => {
+      plateEl.oninput = async () => {
         plateEl.value = plateEl.value.toUpperCase()
-        const found = findVisitorByPlate(plateEl.value)
-        if (found && !document.getElementById('entry-phone').value) document.getElementById('entry-phone').value = found.phone||''
+        const plate = plateEl.value
+
+        // Limpiar sugerencia anterior
+        const existing = document.getElementById('visitor-suggestion')
+        if (existing) existing.remove()
+
+        if (plate.length < 3) return
+
+        const found = await findVisitorByPlate(plate)
+        if (!found) return
+
+        // Autocompletar campos si están vacíos
+        const phoneEl = document.getElementById('entry-phone')
+        const visitsEl = document.getElementById('entry-visits-to')
+        if (phoneEl && !phoneEl.value) phoneEl.value = found.r_phone || ''
+        if (visitsEl && !visitsEl.value) visitsEl.value = found.r_visits_to || ''
+
+        // Mostrar banner de visitante reconocido
+        const banner = document.createElement('div')
+        banner.id = 'visitor-suggestion'
+        banner.style.cssText = `
+          background:#F5C518;color:#1a1a2e;padding:10px 16px;border-radius:12px;
+          margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;
+          font-family:'Montserrat',sans-serif;
+        `
+        banner.innerHTML = `
+          <div>
+            <div style="font-size:0.6rem;font-weight:900;letter-spacing:1px;">VISITANTE FRECUENTE</div>
+            <div style="font-size:0.95rem;font-weight:900;">${found.r_full_name}</div>
+            <div style="font-size:0.7rem;opacity:0.7;">${found.visit_count} visitas anteriores · ${found.r_visits_to || ''}</div>
+          </div>
+          <div style="font-size:1.5rem;">✓</div>
+        `
+        plateEl.parentNode.insertBefore(banner, plateEl.nextSibling)
       }
     }
     document.querySelectorAll('.cat-chip').forEach(c => {
