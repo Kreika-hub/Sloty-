@@ -427,6 +427,20 @@ export const initAdmin = (container) => {
     
     const ads = state.ads?.filter(a => a.active) || []
 
+    let avgHours = 0;
+    const salidas = (state.movements || []).filter(m => m.type === 'SALIDA');
+    if (salidas.length > 0) {
+      let totalMs = 0; let counted = 0;
+      salidas.forEach(sal => {
+         const ing = (state.movements || []).find(m => m.type === 'INGRESO' && m.plate === sal.plate && m.timestamp < sal.timestamp);
+         if (ing) {
+            totalMs += (new Date(sal.timestamp) - new Date(ing.timestamp));
+            counted++;
+         }
+      });
+      if (counted > 0) avgHours = (totalMs / counted) / (1000 * 60 * 60);
+    }
+
     return `
       <div style="padding:20px; padding-bottom:100px; background:#f8f9fa;">
 
@@ -458,7 +472,7 @@ export const initAdmin = (container) => {
            
            <div class="mini-stat-card">
               <div style="font-size:0.55rem; font-weight:800; color:#999; text-transform:uppercase;">PERMANENCIA</div>
-              <div style="font-size:1.4rem; font-weight:900; color:var(--primary);">2.4h</div>
+              <div style="font-size:1.4rem; font-weight:900; color:var(--primary);">${avgHours > 0 ? avgHours.toFixed(1) + 'h' : '0.0h'}</div>
               <div style="font-size:0.5rem; color:#bbb; font-weight:700;">Promedio</div>
            </div>
         </div>
