@@ -822,12 +822,12 @@ export const initAdmin = (container) => {
           <input type="file" id="guard-photo-input" accept="image/*" style="display:none;">
         </div>
 
-        <input type="text" id="guard-name" value="${editG?.name || ''}" placeholder="Nombre Completo" style="width:100%; padding:18px; border:1.5px solid #f0f0f0; border-radius:18px; margin-bottom:12px; font-family:var(--font); font-weight:700; outline:none; background:#fafafa;">
-        <input type="tel" id="guard-phone" value="${editG?.phone || ''}" placeholder="Teléfono WhatsApp (Ej: 58412...)" style="width:100%; padding:18px; border:1.5px solid #f0f0f0; border-radius:18px; margin-bottom:12px; font-family:var(--font); font-weight:700; outline:none; background:#fafafa;">
+        <input type="text" id="guard-name" value="${editG?.name || ''}" placeholder="Nombre Completo" style="width:100%; box-sizing:border-box; padding:18px; border:1.5px solid #f0f0f0; border-radius:18px; margin-bottom:12px; font-family:var(--font); font-weight:700; outline:none; background:#fafafa;">
+        <input type="tel" id="guard-phone" value="${editG?.phone || ''}" placeholder="Teléfono WhatsApp (Ej: 58412...)" style="width:100%; box-sizing:border-box; padding:18px; border:1.5px solid #f0f0f0; border-radius:18px; margin-bottom:12px; font-family:var(--font); font-weight:700; outline:none; background:#fafafa;">
         
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:25px;">
-          <input type="text" id="guard-pin" value="${editG?.pin || ''}" placeholder="PIN (4)" maxlength="4" style="padding:18px; border:1.5px solid #f0f0f0; border-radius:18px; font-family:var(--font); font-weight:900; text-align:center; background:#fafafa; outline:none;">
-          <select id="guard-shift" style="padding:18px; border:1.5px solid #f0f0f0; border-radius:18px; background:#fafafa; font-family:var(--font); font-weight:700; outline:none; appearance:none;">
+          <input type="text" id="guard-pin" value="${editG?.pin || ''}" placeholder="PIN (4)" maxlength="4" style="width:100%; box-sizing:border-box; min-width:0; padding:18px; border:1.5px solid #f0f0f0; border-radius:18px; font-family:var(--font); font-weight:900; text-align:center; background:#fafafa; outline:none;">
+          <select id="guard-shift" style="width:100%; box-sizing:border-box; min-width:0; padding:18px; border:1.5px solid #f0f0f0; border-radius:18px; background:#fafafa; font-family:var(--font); font-weight:700; outline:none; appearance:none;">
             <option value="Mañana" ${editG?.shift==='Mañana'?'selected':''}>Mañana</option>
             <option value="Tarde" ${editG?.shift==='Tarde'?'selected':''}>Tarde</option>
             <option value="Noche" ${editG?.shift==='Noche'?'selected':''}>Noche</option>
