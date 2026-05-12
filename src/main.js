@@ -1,8 +1,9 @@
 import { login, getSession, getUserRole, setDevRole } from './auth.js'
+import { supabase } from './db.js'
 import { initGuard } from './modules/guard.js'
 import { initAdmin } from './modules/admin.js'
 import { initMaster } from './modules/master.js'
-import { getParkingState, saveParkingState } from './db.js'
+import { getParkingState, saveParkingState, getCleanPrefix } from './db.js'
 import { initUpdateBanner } from './pwa-update.js'
 
 const $ = id => document.getElementById(id)
@@ -241,6 +242,7 @@ const renderRegister = () => {
     $('btn-reg-next').disabled = true
     const state = getParkingState()
     state.buildingName = data.buildingName
+    state.buildingCode = `${getCleanPrefix(data.buildingName)}-${Math.floor(1000 + Math.random() * 9000)}`
     state.adminInfo = { name: data.adminName, email: data.email, registered: true }
     saveParkingState(state)
     screens.register.innerHTML = `
@@ -292,14 +294,32 @@ const renderBuildingLogin = () => {
   `
 
   $('btn-back-welcome').onclick = () => showOnly('welcome')
-  $('btn-validate-build').onclick = () => {
+  $('btn-validate-build').onclick = async () => {
     const entered = $('build-code-input').value.trim().toUpperCase()
-    if (entered.length > 0) { // Relaxed for development: allows any non-empty code
-      localStorage.setItem('sloty_active_building', entered)
-      renderGuardPin()
-    } else {
-      $('build-error').textContent = 'Ingresa un código'
+    if (!entered) { $('build-error').textContent = 'Ingresa un código'; return }
+
+    $('btn-validate-build').textContent = 'Verificando...'
+    $('btn-validate-build').disabled = true
+
+    const { data, error } = await supabase
+      .from('buildings')
+      .select('id, name, code')
+      .eq('code', entered)
+      .eq('active', true)
+      .single()
+
+    if (error || !data) {
+      $('build-error').textContent = 'Código de edificio no válido'
+      $('btn-validate-build').textContent = 'ENTRAR'
+      $('btn-validate-build').disabled = false
+      return
     }
+
+    localStorage.setItem('sloty_active_building', data.code)
+    localStorage.setItem('sloty_building_id', data.id)
+    localStorage.setItem('sloty_building_name', data.name)
+
+    renderGuardPin()
   }
 }
 
@@ -318,7 +338,17 @@ const renderGuardPin = () => {
   let selectedGuard = autoGuardId ? (state.personnel || []).find(p => p.id === autoGuardId) : null
   let pin = ''
 
-  const renderSelection = () => {
+  const renderSelection = async () => {
+    const buildingId = localStorage.getItem('sloty_building_id')
+
+    const { data: personnel } = await supabase
+      .from('personnel')
+      .select('*')
+      .eq('building_id', buildingId)
+      .eq('active', true)
+
+    state.personnel = personnel || []
+
     screens.guardPin.innerHTML = `
       <div style="min-height:100vh;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;padding:40px 24px;">
         <div style="display:flex;width:100%;justify-content:space-between;align-items:center;margin-bottom:30px;">

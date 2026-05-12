@@ -1,4 +1,4 @@
-import { getParkingState, saveParkingState, logAudit } from '../db.js'
+import { getParkingState, saveParkingState, logAudit, getCleanPrefix, supabase } from '../db.js'
 
 export const initAdmin = (container) => {
   let activeTab = 'HOME'
@@ -196,16 +196,26 @@ export const initAdmin = (container) => {
         setTimeout(() => { btn.style.transform = 'rotate(0deg)'; btn.style.transition = 'none' }, 500);
       }
     },
-    SAVE_PROFILE: () => {
-      const name = document.getElementById('edit-building-name').value.trim();
+    SAVE_PROFILE: async () => {
+      const newName = document.getElementById('edit-building-name').value.trim();
       const email = document.getElementById('edit-admin-email').value.trim();
       const phone = document.getElementById('edit-admin-phone').value.trim();
-      if (!name) return alert('El nombre del edificio es obligatorio');
+      if (!newName) return alert('El nombre del edificio es obligatorio');
       const state = getParkingState();
-      state.buildingName = name;
+      
+      const oldCode = state.buildingCode
+      const newCode = `${getCleanPrefix(newName)}-${Math.floor(1000 + Math.random() * 9000)}`
+      state.buildingName = newName
+      state.buildingCode = newCode
+
+      await supabase
+        .from('buildings')
+        .update({ name: newName, code: newCode })
+        .eq('code', oldCode)
+      
       state.adminInfo = { ...state.adminInfo, email, phone };
       saveParkingState(state);
-      logAudit(`Actualizó perfil del edificio: ${name}`);
+      logAudit(`Actualizó perfil del edificio: ${newName}`);
       alert('Perfil actualizado correctamente');
       activeTab = 'HOME';
       render();

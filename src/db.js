@@ -101,9 +101,35 @@ const recalcStatsData = (state) => {
   return { ...state.stats, totalSpots: total, occupied, dead: debt }
 }
 
-const getCleanPrefix = (name) => {
-    let n = (name || "").replace(/^(edificios?|torres?|residencias?|centros?|las?|los?|el|la)\s+/i, '').trim()
-    return n.substring(0, 3).toUpperCase().replace(/\s/g, '') || 'SLO'
+const IGNORE_WORDS = [
+  'edificio', 'edificios', 'residencia', 'residencias',
+  'torre', 'torres', 'conjunto', 'centro', 'complejo',
+  'estacionamiento', 'parque', 'parqueadero',
+  'el', 'la', 'los', 'las', 'de', 'del', 'y'
+]
+
+export const getCleanPrefix = (name) => {
+  const words = (name || '')
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(w => !IGNORE_WORDS.includes(w) && w.length > 0)
+  const meaningful = words[0] || 'SLO'
+  return meaningful.substring(0, 3).toUpperCase()
+}
+
+export const updateBuildingProfile = async (state, newName) => {
+  const oldCode = state.buildingCode
+  const newCode = `${getCleanPrefix(newName)}-${Math.floor(1000 + Math.random() * 9000)}`
+  state.buildingName = newName
+  state.buildingCode = newCode
+
+  const { error } = await supabase
+    .from('buildings')
+    .update({ name: newName, code: newCode })
+    .eq('code', oldCode)
+    
+  saveParkingState(state)
+  return { error, newCode }
 }
 
 let hasBootedDown = false

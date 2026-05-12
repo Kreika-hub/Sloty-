@@ -1,4 +1,4 @@
-import { getParkingState, updateParkingState, logMovement, logNotification, saveClosure } from '../db.js'
+import { getParkingState, updateParkingState, logMovement, logNotification, saveClosure, supabase } from '../db.js'
 import { searchVisitorByPlate, saveVisitor, logAccess } from '../visitors.js'
 // Html5Qrcode is loaded via CDN in index.html, accessible globally
 
@@ -378,6 +378,42 @@ export const initGuard = (container, guardName = 'Guardia') => {
     </div>`
   }
 
+  const renderSelection = async () => {
+    const buildingId = localStorage.getItem('sloty_building_id')
+
+    const { data: personnel } = await supabase
+      .from('personnel')
+      .select('*')
+      .eq('building_id', buildingId)
+      .eq('active', true)
+
+    state.personnel = personnel || []
+
+    screens.guardPin.innerHTML = `
+      <div style="min-height:100vh;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;padding:40px 24px;">
+        <div style="display:flex;width:100%;justify-content:space-between;align-items:center;margin-bottom:30px;">
+          <button id="btn-back-guard" style="background:none;border:none;color:rgba(255,255,255,0.5);font-size:1.5rem;cursor:pointer;">←</button>
+          <button id="btn-change-build" style="background:rgba(255,255,255,0.1);border:none;color:white;padding:6px 12px;border-radius:8px;font-size:0.6rem;font-weight:900;cursor:pointer;">CAMBIAR EDIFICIO</button>
+        </div>
+        <img src="/sloty-logo-v2.png.png" alt="Sloty" style="width:120px;height:auto;display:block;margin-bottom:8px;" />
+        <p style="color:rgba(255,255,255,0.4);font-size:0.65rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 32px;">SELECCIONA TU PERFIL</p>
+        
+        <div style="width:100%;max-width:320px;display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          ${(state.personnel || []).map(p => `
+            <div class="guard-card" data-id="${p.id}" style="background:rgba(255,255,255,0.05);padding:20px 10px;border-radius:18px;text-align:center;cursor:pointer;border:2px solid transparent;transition:all 0.2s;">
+              <div style="width:60px;height:60px;border-radius:50%;background:#333;margin:0 auto 10px;overflow:hidden;border:2px solid rgba(255,255,255,0.1);">
+                ${p.photo ? `<img src="${p.photo}" style="width:100%;height:100%;object-fit:cover;">` : `<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#666;font-weight:900;">${p.name.charAt(0)}</div>`}
+              </div>
+              <div style="color:white;font-weight:700;font-size:0.8rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.name}</div>
+            </div>
+          `).join(state.personnel?.length ? '' : '<p style="color:rgba(255,255,255,0.3);grid-column:span 2;padding:40px 0;">No hay guardias registrados.</p>')}
+        </div>
+        
+        <p style="color:rgba(255,255,255,0.2);font-size:0.75rem;margin-top:auto;padding-top:40px;">${state.buildingName || 'Edificio'}</p>
+      </div>
+    `
+  }
+
   const renderMap = (state) => {
     const level = state.levels.find(l=>l.name===activeLevel)||state.levels[0]
     if (!level) return ''
@@ -702,6 +738,8 @@ export const initGuard = (container, guardName = 'Guardia') => {
 
   const render = () => {
     const freshState = getParkingState()
+    if (selectedGuard) renderPinPad()
+    else renderSelection()
     if (!elShell) renderShell(freshState)
     elShell.innerHTML = renderHeader(freshState)
     
