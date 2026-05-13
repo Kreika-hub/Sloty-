@@ -42,7 +42,7 @@ export default defineConfig({
         navigateFallback: null,
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
+            urlPattern: ({ url }) => url.hostname.includes('supabase.co'),
             handler: 'NetworkOnly',
           },
           {
