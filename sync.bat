@@ -1,3 +1,3 @@
 git add .
-git commit -m "Reporting system, custom fields, and performance optimizations"
+git commit -m "SW strategy update"
 git push origin main
