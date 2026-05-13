@@ -37,35 +37,28 @@ export default defineConfig({
         ],
       },
       workbox: {
+        navigationPreload: false,
         globPatterns: ['**/*.{js,css,html,ico,png,jpg,svg,webp}'],
+        navigateFallback: null,
         runtimeCaching: [
           {
-            // Supabase API — NetworkFirst con fallback a caché
             urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'supabase-cache',
-              expiration: { maxEntries: 50, maxAgeSeconds: 300 },
-              networkTimeoutSeconds: 5,
-              cacheableResponse: { statuses: [0, 200] }
-            }
+            handler: 'NetworkOnly',
           },
           {
-            // Google Fonts — CacheFirst (raramente cambian)
             urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/i,
             handler: 'CacheFirst',
             options: {
               cacheName: 'google-fonts',
-              expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 }
+              expiration: { maxEntries: 10, maxAgeSeconds: 31536000 }
             }
           },
           {
-            // QR libs (cdnjs/unpkg) — StaleWhileRevalidate
             urlPattern: /^https:\/\/(cdnjs\.cloudflare\.com|unpkg\.com)\/.*/i,
             handler: 'StaleWhileRevalidate',
             options: {
               cacheName: 'cdn-libs',
-              expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 30 }
+              expiration: { maxEntries: 10, maxAgeSeconds: 2592000 }
             }
           }
         ]
