@@ -27,3 +27,6 @@ dist-ssr
 tmp
 .gemini
 package-lock.json
+
+.vercel
+.env*.local
