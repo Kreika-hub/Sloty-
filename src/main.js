@@ -35,7 +35,10 @@ const renderWelcome = () => {
           REGISTRAR MI EDIFICIO
         </button>
         <button id="btn-goto-login" style="width:100%;padding:20px;background:transparent;color:white;border:2px solid rgba(255,255,255,0.2);border-radius:18px;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:700;cursor:pointer;">
-          YA TENGO CUENTA O CÓDIGO
+          INICIAR SESIÓN (ADMIN)
+        </button>
+        <button id="btn-goto-guard-code" style="width:100%;padding:14px;background:transparent;color:rgba(255,255,255,0.75);border:1px solid rgba(255,255,255,0.15);font-family:'Montserrat',sans-serif;font-size:0.85rem;font-weight:700;cursor:pointer;letter-spacing:1px;border-radius:14px;">
+          SOY GUARDIA →
         </button>
         <p aria-hidden="true" tabindex="-1" style="color:rgba(255,255,255,0.35);font-size:0.65rem;font-weight:600;text-align:center;letter-spacing:2px;margin-top:4px;">POWERED BY KREIKA</p>
       </div>
@@ -43,7 +46,46 @@ const renderWelcome = () => {
   `
   $('btn-goto-register').onclick = () => { renderRegister(); showOnly('register') }
   $('btn-goto-login').onclick = () => { renderLogin(); showOnly('login') }
-  $('btn-goto-guard').onclick = () => { renderGuardPin(); showOnly('guardPin') }
+  $('btn-goto-guard-code').onclick = () => { renderGuardBuildingCode(); showOnly('login') }
+}
+
+const renderGuardBuildingCode = () => {
+  screens.login.innerHTML = `
+    <div style="min-height:100vh;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;">
+      <button onclick="renderWelcome(); showOnly('welcome')" style="position:absolute;top:24px;left:24px;background:none;border:none;color:rgba(255,255,255,0.5);font-size:1.5rem;cursor:pointer;">←</button>
+      <div style="margin-bottom:32px;text-align:center;">
+        <div style="font-size:3rem; margin-bottom:10px;">🛡️</div>
+        <h2 style="color:white; font-weight:900;">ACCESO GUARDIA</h2>
+        <p style="color:rgba(255,255,255,0.4);font-size:0.8rem;font-weight:600;margin-top:4px;">Ingresa el código del edificio</p>
+      </div>
+      <div style="width:100%;max-width:340px;display:flex;flex-direction:column;gap:14px;">
+        <input type="text" id="guard-bld-code" placeholder="EJ: SLO-1234" 
+          style="width:100%;padding:18px;border-radius:12px;border:2px solid #F5C518;background:rgba(255,255,255,0.05);color:white;font-family:'Montserrat',sans-serif;font-size:1.2rem;font-weight:900;text-align:center;outline:none;" />
+        <button id="btn-submit-guard-code" style="width:100%;padding:18px;background:#F5C518;color:#1a1a2e;border:none;border-radius:14px;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:900;cursor:pointer;margin-top:8px;">
+          CONTINUAR
+        </button>
+        <p id="guard-code-error" style="color:#e63946;text-align:center;font-size:0.85rem;font-weight:700;min-height:20px;"></p>
+      </div>
+    </div>
+  `
+  $('btn-submit-guard-code').onclick = async () => {
+    const code = $('guard-bld-code').value.trim().toUpperCase()
+    if(!code) return
+    $('btn-submit-guard-code').textContent = 'Buscando...'
+    const { data, error } = await supabase.from('buildings').select('*').eq('code', code).single()
+    if (error || !data) {
+      $('guard-code-error').textContent = 'Código no encontrado'
+      $('btn-submit-guard-code').textContent = 'CONTINUAR'
+      return
+    }
+    // Save minimal state for syncDown
+    const newState = { buildingId: data.id, buildingName: data.name, buildingCode: data.code, levels: [], personnel: [], movements: [] }
+    localStorage.setItem('sloty_state', JSON.stringify(newState))
+    await syncDown(data.code)
+    setDevRole('GUARD')
+    renderGuardPin()
+    showOnly('guardPin')
+  }
 }
 
 // ─── LOGIN SCREEN ──────────────────────────────────────────────
@@ -56,20 +98,18 @@ const renderLogin = () => {
         <p style="color:rgba(255,255,255,0.4);font-size:0.8rem;font-weight:600;margin-top:4px;">Panel Administrador</p>
       </div>
       <div style="width:100%;max-width:340px;display:flex;flex-direction:column;gap:14px;">
-        <div style="color:rgba(255,255,255,0.4); font-size:0.7rem; font-weight:700; text-align:center; margin-bottom:-5px;">INGRESA TU CORREO O CÓDIGO (EJ: SLO-1234)</div>
-        <input type="text" id="login-identifier" placeholder="Correo o Código de Edificio" 
+        <input type="email" id="login-email" placeholder="Correo electrónico" 
           style="width:100%;padding:16px;border-radius:12px;border:2px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:white;font-family:'Montserrat',sans-serif;font-size:0.95rem;outline:none;" />
-        <input type="password" id="login-password" placeholder="Contraseña (si usas correo)"
+        <input type="password" id="login-password" placeholder="Contraseña"
           style="width:100%;padding:16px;border-radius:12px;border:2px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:white;font-family:'Montserrat',sans-serif;font-size:0.95rem;outline:none;" />
         
         <div id="role-selector" style="display:flex;gap:8px;">
           <button class="role-chip" data-role="ADMIN" style="flex:1;padding:10px;border-radius:10px;border:2px solid rgba(255,255,255,0.2);background:transparent;color:rgba(255,255,255,0.5);font-weight:700;cursor:pointer;font-size:0.75rem;">Admin</button>
-          <button class="role-chip" data-role="GUARD" style="flex:1;padding:10px;border-radius:10px;border:2px solid rgba(255,255,255,0.2);background:transparent;color:rgba(255,255,255,0.5);font-weight:700;cursor:pointer;font-size:0.75rem;">Guardia</button>
           <button class="role-chip" data-role="MASTER" style="flex:1;padding:10px;border-radius:10px;border:2px solid rgba(255,255,255,0.2);background:transparent;color:rgba(255,255,255,0.5);font-weight:700;cursor:pointer;font-size:0.75rem;">Master</button>
         </div>
 
         <button id="btn-login" style="width:100%;padding:18px;background:#F5C518;color:#1a1a2e;border:none;border-radius:14px;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:900;cursor:pointer;margin-top:8px;">
-          ACCEDER
+          ENTRAR
         </button>
         <p id="login-error" style="color:#e63946;text-align:center;font-size:0.85rem;font-weight:700;min-height:20px;"></p>
         <div style="display:flex;flex-direction:column;gap:12px;margin-top:10px;text-align:center;">
@@ -102,89 +142,47 @@ const renderLogin = () => {
   chips[0].click()
 
   $('btn-login').onclick = async () => {
-    const id = $('login-identifier').value.trim()
+    const email = $('login-email').value.trim()
     const pass = $('login-password').value.trim()
     const errorEl = $('login-error')
     
-    if (!id) {
-      errorEl.textContent = 'Ingresa tu correo o código'
+    if (!email) {
+      errorEl.textContent = 'Ingresa tu correo'
       return
     }
 
     errorEl.textContent = 'Verificando...'
     
     try {
-      // 1. Check if it's a building code (e.g. SLO-1234)
-      if (id.includes('-')) {
-        const { data: bData, error: bErr } = await supabase
-          .from('buildings')
-          .select('*')
-          .eq('code', id.toUpperCase())
-          .single()
-        
-        if (bErr || !bData) {
-          errorEl.textContent = 'Código de edificio no encontrado'
-          return
-        }
-
-        // Initialize state with this building
-        const newState = {
-          buildingId: bData.id,
-          buildingName: bData.name,
-          buildingCode: bData.code,
-          adminInfo: { email: bData.admin_email || '', registered: true },
-          levels: [],
-          personnel: [],
-          movements: [],
-          stats: { totalSpots: 0, occupied: 0, dead: 0 }
-        }
-        
-        // Save and force sync down
-        localStorage.setItem('sloty_state', JSON.stringify(newState))
-        await syncDown(bData.code)
-        
-        const role = getUserRole()
-        if (role === 'GUARD') {
-          renderGuardPin()
-          showOnly('guardPin')
-        } else if (role === 'MASTER') {
-          initMaster($('main-screen'))
-          showOnly('main')
-        } else {
-          initAdmin($('main-screen'))
-          showOnly('main')
-        }
-        return
-      }
-
-      // 2. Dev Bypass for email login
-      const { data: bDataEmail } = await supabase
+      const { data: bDataEmail, error: bErr } = await supabase
         .from('buildings')
         .select('*')
-        .or(`admin_email.eq.${id}`)
+        .eq('admin_email', email)
         .single()
 
-      if (bDataEmail) {
-         // Same logic: Sync state from this building
-         const newState = {
-            buildingId: bDataEmail.id,
-            buildingName: bDataEmail.name,
-            buildingCode: bDataEmail.code,
-            adminInfo: { email: bDataEmail.admin_email || '', registered: true },
-            levels: [], personnel: [], movements: []
-         }
-         localStorage.setItem('sloty_state', JSON.stringify(newState))
-         await syncDown(bDataEmail.code)
+      if (bErr || !bDataEmail) {
+         errorEl.textContent = 'Correo no registrado'
+         return
       }
+
+      // Sync state from this building
+      const newState = {
+         buildingId: bDataEmail.id,
+         buildingName: bDataEmail.name,
+         buildingCode: bDataEmail.code,
+         adminInfo: { email: bDataEmail.admin_email || '', registered: true },
+         levels: [], personnel: [], movements: []
+      }
+      localStorage.setItem('sloty_state', JSON.stringify(newState))
+      await syncDown(bDataEmail.code)
 
       const role = getUserRole()
       if (role === 'MASTER') initMaster($('main-screen'))
       else if (role === 'ADMIN') initAdmin($('main-screen'))
-      else if (role === 'GUARD') initGuard($('main-screen'))
       showOnly('main')
 
     } catch (err) {
-      errorEl.textContent = 'Error al conectar con el servidor'
+      errorEl.textContent = 'Error de conexión'
       console.error(err)
     }
   }
