@@ -506,17 +506,19 @@ export const initAdmin = (container) => {
              ${ICONS.SETTINGS}
              <span>Auditoría</span>
            </div>
-        </div>
 
-        <!-- ADS CAROUSEL -->
-        ${ads.length ? `
-          <div style="font-size:0.7rem; font-weight:900; color:var(--primary); margin-bottom:15px; text-transform:uppercase;">NOTICIAS & ANUNCIOS</div>
-          <div class="carousel-container glass-card" style="border-radius:24px; padding:0; height:180px; margin: 0 10px;">
-            <div class="carousel-track" id="main-carousel">
-              ${ads.map(ad => `<div class="ad-card" style="aspect-ratio:auto; height:180px;"><img src="${ad.imageUrl}" style="object-fit:cover;"></div>`).join('')}
-            </div>
-          </div>
-        ` : ''}
+           <!-- ADS CAROUSEL INSIDE GRID FOR PERFECT WIDTH ALIGNMENT -->
+           ${ads.length ? `
+             <div style="grid-column: span 3; margin-top: 10px;">
+               <div style="font-size:0.7rem; font-weight:900; color:var(--primary); margin-bottom:15px; text-transform:uppercase;">NOTICIAS & ANUNCIOS</div>
+               <div class="carousel-container glass-card" style="border-radius:24px; padding:0; height:180px;">
+                 <div class="carousel-track" id="main-carousel">
+                   ${ads.map(ad => `<div class="ad-card" style="aspect-ratio:auto; height:180px;"><img src="${ad.imageUrl}" style="object-fit:cover;"></div>`).join('')}
+                 </div>
+               </div>
+             </div>
+           ` : ''}
+        </div>
 
       </div>`
   }
