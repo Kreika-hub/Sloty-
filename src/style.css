@@ -185,7 +185,7 @@ a {
 
 .ad-card {
   min-width: 100%;
-  aspect-ratio: 16/3.5;
+  aspect-ratio: 16/7;
   background: #2a2a40;
   border-radius: 20px;
   overflow: hidden;
@@ -438,7 +438,7 @@ a {
 }
 
 .ad-history-item {
-  aspect-ratio: 2/1;
+  aspect-ratio: 1/1;
   border-radius: 12px;
   overflow: hidden;
   position: relative;

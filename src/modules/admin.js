@@ -511,9 +511,9 @@ export const initAdmin = (container) => {
         <!-- ADS CAROUSEL -->
         ${ads.length ? `
           <div style="font-size:0.7rem; font-weight:900; color:var(--primary); margin-bottom:15px; text-transform:uppercase;">NOTICIAS & ANUNCIOS</div>
-          <div class="carousel-container glass-card" style="border-radius:24px; padding:0; height:90px;">
+          <div class="carousel-container glass-card" style="border-radius:24px; padding:0; height:180px; margin: 0 10px;">
             <div class="carousel-track" id="main-carousel">
-              ${ads.map(ad => `<div class="ad-card" style="aspect-ratio:auto; height:90px;"><img src="${ad.imageUrl}" style="object-fit:cover;"></div>`).join('')}
+              ${ads.map(ad => `<div class="ad-card" style="aspect-ratio:auto; height:180px;"><img src="${ad.imageUrl}" style="object-fit:cover;"></div>`).join('')}
             </div>
           </div>
         ` : ''}
