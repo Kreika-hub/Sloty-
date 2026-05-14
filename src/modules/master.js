@@ -43,27 +43,40 @@ export const initMaster = (container) => {
   window._master_toggleFeature = (k) => {
     const s = getState(); s.features = s.features||{}; s.features[k] = !s.features[k]; saveParkingState(s); render()
   }
-  window._master_addAd = (imgData) => {
+  window._master_addAd = async (imgData) => {
     if(!imgData) return
-    const s = getState(); s.ads = s.ads||[]; 
-    s.ads.unshift({id:Date.now().toString(), imageUrl:imgData, active:true, timestamp: Date.now()}); 
-    saveParkingState(s); render()
+    const { error } = await supabase
+      .from('ads')
+      .insert({ image_url: imgData, active: true })
+    if (error) console.error(error)
+    render()
   }
-  window._master_toggleAd = (id) => {
-    const s = getState(); const ad = s.ads.find(a=>a.id===id); if(ad) ad.active=!ad.active; saveParkingState(s); render()
+  window._master_toggleAd = async (id) => {
+    const s = getState(); const ad = (s.ads||[]).find(a=>a.id===id); 
+    if(!ad) return;
+    const { error } = await supabase
+      .from('ads')
+      .update({ active: !ad.active })
+      .eq('id', id)
+    if (error) console.error(error)
+    render()
   }
-  window._master_repostAd = (id) => {
-    const s = getState(); const adIdx = s.ads.findIndex(a=>a.id===id)
-    if(adIdx > -1) {
-      const [ad] = s.ads.splice(adIdx, 1)
-      ad.timestamp = Date.now()
-      s.ads.unshift(ad)
-      saveParkingState(s); render()
-    }
+  window._master_repostAd = async (id) => {
+    const { error } = await supabase
+      .from('ads')
+      .update({ timestamp: new Date().toISOString() })
+      .eq('id', id)
+    if (error) console.error(error)
+    render()
   }
-  window._master_deleteAd = (id) => {
+  window._master_deleteAd = async (id) => {
     if(!confirm('¿Borrar anuncio definitivamente?')) return; 
-    const s = getState(); s.ads = s.ads.filter(a=>a.id!==id); saveParkingState(s); render()
+    const { error } = await supabase
+      .from('ads')
+      .delete()
+      .eq('id', id)
+    if (error) console.error(error)
+    render()
   }
   window._master_handleFileUpload = (input) => {
     const file = input.files[0]
@@ -86,35 +99,32 @@ export const initMaster = (container) => {
         </div>`).join('')}
     </div>`
 
-  const renderBuildings = (state) => {
-    state = ensureFeatures(state); const total = state.levels.reduce((a,l)=>a+l.slots.length,0), occ = state.levels.reduce((a,l)=>a+l.slots.filter(s=>s.status!=='FREE').length,0), plan = PLANS.find(p=>p.key===state.plan)||PLANS[0]
-    if (selectedBuilding === 'detail') {
+  const renderBuildings = (state, buildings = []) => {
+    if (selectedBuilding && selectedBuilding !== 'detail') {
+      const b = buildings.find(x => x.id === selectedBuilding) || {}
       return `<div style="padding:20px;"><button onclick="_master_back()" style="background:none;border:none;color:rgba(255,255,255,0.5);font-size:0.8rem;cursor:pointer;margin-bottom:15px;">← VOLVER</button>
         <div style="background:rgba(255,255,255,0.06);padding:20px;border-radius:16px;">
-          <div style="font-size:1.2rem;font-weight:900;color:white;">${state.buildingName}</div>
-          <div style="display:flex;gap:8px;margin:15px 0;"><button onclick="_master_toggleActive()" style="background:${state.active?'#22c55e22':'#e6394622'};color:${state.active?'#22c55e':'#e63946'};border:1px solid currentColor;padding:5px 10px;border-radius:6px;font-size:0.7rem;font-weight:900;">${state.active?'ACTIVO':'INACTIVO'}</button></div>
+          <div style="font-size:1.2rem;font-weight:900;color:white;">${b.name || 'Edificio'}</div>
+          <div style="font-size:0.7rem;color:#666;margin-top:4px;">${b.code || ''}</div>
+          <div style="display:flex;gap:8px;margin:15px 0;"><button style="background:#22c55e22;color:#22c55e;border:1px solid currentColor;padding:5px 10px;border-radius:6px;font-size:0.7rem;font-weight:900;">ACTIVO</button></div>
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px;">
-            <div style="background:rgba(255,255,255,0.04);padding:10px;border-radius:8px;text-align:center;"><div style="color:#F5C518;font-weight:900;">${total}</div><div style="font-size:0.5rem;color:#666;">SLOTS</div></div>
-            <div style="background:rgba(255,255,255,0.04);padding:10px;border-radius:8px;text-align:center;"><div style="color:#22c55e;font-weight:900;">${occ}</div><div style="font-size:0.5rem;color:#666;">OCC</div></div>
-            <div style="background:rgba(255,255,255,0.04);padding:10px;border-radius:8px;text-align:center;"><div style="color:white;font-weight:900;">${(state.movements||[]).length}</div><div style="font-size:0.5rem;color:#666;">MOVS</div></div>
+            <div style="background:rgba(255,255,255,0.04);padding:10px;border-radius:8px;text-align:center;"><div style="color:#F5C518;font-weight:900;">${b.levels || 0}</div><div style="font-size:0.5rem;color:#666;">PISOS</div></div>
+            <div style="background:rgba(255,255,255,0.04);padding:10px;border-radius:8px;text-align:center;"><div style="color:#22c55e;font-weight:900;">-</div><div style="font-size:0.5rem;color:#666;">OCC</div></div>
+            <div style="background:rgba(255,255,255,0.04);padding:10px;border-radius:8px;text-align:center;"><div style="color:white;font-weight:900;">-</div><div style="font-size:0.5rem;color:#666;">MOVS</div></div>
           </div>
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
-            ${PLANS.map(p=>`<button onclick="_master_setPlan('${p.key}')" style="padding:10px 5px;border-radius:8px;border:1px solid ${state.plan===p.key?p.color:'rgba(255,255,255,0.1)'};background:${state.plan===p.key?p.color+'22':'transparent'};color:${state.plan===p.key?p.color:'rgba(255,255,255,0.3)'};font-size:0.6rem;font-weight:900;">${p.label}</button>`).join('')}
-          </div>
-        </div>
-        <div style="background:rgba(255,255,255,0.06);padding:20px;border-radius:16px;margin-top:20px;">
-          <div style="font-size:0.7rem;font-weight:900;color:#F5C518;margin-bottom:15px;">FEATURES</div>
-          ${FEATURES.map(f=>`<div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.05);color:white;font-size:0.8rem;"><div style="display:flex;gap:10px;"><span>${f.icon}</span><span>${f.label}</span></div><button onclick="_master_toggleFeature('${f.key}')" style="background:${state.features[f.key]?'#22c55e':'#333'};width:36px;height:18px;border-radius:9px;border:none;"></button></div>`).join('')}
         </div>
       </div>`
     }
     return `<div style="padding:20px;">
-      <div onclick="_master_selectBuilding()" style="background:rgba(255,255,255,0.06);padding:20px;border-radius:16px;cursor:pointer;border:1px solid rgba(255,255,255,0.1);">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <div><div style="font-size:1rem;font-weight:900;color:white;">${state.buildingName}</div><div style="font-size:0.6rem;color:#666;margin-top:4px;">${state.buildingCode} · ${plan.label} · ${total} slots</div></div>
-          <div style="color:${state.active?'#22c55e':'#e63946'};font-size:0.6rem;font-weight:900;">${state.active?'● ACTIVO':'● INACTIVO'}</div>
+      ${buildings.map(b => `
+        <div onclick="selectedBuilding='${b.id}'; render()" style="background:rgba(255,255,255,0.06);padding:20px;border-radius:16px;cursor:pointer;border:1px solid rgba(255,255,255,0.1);margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div><div style="font-size:1rem;font-weight:900;color:white;">${b.name}</div><div style="font-size:0.6rem;color:#666;margin-top:4px;">${b.code} · ${b.levels || 1} niveles</div></div>
+            <div style="color:#22c55e;font-size:0.6rem;font-weight:900;">● ACTIVO</div>
+          </div>
         </div>
-      </div>
+      `).join('')}
+      ${!buildings.length ? '<div style="color:rgba(255,255,255,0.2);text-align:center;padding:40px;">No hay edificios registrados en Supabase</div>' : ''}
     </div>`
   }
 
@@ -171,16 +181,25 @@ export const initMaster = (container) => {
     elContent = container.querySelector('#master-content-area')
   }
 
-  const render = () => {
+  const render = async () => {
     const s = getState()
     if (!elShell) renderShell()
     elShell.innerHTML = tabBar()
+    
     let html = ''
-    if      (activeTab==='BUILDINGS') html = renderBuildings(s)
-    else if (activeTab==='ADS')       html = renderAds(s)
+    if (activeTab==='BUILDINGS') {
+      const { data: bld } = await supabase.from('buildings').select('*')
+      html = renderBuildings(s, bld || [])
+    }
+    else if (activeTab==='ADS') {
+      const { data: ads } = await supabase.from('ads').select('*').order('timestamp', { ascending: false })
+      s.ads = ads || [] // Sincronizar temporalmente para las acciones
+      html = renderAds(s)
+    }
     else if (activeTab==='AUDIT')     html = `<div style="padding:20px;color:#666;font-size:0.8rem;">(Logs in background)</div>`
     else if (activeTab==='SYSTEM')    html = `<div style="padding:20px;"><button onclick="_master_resetFull()" style="width:100%;padding:15px;background:#e6394622;color:#e63946;border:1px solid #e63946;border-radius:12px;font-weight:900;">RESET FULL SYSTEM</button></div>`
-    if (elContent.innerHTML !== html) elContent.innerHTML = html
+    
+    elContent.innerHTML = html
   }
 
   render()

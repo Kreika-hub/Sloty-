@@ -3,7 +3,7 @@ import { supabase } from './db.js'
 import { initGuard } from './modules/guard.js'
 import { initAdmin } from './modules/admin.js'
 import { initMaster } from './modules/master.js'
-import { getParkingState, saveParkingState, getCleanPrefix } from './db.js'
+import { getParkingState, saveParkingState, getCleanPrefix, syncDown } from './db.js'
 import { initUpdateBanner } from './pwa-update.js'
 
 const $ = id => document.getElementById(id)
@@ -35,10 +35,7 @@ const renderWelcome = () => {
           REGISTRAR MI EDIFICIO
         </button>
         <button id="btn-goto-login" style="width:100%;padding:20px;background:transparent;color:white;border:2px solid rgba(255,255,255,0.2);border-radius:18px;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:700;cursor:pointer;">
-          YA TENGO CUENTA
-        </button>
-        <button id="btn-goto-guard" style="width:100%;padding:14px;background:transparent;color:rgba(255,255,255,0.75);border:1px solid rgba(255,255,255,0.15);font-family:'Montserrat',sans-serif;font-size:0.85rem;font-weight:700;cursor:pointer;letter-spacing:1px;border-radius:14px;">
-          SOY GUARDIA →
+          YA TENGO CUENTA O CÓDIGO
         </button>
         <p aria-hidden="true" tabindex="-1" style="color:rgba(255,255,255,0.35);font-size:0.65rem;font-weight:600;text-align:center;letter-spacing:2px;margin-top:4px;">POWERED BY KREIKA</p>
       </div>
@@ -59,22 +56,24 @@ const renderLogin = () => {
         <p style="color:rgba(255,255,255,0.4);font-size:0.8rem;font-weight:600;margin-top:4px;">Panel Administrador</p>
       </div>
       <div style="width:100%;max-width:340px;display:flex;flex-direction:column;gap:14px;">
-        <input type="email" id="email" placeholder="Correo electrónico" autocomplete="email"
+        <div style="color:rgba(255,255,255,0.4); font-size:0.7rem; font-weight:700; text-align:center; margin-bottom:-5px;">INGRESA TU CORREO O CÓDIGO (EJ: SLO-1234)</div>
+        <input type="text" id="login-identifier" placeholder="Correo o Código de Edificio" 
           style="width:100%;padding:16px;border-radius:12px;border:2px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:white;font-family:'Montserrat',sans-serif;font-size:0.95rem;outline:none;" />
-        <input type="password" id="password" placeholder="Contraseña"
+        <input type="password" id="login-password" placeholder="Contraseña (si usas correo)"
           style="width:100%;padding:16px;border-radius:12px;border:2px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:white;font-family:'Montserrat',sans-serif;font-size:0.95rem;outline:none;" />
-        <div style="display:flex;gap:8px;">
-          <button class="role-chip active" data-role="MASTER" style="flex:1;padding:10px;border-radius:10px;border:2px solid #F5C518;background:#F5C518;color:#1a1a2e;font-weight:900;cursor:pointer;font-size:0.75rem;font-family:'Montserrat',sans-serif;">Master</button>
-          <button class="role-chip" data-role="ADMIN" style="flex:1;padding:10px;border-radius:10px;border:2px solid rgba(255,255,255,0.2);background:transparent;color:rgba(255,255,255,0.5);font-weight:700;cursor:pointer;font-size:0.75rem;font-family:'Montserrat',sans-serif;">Admin</button>
+        
+        <div id="role-selector" style="display:flex;gap:8px;">
+          <button class="role-chip" data-role="ADMIN" style="flex:1;padding:10px;border-radius:10px;border:2px solid rgba(255,255,255,0.2);background:transparent;color:rgba(255,255,255,0.5);font-weight:700;cursor:pointer;font-size:0.75rem;">Admin</button>
+          <button class="role-chip" data-role="GUARD" style="flex:1;padding:10px;border-radius:10px;border:2px solid rgba(255,255,255,0.2);background:transparent;color:rgba(255,255,255,0.5);font-weight:700;cursor:pointer;font-size:0.75rem;">Guardia</button>
+          <button class="role-chip" data-role="MASTER" style="flex:1;padding:10px;border-radius:10px;border:2px solid rgba(255,255,255,0.2);background:transparent;color:rgba(255,255,255,0.5);font-weight:700;cursor:pointer;font-size:0.75rem;">Master</button>
         </div>
+
         <button id="btn-login" style="width:100%;padding:18px;background:#F5C518;color:#1a1a2e;border:none;border-radius:14px;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:900;cursor:pointer;margin-top:8px;">
-          ENTRAR
+          ACCEDER
         </button>
         <p id="login-error" style="color:#e63946;text-align:center;font-size:0.85rem;font-weight:700;min-height:20px;"></p>
         <div style="display:flex;flex-direction:column;gap:12px;margin-top:10px;text-align:center;">
-          <a href="#" id="forgot-password" style="color:rgba(255,255,255,0.3);font-size:0.8rem;display:block;">¿Olvidaste tu contraseña?</a>
           <a href="#" id="goto-register" style="color:#F5C518;font-size:0.85rem;font-weight:900;text-decoration:none;">REGISTRAR NUEVO EDIFICIO</a>
-          <a href="#" id="goto-guard" style="color:rgba(255,255,255,0.4);font-size:0.8rem;margin-top:10px;">Soy Guardia →</a>
         </div>
       </div>
     </div>
@@ -94,23 +93,99 @@ const renderLogin = () => {
       chip.style.background = '#F5C518'
       chip.style.borderColor = '#F5C518'
       chip.style.color = '#1a1a2e'
+      chip.style.fontWeight = '900'
       setDevRole(chip.dataset.role)
     })
   })
 
+  // Activar Admin por defecto visualmente
+  chips[0].click()
+
   $('btn-login').onclick = async () => {
-    const email = $('email').value.trim()
-    const password = $('password').value.trim()
-    if (!email || !password) { $('login-error').textContent = 'Completa todos los campos'; return }
-    $('btn-login').textContent = 'Entrando...'
-    $('btn-login').disabled = true
+    const id = $('login-identifier').value.trim()
+    const pass = $('login-password').value.trim()
+    const errorEl = $('login-error')
+    
+    if (!id) {
+      errorEl.textContent = 'Ingresa tu correo o código'
+      return
+    }
+
+    errorEl.textContent = 'Verificando...'
+    
     try {
-      const data = await login(email, password)
-      await redirectByRole(data.user.id)
+      // 1. Check if it's a building code (e.g. SLO-1234)
+      if (id.includes('-')) {
+        const { data: bData, error: bErr } = await supabase
+          .from('buildings')
+          .select('*')
+          .eq('code', id.toUpperCase())
+          .single()
+        
+        if (bErr || !bData) {
+          errorEl.textContent = 'Código de edificio no encontrado'
+          return
+        }
+
+        // Initialize state with this building
+        const newState = {
+          buildingId: bData.id,
+          buildingName: bData.name,
+          buildingCode: bData.code,
+          adminInfo: { email: bData.admin_email || '', registered: true },
+          levels: [],
+          personnel: [],
+          movements: [],
+          stats: { totalSpots: 0, occupied: 0, dead: 0 }
+        }
+        
+        // Save and force sync down
+        localStorage.setItem('sloty_state', JSON.stringify(newState))
+        await syncDown(bData.code)
+        
+        const role = getUserRole()
+        if (role === 'GUARD') {
+          renderGuardPin()
+          showOnly('guardPin')
+        } else if (role === 'MASTER') {
+          initMaster($('main-screen'))
+          showOnly('main')
+        } else {
+          initAdmin($('main-screen'))
+          showOnly('main')
+        }
+        return
+      }
+
+      // 2. Dev Bypass for email login
+      const { data: bDataEmail } = await supabase
+        .from('buildings')
+        .select('*')
+        .or(`admin_email.eq.${id}`)
+        .single()
+
+      if (bDataEmail) {
+         // Same logic: Sync state from this building
+         const newState = {
+            buildingId: bDataEmail.id,
+            buildingName: bDataEmail.name,
+            buildingCode: bDataEmail.code,
+            adminInfo: { email: bDataEmail.admin_email || '', registered: true },
+            levels: [], personnel: [], movements: []
+         }
+         localStorage.setItem('sloty_state', JSON.stringify(newState))
+         await syncDown(bDataEmail.code)
+      }
+
+      const role = getUserRole()
+      if (role === 'MASTER') initMaster($('main-screen'))
+      else if (role === 'ADMIN') initAdmin($('main-screen'))
+      else if (role === 'GUARD') initGuard($('main-screen'))
+      showOnly('main')
+
     } catch (err) {
-      $('login-error').textContent = 'Correo o contraseña incorrectos'
-      $('btn-login').textContent = 'ENTRAR'
-      $('btn-login').disabled = false
+      errorEl.textContent = 'Error al conectar con el servidor'
+      console.error(err)
     }
   }
 }
@@ -235,6 +310,17 @@ const renderRegister = () => {
         await finishRegister()
       }
     }
+
+    // Bloquear reinicio por tecla ENTER en móviles
+    const inputs = screens.register.querySelectorAll('input');
+    inputs.forEach(input => {
+      input.onkeydown = (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          $('btn-reg-next').click();
+        }
+      };
+    });
   }
 
   const finishRegister = async () => {

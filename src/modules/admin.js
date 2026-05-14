@@ -428,14 +428,14 @@ export const initAdmin = (container) => {
       </div>`
   }
 
-  const renderHome = (state) => {
+  const renderHome = (state, ads = []) => {
     const total = state.stats?.totalSpots || 0
     const occ = state.stats?.occupied || 0
     const perc = total > 0 ? Math.round((occ / total) * 100) : 0
     const dash = 251.2 // 2 * PI * 40
     const offset = dash - (perc / 100) * dash
     
-    const ads = state.ads?.filter(a => a.active) || []
+    const activeAds = ads.filter(a => a.active) || []
 
     let avgHours = 0;
     const salidas = (state.movements || []).filter(m => m.type === 'SALIDA');
@@ -508,12 +508,12 @@ export const initAdmin = (container) => {
            </div>
 
            <!-- ADS CAROUSEL INSIDE GRID FOR PERFECT WIDTH ALIGNMENT -->
-           ${ads.length ? `
-             <div style="grid-column: span 3; margin-top: 10px;">
+           ${activeAds.length ? `
+             <div style="grid-column: 1 / -1; margin-top: 10px;">
                <div style="font-size:0.7rem; font-weight:900; color:var(--primary); margin-bottom:15px; text-transform:uppercase;">NOTICIAS & ANUNCIOS</div>
                <div class="carousel-container glass-card" style="border-radius:24px; padding:0; height:180px;">
                  <div class="carousel-track" id="main-carousel">
-                   ${ads.map(ad => `<div class="ad-card" style="aspect-ratio:auto; height:180px;"><img src="${ad.imageUrl}" style="object-fit:cover;"></div>`).join('')}
+                   ${activeAds.map(ad => `<div class="ad-card" style="aspect-ratio:auto; height:180px;"><img src="${ad.image_url}" style="object-fit:cover;"></div>`).join('')}
                  </div>
                </div>
              </div>
@@ -907,10 +907,13 @@ export const initAdmin = (container) => {
     </div>`;
   }
 
-  const renderTabContent = (state) => {
+  const renderTabContent = async (state) => {
     if (!elMain) return; let html = ''
     switch(activeTab) {
-      case 'HOME': html = renderHome(state); break
+      case 'HOME': 
+        const { data: adsData } = await supabase.from('ads').select('*').order('timestamp', { ascending: false })
+        html = renderHome(state, adsData || []); 
+        break
       case 'PERSONAL': html = renderPersonnel(state); break
       case 'STRUCTURE': html = renderLevels(state); break
       case 'REPORTES': html = renderReports(state); break
@@ -991,20 +994,20 @@ export const initAdmin = (container) => {
     l.innerHTML = `<div style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;backdrop-filter:blur(10px);"><div style="background:white;padding:30px;border-radius:32px;width:100%;max-width:380px;text-align:center;"><h3 style="font-weight:900;margin-bottom:10px;">Confirmar eliminación</h3><p style="color:#666;font-size:0.85rem;margin-bottom:30px;">Esta acción es permanente y afectará la base de datos.</p><div style="display:flex;flex-direction:column;gap:10px;"><button data-action="CONFIRM_DELETE" style="background:#e63946;color:white;border:none;padding:18px;border-radius:18px;font-weight:900;">ELIMINAR AHORA</button><button data-action="CANCEL_MODAL" style="background:#f4f4f4;color:#333;border:none;padding:18px;border-radius:18px;font-weight:900;">VOLVER</button></div></div></div>`
   }
 
-  const render = () => {
+  const render = async () => {
     const s = getParkingState()
     if (!elMain) renderShell(s)
     renderHeader(s)
-    renderTabContent(s); renderModal()
+    await renderTabContent(s); renderModal()
     container.querySelectorAll('.admin-tab-btn').forEach(v => {
       const active = v.dataset.tab === activeTab
       v.style.color = active ? '#F5C518' : 'rgba(255,255,255,0.4)'
     })
   }
 
-  setInterval(() => {
+  setInterval(async () => {
     const s = getParkingState()
-    if (['HOME','FINANCE','REPORTES'].includes(activeTab)) renderTabContent(s)
+    if (['HOME','FINANCE','REPORTES'].includes(activeTab)) await renderTabContent(s)
     const t = container.querySelector('#main-carousel'); let carouselIndex = 0
     if (t && t.children.length > 1) { carouselIndex = (window._cIdx || 0) + 1; window._cIdx = carouselIndex % t.children.length; t.style.transform = `translateX(-${window._cIdx * 100}%)` }
   }, 4000)

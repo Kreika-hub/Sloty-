@@ -133,15 +133,23 @@ export const updateBuildingProfile = async (state, newName) => {
 }
 
 let hasBootedDown = false
-const syncDown = async (buildingCode) => {
-    if (!navigator.onLine || hasBootedDown) return
-    hasBootedDown = true
+export const syncDown = async (buildingCode) => {
+    if (!navigator.onLine) return
+    console.log('[Sloty] Inicia descarga de sincronización para:', buildingCode)
     
     try {
-        const { data: bData } = await supabase.from('buildings').select('*').eq('code', buildingCode).single()
-        if (!bData) return
+        const { data: bData } = await supabase
+            .from('buildings')
+            .select('*')
+            .eq('code', buildingCode.toUpperCase())
+            .single()
+            
+        if (!bData) {
+            console.warn('[Sloty] Edificio no encontrado en la nube')
+            return
+        }
+        
         const buildingId = bData.id
-
         const [ { data: sData }, { data: aData }, { data: pData } ] = await Promise.all([
             supabase.from('parking_slots').select('*').eq('building_id', buildingId),
             supabase.from('access_logs').select('*').eq('building_id', buildingId).limit(200).order('timestamp', { ascending: false }),
@@ -150,6 +158,8 @@ const syncDown = async (buildingCode) => {
 
         const state = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}
         state.buildingId = buildingId 
+        state.buildingName = bData.name
+        state.buildingCode = bData.code
         
         if (pData) state.personnel = pData
 
@@ -170,12 +180,10 @@ const syncDown = async (buildingCode) => {
                    category: slot.category
                 })
             })
-            // We want to merge smoothly without destroying the frontend order, but overwriting is safer
             state.levels = Object.values(levelMap)
         }
 
         if (aData) {
-           const existingIds = new Set((state.movements || []).map(m => m.id))
            const mappedLogs = aData.map(l => ({
                id: l.id,
                type: l.type,
@@ -191,19 +199,13 @@ const syncDown = async (buildingCode) => {
                metadata: l.metadata,
                closed: l.closed
            }))
-           
-           mappedLogs.forEach(l => {
-              if (!existingIds.has(l.id)) {
-                 if (!state.movements) state.movements = []
-                 state.movements.unshift(l) 
-              }
-           })
-           // sort desc
-           state.movements.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp))
+           state.movements = mappedLogs
         }
 
         state.stats = recalcStatsData(state)
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+        hasBootedDown = true
+        console.log('[Sloty] Sincronización exitosa.')
     } catch (e) {
         console.error('[Sloty] Download sync error:', e)
     }
