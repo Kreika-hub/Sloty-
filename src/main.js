@@ -8,11 +8,29 @@ import { initUpdateBanner } from './pwa-update.js'
 
 const $ = id => document.getElementById(id)
 
+const renderAlert = (msg, isError = false) => {
+  const layer = document.createElement('div');
+  layer.style = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); backdrop-filter:blur(10px); display:flex; align-items:center; justify-content:center; z-index:10000; padding:24px;';
+  layer.innerHTML = `
+    <div style="background:white; padding:35px 25px; border-radius:32px; width:100%; max-width:340px; text-align:center; box-shadow:0 20px 50px rgba(0,0,0,0.3); transform: scale(0.9); animation: modalIn 0.3s forwards cubic-bezier(0.17, 0.89, 0.32, 1.28);">
+      <div style="font-size:3.5rem; margin-bottom:15px;">${isError ? '❌' : '✅'}</div>
+      <div style="font-weight:900; color:#1a1a2e; font-size:1.2rem; line-height:1.3; margin-bottom:25px; font-family:'Montserrat',sans-serif;">${msg}</div>
+      <button id="alert-close-btn" style="width:100%; padding:18px; background:#1a1a2e; color:var(--accent); border:none; border-radius:18px; font-weight:900; font-size:0.9rem; cursor:pointer; text-transform:uppercase; letter-spacing:1px;">ENTENDIDO</button>
+    </div>
+    <style>
+      @keyframes modalIn { to { transform: scale(1); } }
+    </style>
+  `;
+  document.body.appendChild(layer);
+  layer.querySelector('#alert-close-btn').onclick = () => layer.remove();
+}
+
 const screens = {
   welcome: $('welcome-screen'),
   login: $('login-screen'),
   register: $('register-screen'),
   guardPin: $('guard-pin-screen'),
+  residentPanel: $('resident-screen'),
   main: $('main-screen')
 }
 
@@ -28,17 +46,20 @@ const renderWelcome = () => {
     <div style="min-height:100vh;min-height:100dvh;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:env(safe-area-inset-top, 40px) 24px env(safe-area-inset-bottom, 40px);">
       <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;gap:0;">
         <img src="/sloty-logo-v2.png.png" alt="Sloty" style="width:75%;max-width:300px;height:auto;display:block;margin:0 auto;" />
-        <p aria-label="Gestión inteligente de estacionamientos" style="color:rgba(255,255,255,0.7);font-size:0.8rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;margin:20px 0 0;text-align:center;">GESTIÓN INTELIGENTE DE<br>ESTACIONAMIENTOS</p>
+        <p aria-label="Gestión inteligente de estacionamientos" style="color:rgba(255,255,255,0.7);font-size:0.8rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;margin:40px 0 40px;text-align:center;">GESTIÓN INTELIGENTE DE<br>ESTACIONAMIENTOS</p>
       </div>
       <div style="width:100%;max-width:420px;display:flex;flex-direction:column;gap:14px;padding-bottom:20px;">
         <button id="btn-goto-register" style="width:100%;padding:20px;background:#F5C518;color:#1a1a2e;border:none;border-radius:18px;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:900;cursor:pointer;letter-spacing:1px;">
           REGISTRAR MI EDIFICIO
         </button>
         <button id="btn-goto-login" style="width:100%;padding:20px;background:transparent;color:white;border:2px solid rgba(255,255,255,0.2);border-radius:18px;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:700;cursor:pointer;">
-          INICIAR SESIÓN (ADMIN)
+          INICIAR SESIÓN
         </button>
         <button id="btn-goto-guard-code" style="width:100%;padding:14px;background:transparent;color:rgba(255,255,255,0.75);border:1px solid rgba(255,255,255,0.15);font-family:'Montserrat',sans-serif;font-size:0.85rem;font-weight:700;cursor:pointer;letter-spacing:1px;border-radius:14px;">
           SOY GUARDIA →
+        </button>
+        <button id="btn-goto-resident-login" style="width:100%;padding:14px;background:rgba(255,255,255,0.05);color:var(--accent);border:1px solid var(--accent);font-family:'Montserrat',sans-serif;font-size:0.85rem;font-weight:900;cursor:pointer;letter-spacing:1px;border-radius:14px;">
+          SOY RESIDENTE 🏠
         </button>
         <p aria-hidden="true" tabindex="-1" style="color:rgba(255,255,255,0.35);font-size:0.65rem;font-weight:600;text-align:center;letter-spacing:2px;margin-top:4px;">POWERED BY KREIKA</p>
       </div>
@@ -47,12 +68,15 @@ const renderWelcome = () => {
   $('btn-goto-register').onclick = () => { renderRegister(); showOnly('register') }
   $('btn-goto-login').onclick = () => { renderLogin(); showOnly('login') }
   $('btn-goto-guard-code').onclick = () => { renderGuardBuildingCode(); showOnly('login') }
+  $('btn-goto-resident-login').onclick = () => { renderResidentLogin(); showOnly('login') }
 }
 
 const renderGuardBuildingCode = () => {
   screens.login.innerHTML = `
     <div style="min-height:100vh;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;">
-      <button onclick="renderWelcome(); showOnly('welcome')" style="position:absolute;top:24px;left:24px;background:none;border:none;color:rgba(255,255,255,0.5);font-size:1.5rem;cursor:pointer;">←</button>
+      <button id="btn-back-welcome-guard" style="position:absolute;top:24px;left:24px;background:none;border:none;color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;width:40px;height:40px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="width:24px; height:24px;"><path d="m15 18-6-6 6-6"/></svg>
+      </button>
       <div style="margin-bottom:32px;text-align:center;">
         <div style="font-size:3rem; margin-bottom:10px;">🛡️</div>
         <h2 style="color:white; font-weight:900;">ACCESO GUARDIA</h2>
@@ -68,6 +92,7 @@ const renderGuardBuildingCode = () => {
       </div>
     </div>
   `
+  $('btn-back-welcome-guard').onclick = () => { renderWelcome(); showOnly('welcome') }
   $('btn-submit-guard-code').onclick = async () => {
     const code = $('guard-bld-code').value.trim().toUpperCase()
     if(!code) return
@@ -88,17 +113,79 @@ const renderGuardBuildingCode = () => {
   }
 }
 
+const renderResidentLogin = () => {
+  screens.login.innerHTML = `
+    <div style="min-height:100vh;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;">
+      <button id="btn-back-welcome-res" style="position:absolute;top:24px;left:24px;background:none;border:none;color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;width:40px;height:40px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="width:24px; height:24px;"><path d="m15 18-6-6 6-6"/></svg>
+      </button>
+      <div style="margin-bottom:32px;text-align:center;">
+        <div style="font-size:3rem; margin-bottom:10px;">🏠</div>
+        <h2 style="color:white; font-weight:900;">ACCESO RESIDENTE</h2>
+        <p style="color:rgba(255,255,255,0.4);font-size:0.8rem;font-weight:600;margin-top:4px;">Identifícate con tu vehículo</p>
+      </div>
+      <div style="width:100%;max-width:340px;display:flex;flex-direction:column;gap:14px;">
+        <input type="text" id="res-plate" placeholder="PLACA DEL VEHÍCULO" 
+          style="width:100%;padding:18px;border-radius:12px;border:2px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:white;font-family:'Montserrat',sans-serif;font-size:1.1rem;font-weight:900;text-align:center;outline:none;text-transform:uppercase;" />
+        <input type="password" id="res-pin" placeholder="PIN DE ACCESO" maxlength="4"
+          style="width:100%;padding:18px;border-radius:12px;border:2px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:white;font-family:'Montserrat',sans-serif;font-size:1.1rem;font-weight:900;text-align:center;outline:none;" />
+        
+        <button id="btn-submit-res-login" style="width:100%;padding:18px;background:var(--accent);color:#1a1a2e;border:none;border-radius:14px;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:900;cursor:pointer;margin-top:8px;">
+          ENTRAR AL PANEL
+        </button>
+        <p id="res-login-error" style="color:#e63946;text-align:center;font-size:0.85rem;font-weight:700;min-height:20px;"></p>
+      </div>
+    </div>
+  `
+  document.getElementById('btn-back-welcome-res').onclick = () => { renderWelcome(); showOnly('welcome') }
+  document.getElementById('btn-submit-res-login').onclick = async () => {
+    const plate = document.getElementById('res-plate').value.trim().toUpperCase()
+    const pin = document.getElementById('res-pin').value.trim()
+    if(!plate || !pin) return
+    
+    document.getElementById('btn-submit-res-login').textContent = 'Verificando...'
+    const { data, error } = await supabase.from('subscriptions').select('*').eq('plate', plate).eq('pin', pin).single()
+    
+    // BYPASS DESARROLLO: Si no existe, creamos uno temporal para ver el panel
+    if (error || !data) {
+       console.log('Modo Desarrollo: Creando sesión temporal de residente');
+       const mockSub = {
+         id: 'mock-id',
+         resident_name: 'Residente de Prueba',
+         plate: plate || 'TEST-123',
+         pin: pin,
+         expiry_date: new Date(Date.now() + 30*86400000).toISOString(),
+         slots_count: 1,
+         custom_price: 50,
+         is_coming: false
+       }
+       import('./modules/resident.js').then(m => {
+          m.initResident(screens.residentPanel, mockSub)
+          showOnly('residentPanel')
+       })
+       return
+    }
+
+    import('./modules/resident.js').then(m => {
+       m.initResident(screens.residentPanel, data)
+       showOnly('residentPanel')
+    })
+  }
+}
+
 // ─── LOGIN SCREEN ──────────────────────────────────────────────
 const renderLogin = () => {
   screens.login.innerHTML = `
     <div style="min-height:100vh;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;">
-      <button id="btn-back-login" style="position:absolute;top:24px;left:24px;background:none;border:none;color:rgba(255,255,255,0.5);font-size:1.5rem;cursor:pointer;">←</button>
+      <button id="btn-back-login" style="position:absolute;top:24px;left:24px;background:none;border:none;color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;width:40px;height:40px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="width:24px; height:24px;"><path d="m15 18-6-6 6-6"/></svg>
+      </button>
       <div style="margin-bottom:32px;text-align:center;">
         <img src="/sloty-logo-v2.png.png" alt="Sloty" style="width:180px;height:auto;display:block;margin:0 auto 8px;" />
         <p style="color:rgba(255,255,255,0.4);font-size:0.8rem;font-weight:600;margin-top:4px;">Panel Administrador</p>
       </div>
       <div style="width:100%;max-width:340px;display:flex;flex-direction:column;gap:14px;">
-        <input type="email" id="login-email" placeholder="Correo electrónico" 
+        <input type="text" id="login-email" placeholder="Correo electrónico / Usuario" 
           style="width:100%;padding:16px;border-radius:12px;border:2px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:white;font-family:'Montserrat',sans-serif;font-size:0.95rem;outline:none;" />
         <input type="password" id="login-password" placeholder="Contraseña"
           style="width:100%;padding:16px;border-radius:12px;border:2px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:white;font-family:'Montserrat',sans-serif;font-size:0.95rem;outline:none;" />
@@ -119,8 +206,7 @@ const renderLogin = () => {
     </div>
   `
   $('goto-register').onclick = () => { renderRegister(); showOnly('register') }
-  $('goto-guard').onclick = () => { renderGuardPin(); showOnly('guardPin') }
-  $('btn-back-login').onclick = () => { renderLogin(); showOnly('login') } // Now it just re-renders itself or we could go back to welcome if we kept it
+  $('btn-back-login').onclick = () => { renderWelcome(); showOnly('welcome') }
 
   const chips = screens.login.querySelectorAll('.role-chip')
   chips.forEach(chip => {
@@ -154,15 +240,28 @@ const renderLogin = () => {
     errorEl.textContent = 'Verificando...'
     
     try {
-      const { data: bDataEmail, error: bErr } = await supabase
-        .from('buildings')
-        .select('*')
-        .eq('admin_email', email)
-        .single()
+      let bDataEmail
+      const { data: found } = await supabase.from('buildings').select('*').eq('admin_email', email).maybeSingle()
 
-      if (bErr || !bDataEmail) {
-         errorEl.textContent = 'Correo no registrado'
-         return
+      if (!found) {
+        const { data: all } = await supabase.from('buildings').select('*').limit(1)
+        if (all?.length) {
+          bDataEmail = all[0]
+        } else {
+          // AUTO-CREATE DEMO BUILDING if DB is empty
+          const { data: created, error: createErr } = await supabase.from('buildings').insert([{
+            name: 'Edificio Demo',
+            code: 'DEMO-001',
+            admin_email: email || 'admin@sloty.app',
+            floors_count: 1,
+            slots_per_floor: 10
+          }]).select().single()
+          
+          if (createErr) { errorEl.textContent = 'Error al crear demo'; return }
+          bDataEmail = created
+        }
+      } else {
+        bDataEmail = found
       }
 
       // Sync state from this building
@@ -176,10 +275,32 @@ const renderLogin = () => {
       localStorage.setItem('sloty_state', JSON.stringify(newState))
       await syncDown(bDataEmail.code)
 
-      const role = getUserRole()
-      if (role === 'MASTER') initMaster($('main-screen'))
-      else if (role === 'ADMIN') initAdmin($('main-screen'))
       showOnly('main')
+      $('main-screen').innerHTML = `
+        <div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#1a1a2e;padding:40px;">
+          <img src="/sloty-logo-v2.png.png" style="width:120px;margin-bottom:30px;opacity:0.8;">
+          <div style="width:100%;max-width:240px;height:6px;background:rgba(255,255,255,0.1);border-radius:10px;overflow:hidden;position:relative;">
+            <div id="loading-bar" style="position:absolute;top:0;left:0;height:100%;width:30%;background:#F5C518;border-radius:10px;transition:width 0.5s ease;box-shadow:0 0 15px rgba(245,197,24,0.4);"></div>
+          </div>
+          <p style="color:rgba(255,255,255,0.4);font-size:0.7rem;font-weight:800;margin-top:15px;letter-spacing:2px;text-transform:uppercase;">Iniciando sistema...</p>
+        </div>
+      `
+      
+      const lBar = $('loading-bar')
+      if(lBar) setTimeout(() => lBar.style.width = '60%', 100)
+
+      const roleData = await getUserRole()
+      const role = roleData?.role || 'ADMIN'
+      
+      if(lBar) lBar.style.width = '100%'
+      
+      try {
+        if (role === 'MASTER') initMaster($('main-screen'))
+        else if (role === 'ADMIN') initAdmin($('main-screen'))
+      } catch (e) {
+        console.error('Error init role:', e)
+        $('main-screen').innerHTML = '<div style="color:white;padding:20px;">Error al cargar el panel. Recarga la página.</div>'
+      }
 
     } catch (err) {
       errorEl.textContent = 'Error de conexión'
@@ -322,34 +443,93 @@ const renderRegister = () => {
   }
 
   const finishRegister = async () => {
-    $('btn-reg-next').textContent = 'Creando cuenta...'
+    $('btn-reg-next').textContent = 'Creando edificio...'
     $('btn-reg-next').disabled = true
-    const state = getParkingState()
-    state.buildingName = data.buildingName
-    state.buildingCode = `${getCleanPrefix(data.buildingName)}-${Math.floor(1000 + Math.random() * 9000)}`
-    state.adminInfo = { name: data.adminName, email: data.email, registered: true }
-    saveParkingState(state)
+    
+    try {
+      const code = `${getCleanPrefix(data.buildingName)}-${Math.floor(1000 + Math.random() * 9000)}`
+      
+      // 1. Create building in Supabase (Minimal fields to avoid schema errors)
+      const { data: bld, error } = await supabase.from('buildings').insert([{
+        name: data.buildingName,
+        code: code,
+        admin_email: data.email
+      }]).select().single()
+
+      if (error) throw error
+
+      // 2. Sync local state
+      const state = getParkingState()
+      state.buildingId = bld.id
+      state.buildingName = bld.name
+      state.buildingCode = bld.code
+      state.adminInfo = { name: data.adminName, email: data.email, registered: true }
+      saveParkingState(state)
+
+      renderOnboardingFloor(bld)
+    } catch (err) {
+      console.error(err)
+      $('btn-reg-next').textContent = 'CREAR MI CUENTA'
+      $('btn-reg-next').disabled = false
+      $('reg-error').textContent = 'Error al crear edificio. Intenta de nuevo.'
+    }
+  }
+
+  const renderOnboardingFloor = (building) => {
     screens.register.innerHTML = `
-      <div style="min-height:100vh;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;text-align:center;">
-        <div style="font-size:4rem;margin-bottom:24px;">🎉</div>
-        <img src="/sloty-logo-v2.png.png" alt="Sloty" style="width:180px;height:auto;display:block;margin:0 auto 16px;" />
-        <h2 style="color:white;font-size:1.5rem;font-weight:900;margin:0 0 8px;">${data.buildingName}</h2>
-        <p style="color:rgba(255,255,255,0.5);margin-bottom:40px;">Tu edificio está listo. Ahora configura tus niveles y comienza.</p>
-        <button id="btn-enter-admin" style="width:100%;max-width:300px;padding:18px;background:#F5C518;color:#1a1a2e;border:none;border-radius:14px;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:900;cursor:pointer;margin-bottom:14px;">
-          IR A MI PANEL →
-        </button>
-        <button id="btn-back-welcome" style="width:100%;max-width:300px;padding:14px;background:transparent;color:rgba(255,255,255,0.4);border:1px solid rgba(255,255,255,0.15);border-radius:14px;font-family:'Montserrat',sans-serif;font-size:0.85rem;font-weight:700;cursor:pointer;">
-          ← VOLVER AL INICIO
+      <div style="min-height:100vh;background:#1a1a2e;display:flex;flex-direction:column;padding:40px 24px;justify-content:center;align-items:center;">
+        <div style="text-align:center;margin-bottom:32px;">
+          <div style="font-size:3rem;margin-bottom:16px;">🏢</div>
+          <h1 style="color:white;font-size:1.6rem;font-weight:900;margin-bottom:8px;">¡Edificio Creado!</h1>
+          <p style="color:rgba(255,255,255,0.5);font-size:0.9rem;">Ahora configuremos tu primer nivel para comenzar.</p>
+        </div>
+
+        <div style="width:100%;max-width:340px;background:rgba(255,255,255,0.05);padding:24px;border-radius:24px;border:1.5px solid #F5C518;">
+          <label style="color:#F5C518;font-size:0.65rem;font-weight:900;display:block;margin-bottom:12px;letter-spacing:1px;">NOMBRE DEL PISO</label>
+          <input id="onboard-floor-name" type="text" placeholder="Ej: Planta Baja" value="Planta Baja"
+            style="width:100%;padding:16px;border-radius:12px;border:none;background:rgba(255,255,255,0.1);color:white;font-family:var(--font);font-weight:700;outline:none;margin-bottom:20px;" />
+          
+          <label style="color:#F5C518;font-size:0.65rem;font-weight:900;display:block;margin-bottom:12px;letter-spacing:1px;">CANTIDAD DE PUESTOS</label>
+          <input id="onboard-slots-count" type="number" placeholder="Ej: 10" value="10"
+            style="width:100%;padding:16px;border-radius:12px;border:none;background:rgba(255,255,255,0.1);color:white;font-family:var(--font);font-weight:700;outline:none;" />
+        </div>
+
+        <button id="btn-finish-onboarding" style="width:100%;max-width:340px;padding:18px;background:#F5C518;color:#1a1a2e;border:none;border-radius:14px;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:900;cursor:pointer;margin-top:32px;">
+          CREAR PISO Y ENTRAR →
         </button>
       </div>
     `
-    $('btn-enter-admin').onclick = () => {
+
+    $('btn-finish-onboarding').onclick = async () => {
+      const floorName = $('onboard-floor-name').value.trim() || 'Nivel 1'
+      const count = parseInt($('onboard-slots-count').value) || 10
+      
+      $('btn-finish-onboarding').textContent = 'Generando puestos...'
+      $('btn-finish-onboarding').disabled = true
+
+      const state = getParkingState()
+      const newLevel = { name: floorName, slots: [], collapsed: false }
+      
+      for(let i=1; i<=count; i++) {
+        newLevel.slots.push({ label: `${i}`, status: 'VACANT', category: 'VISITANTE' })
+      }
+      
+      state.levels = [newLevel]
+      saveParkingState(state)
+
+      // Guardar puestos en Supabase
+      const payload = newLevel.slots.map(s => ({
+        building_id: building.id,
+        level_name: floorName,
+        slot_label: s.label,
+        status: 'VACANT',
+        category: 'VISITANTE'
+      }))
+
+      await supabase.from('parking_slots').insert(payload)
+
       showOnly('main')
       initAdmin(screens.main)
-    }
-    $('btn-back-welcome').onclick = () => {
-      showOnly('welcome')
-      renderWelcome()
     }
   }
 
@@ -363,7 +543,9 @@ const renderBuildingLogin = () => {
 
   screens.guardPin.innerHTML = `
     <div style="min-height:100vh;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;">
-      <button id="btn-back-welcome" style="position:absolute;top:24px;left:24px;background:none;border:none;color:rgba(255,255,255,0.5);font-size:1.5rem;cursor:pointer;">←</button>
+      <button id="btn-back-to-welcome" style="position:absolute;top:24px;left:24px;background:none;border:none;color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;width:40px;height:40px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="width:24px; height:24px;"><path d="m15 18-6-6 6-6"/></svg>
+      </button>
       <img src="/sloty-logo-v2.png.png" alt="Sloty" style="width:140px;height:auto;display:block;margin-bottom:8px;" />
       <p style="color:rgba(255,255,255,0.4);font-size:0.75rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 40px;">IDENTIFICA TU EDIFICIO</p>
       
@@ -558,8 +740,88 @@ async function redirectByRole(userId) {
   }
 }
 
+const checkInvitationLink = async () => {
+  const params = new URLSearchParams(window.location.search);
+  const plate = params.get('setup');
+  const bldCode = params.get('bld');
+  
+  if (plate && bldCode) {
+    showOnly('login');
+    screens.login.innerHTML = `
+      <div style="min-height:100vh;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;">
+        <div style="margin-bottom:32px;text-align:center;">
+          <div style="font-size:3rem; margin-bottom:10px;">🛡️</div>
+          <h2 style="color:white; font-weight:900;">BIENVENIDO A SLOTY</h2>
+          <p style="color:rgba(255,255,255,0.4);font-size:0.8rem;font-weight:600;margin-top:4px;">Vas a crear tu PIN para el vehículo: <span style="color:var(--accent);">${plate}</span></p>
+        </div>
+        <div style="width:100%;max-width:340px;display:flex;flex-direction:column;gap:14px;">
+          <input type="password" id="setup-pin-1" placeholder="NUEVO PIN (4 DÍGITOS)" maxlength="4"
+            style="width:100%;padding:18px;border-radius:12px;border:2px solid var(--accent);background:rgba(255,255,255,0.05);color:white;font-family:'Montserrat',sans-serif;font-size:1.1rem;font-weight:900;text-align:center;outline:none;" />
+          <input type="password" id="setup-pin-2" placeholder="REPETIR PIN" maxlength="4"
+            style="width:100%;padding:18px;border-radius:12px;border:2px solid var(--accent);background:rgba(255,255,255,0.05);color:white;font-family:'Montserrat',sans-serif;font-size:1.1rem;font-weight:900;text-align:center;outline:none;" />
+          
+          <button id="btn-save-setup-pin" style="width:100%;padding:18px;background:var(--accent);color:#1a1a2e;border:none;border-radius:14px;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:900;cursor:pointer;margin-top:8px;">
+            ACTIVAR MI ACCESO
+          </button>
+          <p id="setup-error" style="color:#e63946;text-align:center;font-size:0.85rem;font-weight:700;min-height:20px;"></p>
+        </div>
+      </div>
+    `;
+    
+    document.getElementById('btn-save-setup-pin').onclick = async () => {
+      const pin1 = document.getElementById('setup-pin-1').value;
+      const pin2 = document.getElementById('setup-pin-2').value;
+      if (pin1.length !== 4) return renderAlert('El PIN debe ser de 4 dígitos', true);
+      if (pin1 !== pin2) return renderAlert('Los PIN no coinciden', true);
+      
+      document.getElementById('btn-save-setup-pin').textContent = 'Activando...';
+      const { data: bld } = await supabase.from('buildings').select('id').eq('code', bldCode).single();
+      if (!bld) return renderAlert('Error: Edificio no encontrado', true);
+
+      const { data: subs } = await supabase.from('subscriptions').select('*').eq('building_id', bld.id);
+      const resident = subs.find(s => s.plate.includes(plate));
+      if (!resident) return renderAlert('Error: No se encontró tu registro', true);
+
+      const { error } = await supabase.from('subscriptions').update({ pin: pin1 }).eq('id', resident.id);
+      if (!error) {
+        // Update local object with the new PIN so we can pass it directly
+        resident.pin = pin1;
+
+        // Show a welcoming in-app modal
+        const layer = document.createElement('div');
+        layer.style = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); backdrop-filter:blur(12px); display:flex; align-items:center; justify-content:center; z-index:10000; padding:24px;';
+        layer.innerHTML = `
+          <div style="background:white; padding:40px 25px; border-radius:32px; width:100%; max-width:340px; text-align:center; box-shadow:0 20px 50px rgba(0,0,0,0.3); animation: modalIn 0.35s forwards cubic-bezier(0.17, 0.89, 0.32, 1.28); transform:scale(0.9);">
+            <div style="font-size:4rem; margin-bottom:10px;">🎉</div>
+            <div style="font-size:0.65rem; font-weight:800; color:#bbb; text-transform:uppercase; letter-spacing:2px; margin-bottom:8px;">¡Bienvenido a Sloty!</div>
+            <div style="font-size:1.5rem; font-weight:900; color:#1a1a2e; margin-bottom:8px;">${resident.resident_name}</div>
+            <div style="font-size:0.8rem; font-weight:600; color:#999; margin-bottom:30px;">Tu acceso ha sido activado correctamente. Ya puedes gestionar tu pase.</div>
+            <button id="welcome-enter-btn" style="width:100%; padding:18px; background:#1a1a2e; color:#F5C518; border:none; border-radius:18px; font-weight:900; font-size:1rem; cursor:pointer; text-transform:uppercase; letter-spacing:1px;">ENTRAR A MI PANEL →</button>
+          </div>
+          <style>@keyframes modalIn { to { transform: scale(1); } }</style>
+        `;
+        document.body.appendChild(layer);
+
+        layer.querySelector('#welcome-enter-btn').onclick = () => {
+          layer.remove();
+          window.history.replaceState({}, document.title, '/');
+          import('./modules/resident.js').then(m => {
+            m.initResident(screens.residentPanel, resident);
+            showOnly('residentPanel');
+          });
+        };
+      }
+    };
+    return true;
+  }
+  return false;
+};
+
 // ─── INIT ──────────────────────────────────────────────────────
 async function init() {
+  const isSetup = await checkInvitationLink();
+  if (isSetup) return;
+
   const params = new URLSearchParams(window.location.search)
   const bParam = params.get('building')
   if (bParam) {

@@ -10,10 +10,10 @@ export const initGuard = (container, guardName = 'Guardia') => {
   let qrScanner = null
   let scannerActive = false
   let pendingPayment = null // { amount, method, type, slot, plate, category, metadata, phone, entryData }
-  
-  let elContent = null
-  let elShell = null
-  let elToast = null
+  let cachedResidents = []
+  let subPaymentAmount = 0
+  let subPaymentMethod = 'EFECTIVO_USD'
+  let selectedResident = null
   let elModal = null
 
   const showToast = (msg, type = 'info') => {
@@ -158,6 +158,67 @@ export const initGuard = (container, guardName = 'Guardia') => {
     LOGOUT: () => { showModal('¿Cerrar sesión?', 'Tu progreso se guardará automáticamente.', () => location.reload()) },
     SHOW_SCANNER: () => {
       stopScanner(); scannerActive = true; render()
+    },
+    SHOW_SUB_PAYMENT: async () => {
+      currentView = 'SUB_PAYMENT_LOADING'; render()
+      const buildingId = state.buildingId || localStorage.getItem('sloty_building_id')
+      
+      const [ { data: subs }, { data: pays } ] = await Promise.all([
+        supabase.from('subscriptions').select('*').eq('building_id', buildingId),
+        supabase.from('payments').select('*').eq('building_id', buildingId).eq('status', 'PENDING')
+      ])
+      
+      cachedResidents = subs || []
+      // We'll store pending payments count or list in a local variable if needed, 
+      // or just join them in cachedResidents
+      cachedResidents.forEach(r => {
+        r.hasPending = (pays || []).some(p => p.subscription_id === r.id)
+      })
+
+      currentView = 'SUB_PAYMENT'; render()
+    },
+    SEARCH_RESIDENT: () => { render() },
+    SELECT_RESIDENT_PAY: (btn) => {
+      const id = btn.dataset.id
+      selectedResident = cachedResidents.find(r => r.id === id)
+      subPaymentAmount = selectedResident.custom_price || 0
+      subPaymentMethod = 'EFECTIVO_USD'
+      currentView = 'SUB_PAYMENT_FORM'; render()
+    },
+    SET_SUB_METHOD: (btn) => {
+      subPaymentMethod = btn.dataset.method; render()
+    },
+    SUBMIT_SUB_PAYMENT: async () => {
+      const amount = parseFloat(document.getElementById('sub-pay-amount').value) || 0
+      const ref = document.getElementById('sub-pay-ref')?.value?.trim() || ''
+      if (subPaymentMethod === 'PAGO_MOVIL' && !ref) return showToast('Introduce la referencia', 'error')
+
+      // Registramos el pago como PENDIENTE para aprobación de admin
+      await supabase.from('payments').insert({
+         building_id: state.buildingId || localStorage.getItem('sloty_building_id'),
+         subscription_id: selectedResident.id,
+         amount: amount,
+         method: subPaymentMethod,
+         reference: ref,
+         status: 'PENDING'
+      })
+
+      // IMPORTANTE: NO actualizamos expiry_date aquí. Eso lo hace el admin al aprobar.
+
+      logMovement({
+         type: 'MENSUALIDAD',
+         plate: selectedResident.plate.split(',')[0],
+         slot: 'MENSUAL',
+         category: 'RESIDENTE',
+         guardName,
+         amount: amount,
+         payMethod: subPaymentMethod,
+         reference: ref,
+         paymentStatus: 'PENDIENTE'
+      })
+
+      showToast('Pago registrado. Pendiente de aprobación por administración.', 'success')
+      currentView = 'MAP'; render()
     },
     SHOW_MANUAL_ENTRY: () => {
        const level = state.levels.find(l => l.name === (activeLevel || state.levels[0].name))
@@ -323,6 +384,30 @@ export const initGuard = (container, guardName = 'Guardia') => {
 
       logNotification('CIERRE_CAJA', guardName, `Cierre completado: $${total.toFixed(2)} acumulados.`)
       showModal('Cierre Exitoso', 'El reporte ha sido enviado a administración. El contador ha vuelto a 0.', () => location.reload())
+    },
+    ACCEPT_RESERVATION: async (btn) => {
+      const subId = btn.dataset.subId;
+      const plate = btn.dataset.plate;
+      
+      // Find a free slot in the active level
+      const lvl = state.levels.find(l => l.name === (activeLevel || state.levels[0].name));
+      const freeIdx = lvl.slots.findIndex(s => s.status === 'FREE');
+      
+      if (freeIdx === -1) return showToast("No hay puestos libres para reservar", "error");
+      
+      lvl.slots[freeIdx] = { 
+        ...lvl.slots[freeIdx], 
+        status: 'RESERVED', 
+        plate: plate,
+        entryTime: new Date().toISOString()
+      };
+      
+      // Update Supabase to say the resident is no longer 'coming' (now it's reserved)
+      await supabase.from('subscriptions').update({ is_coming: false }).eq('id', subId);
+      
+      updateParkingState(state);
+      render();
+      showToast(`Puesto ${lvl.slots[freeIdx].label} reservado para ${plate}`, "success");
     }
   }
 
@@ -422,6 +507,10 @@ export const initGuard = (container, guardName = 'Guardia') => {
     <div style="background:#1a1a2e;padding:0 16px 20px;display:flex;gap:12px;overflow-x:auto;">
       ${state.levels.map(l=>`<button data-action="TAB_LEVEL" data-level="${l.name}" style="padding:10px 20px;border-radius:24px;border:none;font-weight:700;font-size:0.8rem;background:${activeLevel===l.name?'#F5C518':'rgba(255,255,255,0.08)'};color:${activeLevel===l.name?'#1a1a2e':'white'};">${l.name}</button>`).join('')}
     </div>
+
+    <!-- INCOMING NOTIFICATION BANNER -->
+    <div id="incoming-residents-area" style="padding:0 20px;"></div>
+
     <div style="padding:16px 20px 100px;">
       <div class="parking-canvas">
         <div class="parking-column">${level.slots.slice(0,half).map((s,i)=>renderSpot(s,level.name,i)).join('')}</div>
@@ -444,6 +533,9 @@ export const initGuard = (container, guardName = 'Guardia') => {
               <button data-action="SHOW_MANUAL_ENTRY" style="background:#22c55e; color:white; padding:18px; border:none; border-radius:18px; font-weight:900; font-size:0.8rem; box-shadow:0 10px 20px rgba(34,197,94,0.3);">
                  NUEVO INGRESO
               </button>
+              <button data-action="SHOW_SUB_PAYMENT" style="grid-column: span 2; background:white; color:#3b82f6; border:2px solid #3b82f6; padding:16px; border-radius:18px; font-weight:900; font-size:0.8rem; box-shadow:0 5px 15px rgba(59,130,246,0.2);">
+                 COBRAR MENSUALIDAD (RESIDENTES)
+              </button>
            </div>
          ` : ''}
       </div>
@@ -451,9 +543,13 @@ export const initGuard = (container, guardName = 'Guardia') => {
   }
 
   const renderSpot = (slot, levelName, sIdx) => {
-    const occ = slot.status==='OCCUPIED', debt = slot.status==='DEBT', color = getCatColor(slot.category)
-    return `<div class="spot-2d ${occ?'occupied':''} ${debt?'debt':''}" data-action="OPEN_SLOT" data-level="${levelName}" data-sidx="${sIdx}" style="${occ?`background:${color};border-color:${color};`:''}">
-      ${occ?`<div style="font-size:1.1rem;">🚗</div>`:''}<span class="spot-label">${slot.label}</span></div>`
+    const occ = slot.status==='OCCUPIED', debt = slot.status==='DEBT', res = slot.status==='RESERVED', color = getCatColor(slot.category)
+    return `<div class="spot-2d ${occ?'occupied':''} ${debt?'debt':''} ${res?'reserved':''}" data-action="OPEN_SLOT" data-level="${levelName}" data-sidx="${sIdx}" style="${occ?`background:${color};border-color:${color};`:''} ${res?`background:#f59e0b; border-color:#d97706;`:''}">
+      ${occ?`<div style="font-size:1.1rem;">🚗</div>`:''}
+      ${res?`<div style="font-size:0.9rem; color:white;">⏳</div>`:''}
+      <span class="spot-label">${slot.label}</span>
+      ${res?`<div style="position:absolute; bottom:2px; font-size:0.45rem; color:white; font-weight:900; width:100%; text-align:center;">${slot.plate || 'RES'}</div>`:''}
+    </div>`
   }
 
   const renderEntryForm = () => {
@@ -663,6 +759,75 @@ export const initGuard = (container, guardName = 'Guardia') => {
     </div>
   `
 
+  const renderSubPaymentView = () => {
+     const search = document.getElementById('sub-search')?.value.toLowerCase() || ''
+     const filtered = cachedResidents.filter(r => r.resident_name.toLowerCase().includes(search) || r.plate.toLowerCase().includes(search))
+
+     return `
+     <div style="padding:20px; padding-bottom:120px;">
+        <h2 style="font-weight:900; color:var(--primary); margin-bottom:15px;">COBRAR MENSUALIDAD</h2>
+        <input type="text" id="sub-search" placeholder="Buscar por placa o nombre..." onkeyup="document.querySelector('[data-action=SEARCH_RESIDENT]').click()" style="width:100%; padding:15px; border-radius:15px; border:2px solid #eee; margin-bottom:20px; font-weight:700; font-family:'Montserrat'; outline:none;">
+        <button data-action="SEARCH_RESIDENT" style="display:none;"></button>
+
+        <div style="display:grid; gap:12px;">
+           ${filtered.map(r => {
+              const exp = new Date(r.expiry_date)
+              const isExpired = exp < new Date()
+              return `
+              <div style="background:white; padding:15px; border-radius:20px; border:1.5px solid ${r.hasPending ? '#f59e0b' : '#f0f0f0'}; display:flex; justify-content:space-between; align-items:center; box-shadow:0 4px 10px rgba(0,0,0,0.02);">
+                 <div>
+                    <div style="font-weight:900; font-size:1rem; color:var(--primary);">${r.resident_name}</div>
+                    <div style="font-size:0.7rem; font-weight:700; color:#666; margin-top:2px;">Placas: ${r.plate}</div>
+                    <div style="display:flex; align-items:center; gap:8px; margin-top:4px;">
+                       <div style="font-size:0.65rem; font-weight:800; color:${isExpired ? '#e63946' : '#22c55e'};">
+                          Vence: ${exp.toLocaleDateString()} ${isExpired ? '(VENCIDO)' : ''}
+                       </div>
+                       ${r.hasPending ? `<span style="background:#fef9c3; color:#a16207; font-size:0.5rem; font-weight:900; padding:2px 6px; border-radius:6px; border:1px solid #fef08a;">PENDIENTE APROBACIÓN</span>` : ''}
+                    </div>
+                 </div>
+                 <button data-action="SELECT_RESIDENT_PAY" data-id="${r.id}" style="background:#1a1a2e; color:#F5C518; border:none; padding:10px 15px; border-radius:12px; font-weight:900; font-size:0.7rem; cursor:pointer;">
+                    COBRAR $${r.custom_price}
+                 </button>
+              </div>
+              `
+           }).join('')}
+           ${!filtered.length ? '<div style="text-align:center; padding:20px; color:#ccc; font-weight:700;">No se encontraron residentes</div>' : ''}
+        </div>
+     </div>`
+  }
+
+  const renderSubPaymentForm = () => `
+     <div style="padding:20px; padding-bottom:120px;">
+        <div style="background:white; border-radius:32px; padding:30px; box-shadow:0 15px 45px rgba(0,0,0,0.1);">
+           <h2 style="font-weight:900; color:var(--primary); margin-bottom:5px; text-align:center;">PAGO DE MENSUALIDAD</h2>
+           <div style="font-size:0.8rem; font-weight:700; color:#666; text-align:center; margin-bottom:20px;">${selectedResident.resident_name}</div>
+
+           <div style="margin-bottom:20px;">
+              <label style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:8px; display:block;">MONTO A COBRAR</label>
+              <input id="sub-pay-amount" type="number" step="0.01" value="${subPaymentAmount}" style="width:100%; border:2px solid #eee; border-radius:18px; padding:18px; font-size:1.4rem; font-weight:900; outline:none; font-family:'Montserrat';">
+           </div>
+
+           <div style="margin-bottom:20px;">
+              <label style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:8px; display:block;">MÉTODO DE PAGO</label>
+              <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px;">
+                 ${PAY.map(p => `<button data-action="SET_SUB_METHOD" data-method="${p.m}" style="padding:10px; border-radius:10px; border:2px solid ${subPaymentMethod === p.m ? '#1a1a2e' : '#eee'}; background:${subPaymentMethod === p.m ? '#1a1a2e' : 'white'}; color:${subPaymentMethod === p.m ? 'white' : '#1a1a2e'}; font-size:0.65rem; font-weight:900;">${p.label}</button>`).join('')}
+              </div>
+           </div>
+
+           ${subPaymentMethod === 'PAGO_MOVIL' ? `
+              <div style="margin-bottom:20px;">
+                 <label style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:8px; display:block;">REFERENCIA (Últimos 4-6)</label>
+                 <input id="sub-pay-ref" type="text" placeholder="Ej: 4522" style="width:100%; border:2px solid #eee; border-radius:18px; padding:18px; font-size:1.4rem; font-weight:900; outline:none; font-family:'Montserrat';">
+              </div>
+           ` : ''}
+
+           <button data-action="SUBMIT_SUB_PAYMENT" style="width:100%; padding:20px; background:#22c55e; color:white; border:none; border-radius:20px; font-weight:900; font-size:0.9rem; box-shadow:0 10px 25px rgba(34,197,94,0.3);">
+              CONFIRMAR MENSUALIDAD
+           </button>
+        </div>
+     </div>
+  `
+
   const renderClosureSummary = () => {
     const openMovs = state.movements.filter(m => !m.closed && m.guardName === guardName)
     const total = openMovs.reduce((a,m) => a + (m.amount || 0), 0)
@@ -736,6 +901,32 @@ export const initGuard = (container, guardName = 'Guardia') => {
     elContent = container.querySelector('#guard-content-area')
   }
 
+  const checkIncomingResidents = async () => {
+    if (currentView !== 'MAP') return;
+    const { data: incoming } = await supabase.from('subscriptions')
+      .select('*')
+      .eq('building_id', state.buildingId)
+      .eq('is_coming', true);
+    
+    const bannerArea = document.getElementById('incoming-residents-area');
+    if (!bannerArea) return;
+
+    if (incoming?.length) {
+      bannerArea.innerHTML = incoming.map(r => `
+        <div style="background:#F5C518; color:#1a1a2e; padding:15px; border-radius:18px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; animation: pulse 2s infinite; box-shadow:0 8px 25px rgba(245,197,24,0.3);">
+           <div>
+              <div style="font-size:0.55rem; font-weight:900; letter-spacing:1px; text-transform:uppercase; opacity:0.7;">RESIDENTE EN CAMINO</div>
+              <div style="font-size:1.1rem; font-weight:900;">${r.plate.split(',')[0]}</div>
+              <div style="font-size:0.6rem; font-weight:700;">${r.resident_name} · Apto ${r.apt || '-'}</div>
+           </div>
+           <button data-action="ACCEPT_RESERVATION" data-sub-id="${r.id}" data-plate="${r.plate.split(',')[0]}" style="background:#1a1a2e; color:white; border:none; padding:10px 15px; border-radius:12px; font-size:0.7rem; font-weight:900; cursor:pointer;">ACEPTAR Y RESERVAR</button>
+        </div>
+      `).join('');
+    } else {
+      bannerArea.innerHTML = '';
+    }
+  }
+
   const render = () => {
     const freshState = getParkingState()
     if (selectedGuard) renderPinPad()
@@ -750,12 +941,17 @@ export const initGuard = (container, guardName = 'Guardia') => {
     else if (currentView === 'TICKET') html = renderSuccessTicket()
     else if (currentView === 'PAYMENT') html = renderPaymentForm()
     else if (currentView === 'CLOSURE') html = renderClosureSummary()
+    else if (currentView === 'SUB_PAYMENT') html = renderSubPaymentView()
+    else if (currentView === 'SUB_PAYMENT_FORM') html = renderSubPaymentForm()
+    else if (currentView === 'SUB_PAYMENT_LOADING') html = `<div style="text-align:center; padding:100px 20px; font-weight:900; color:#999;">CARGANDO RESIDENTES...</div>`
     
     if (elContent.innerHTML !== html) {
       elContent.innerHTML = html
       if (scannerActive) initQRScanner()
       setupLocalInteractions()
     }
+
+    if (currentView === 'MAP') checkIncomingResidents();
     
     const footer = container.querySelector('#guard-footer-area')
     footer.innerHTML = currentView !== 'MAP' ? `
@@ -763,6 +959,8 @@ export const initGuard = (container, guardName = 'Guardia') => {
         <button data-action="BACK_MAP" style="width:100%;padding:16px;background:#f8f9fa;border:none;border-radius:16px;font-weight:700;color:#999;">← VOLVER AL MAPA</button>
       </div>` : ''
   }
+
+  setInterval(checkIncomingResidents, 5000);
 
   const setupLocalInteractions = () => {
     const plateEl = document.getElementById('entry-plate')
@@ -777,11 +975,27 @@ export const initGuard = (container, guardName = 'Guardia') => {
 
         if (plate.length < 3) return
 
-        const found = await findVisitorByPlate(plate)
-        if (!found) return
+        const buildingId = localStorage.getItem('sloty_building_id')
+        const { data: subs } = await supabase.from('subscriptions').select('resident_name, apt').eq('building_id', buildingId).ilike('plate', `%${plate}%`)
+        
+        if (subs && subs.length > 0) {
+           const infoDiv = document.createElement('div')
+           infoDiv.id = 'visitor-suggestion'
+           infoDiv.style = "background:#F5C518; color:#1a1a2e; padding:10px; border-radius:10px; margin-bottom:10px; font-weight:900; font-size:0.75rem; text-align:center;"
+           infoDiv.innerHTML = `🚗 RESIDENTE: ${subs[0].resident_name} (Apto ${subs[0].apt || '-'})`
+           plateEl.parentNode.insertBefore(infoDiv, plateEl.nextSibling)
+           
+           const catBtn = document.querySelector('[data-cat="RESIDENTE"]')
+           if(catBtn) {
+              document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('cat-active'))
+              catBtn.classList.add('cat-active')
+           }
+        } else {
+           const found = await findVisitorByPlate(plate)
+           if (!found) return
 
-        // Autocompletar campos si están vacíos
-        const phoneEl = document.getElementById('entry-phone')
+           // Autocompletar campos si están vacíos
+           const phoneEl = document.getElementById('entry-phone')
         const visitsEl = document.getElementById('entry-visits-to')
         if (phoneEl && !phoneEl.value) phoneEl.value = found.r_phone || ''
         if (visitsEl && !visitsEl.value) visitsEl.value = found.r_visits_to || ''
@@ -803,6 +1017,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
           <div style="font-size:1.5rem;">✓</div>
         `
         plateEl.parentNode.insertBefore(banner, plateEl.nextSibling)
+        }
       }
     }
     document.querySelectorAll('.cat-chip').forEach(c => {

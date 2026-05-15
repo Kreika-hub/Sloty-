@@ -1,11 +1,13 @@
-import { getParkingState, saveParkingState, logAudit, getCleanPrefix, supabase } from '../db.js'
+import { getParkingState, saveParkingState, logAudit, getCleanPrefix, supabase, logMovement } from '../db.js'
 
 export const initAdmin = (container) => {
+  console.log('[Sloty] Inicializando Panel Admin...')
   let activeTab = 'HOME'
   let reportFilter = 'HOY'
   let pendingAction = null // { type, name, lName, sLabel, guardId }
   let editingLevel = null // Level name being renamed
   let editingGuard = null // Guard ID being edited
+  let editingResident = null // Resident ID being edited
   let openPaletteLevel = null // Level name with open palette
 
   const ICONS = {
@@ -21,7 +23,9 @@ export const initAdmin = (container) => {
     SETTINGS: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
     BELL: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>`,
     PALETTE: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.647-.494 2.091-1.243.221-.374.332-.811.391-1.242.16-.58.148-1.167.373-1.607.453-.88 1.447-1.408 2.51-1.408H20c1.1 0 2-.9 2-2 0-5.5-4.5-10-10-10z"/></svg>`,
-    SUBS: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="16" y1="11" x2="22" y2="11"/></svg>`
+    SUBS: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="16" y1="11" x2="22" y2="11"/></svg>`,
+    CARD: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="7" y1="8" x2="17" y2="8"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="7" y1="16" x2="12" y2="16"/></svg>`,
+    WHATSAPP: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-7.6 8.38 8.38 0 0 1 9 9.1z"/></svg>`
   }
 
   // --- DOM Elements Cache ---
@@ -134,7 +138,15 @@ export const initAdmin = (container) => {
       const shift = document.getElementById('guard-shift').value;
       const photoEl = document.getElementById('guard-photo-preview');
       const photo = photoEl ? photoEl.src : null;
-      if (!name || !pin) return alert('Nombre y PIN obligatorios');
+      if (!name || !pin) {
+        pendingAction = {
+          type: 'CUSTOM_MODAL',
+          title: '⚠️ DATOS INCOMPLETOS',
+          content: `<p style="color:#666; font-weight:700;">El nombre y el PIN son obligatorios para registrar personal.</p>`
+        };
+        render();
+        return;
+      }
       const state = getParkingState();
       state.personnel = state.personnel || [];
       
@@ -162,7 +174,15 @@ export const initAdmin = (container) => {
       const id = btn.dataset.id;
       const state = getParkingState();
       const g = state.personnel.find(p => p.id === id);
-      if (!g || !g.phone) return alert('El guardia no tiene teléfono registrado');
+      if (!g || !g.phone) {
+        pendingAction = {
+          type: 'CUSTOM_MODAL',
+          title: '⚠️ FALTA TELÉFONO',
+          content: `<p style="color:#666; font-weight:700;">Este guardia no tiene un número de WhatsApp registrado.</p>`
+        };
+        render();
+        return;
+      }
       
       const url = window.location.origin;
       const msg = `Bienvenido a Sloty. Tu acceso de guardia para ${state.buildingName} es: ${url}\n\nCódigo Edificio: ${state.buildingCode}\nTu PIN: ${g.pin}`;
@@ -272,35 +292,273 @@ export const initAdmin = (container) => {
       if(!error) alert('Ajustes guardados correctamente'); else alert('Error al guardar');
       render();
     },
-    ADD_RESIDENT: async () => {
-      const name = document.getElementById('new-sub-name').value.trim();
-      const plate = document.getElementById('new-sub-plate').value.trim().toUpperCase();
-      const slot = document.getElementById('new-sub-slot').value.trim();
-      if(!name || !plate) return alert('Nombre y Placa obligatorios');
-      
-      const state = getParkingState();
-      const expiry = new Date(); expiry.setDate(expiry.getDate() + 30);
-      
-      const { error } = await supabase.from('subscriptions').insert({
-        building_id: state.buildingId,
-        resident_name: name,
-        plate: plate,
-        slot_label: slot,
-        expiry_date: expiry.toISOString(),
-        status: 'ACTIVE'
+    ADD_RESIDENT: async (btn) => {
+      try {
+        const name = document.getElementById('new-sub-name').value.trim();
+        const plates = Array.from(document.querySelectorAll('.new-sub-plate-input')).map(i => i.value.trim().toUpperCase()).filter(v => v);
+        const price = parseFloat(document.getElementById('new-sub-price').value) || 0;
+        const count = parseInt(document.getElementById('new-sub-count').value) || 1;
+        const tower = document.getElementById('new-sub-tower').value.trim();
+        const floor = document.getElementById('new-sub-floor').value.trim();
+        const apt = document.getElementById('new-sub-apt').value.trim();
+        const phone = document.getElementById('new-sub-phone').value.trim();
+        
+        if(!name || !plates.length) {
+          pendingAction = {
+            type: 'CUSTOM_MODAL',
+            title: '⚠️ DATOS REQUERIDOS',
+            content: `<p style="color:#666; font-weight:700;">Debes ingresar al menos un nombre y una placa.</p>`
+          };
+          render();
+          return;
+        }
+        
+        const originalText = btn.textContent;
+        btn.textContent = editingResident ? 'GUARDANDO...' : 'REGISTRANDO...';
+        btn.disabled = true;
+
+        const plateString = plates.join(', ');
+        const state = getParkingState();
+        
+        let error;
+        if (editingResident) {
+          const { error: err } = await supabase.from('subscriptions').update({
+            resident_name: name,
+            plate: plateString,
+            custom_price: price,
+            slots_count: count,
+            tower: tower,
+            floor: floor,
+            apt: apt,
+            phone: phone
+          }).eq('id', editingResident);
+          error = err;
+        } else {
+          const expiry = new Date(); expiry.setDate(expiry.getDate() + 30);
+          const { error: err } = await supabase.from('subscriptions').insert({
+            building_id: state.buildingId,
+            resident_name: name,
+            plate: plateString,
+            expiry_date: expiry.toISOString(),
+            status: 'ACTIVE',
+            custom_price: price,
+            slots_count: count,
+            tower: tower,
+            floor: floor,
+            apt: apt,
+            phone: phone,
+            pin: null
+          });
+          error = err;
+        }
+        
+        if(!error) {
+          pendingAction = {
+            type: 'CUSTOM_MODAL',
+            title: '✅ ¡RESIDENTE REGISTRADO!',
+            content: `
+              <div style="text-align:center; padding:20px;">
+                <div style="font-size:3rem; margin-bottom:15px;">🚗</div>
+                <p style="color:#666; font-size:0.9rem; font-weight:700;">
+                  <b>${name}</b> ha sido añadido con éxito.<br>
+                  Ya puedes enviar su acceso por WhatsApp.
+                </p>
+              </div>
+            `
+          };
+          
+          editingResident = null;
+          // Clear form
+          document.getElementById('new-sub-name').value = '';
+          const plateContainer = document.getElementById('new-sub-plates-container');
+          if(plateContainer) plateContainer.innerHTML = '<div style="display:flex; gap:8px;"><input type="text" class="new-sub-plate-input" placeholder="Placa Vehículo 1" style="flex:1; padding:15px; border-radius:12px; border:none; background:rgba(255,255,255,0.1); color:white; font-weight:700; text-transform:uppercase;"></div>';
+          document.getElementById('new-sub-tower').value = '';
+          document.getElementById('new-sub-floor').value = '';
+          document.getElementById('new-sub-apt').value = '';
+          document.getElementById('new-sub-phone').value = '';
+          
+          await render(); 
+        } else {
+          console.error('Supabase Error:', error);
+          pendingAction = {
+            type: 'CUSTOM_MODAL',
+            title: '❌ ERROR DE BASE DE DATOS',
+            content: `<p style="color:#666; font-weight:700;">${error.message || 'Error al conectar con Supabase.'}</p>`
+          };
+          btn.textContent = originalText;
+          btn.disabled = false;
+          render();
+        }
+      } catch (e) {
+        console.error('JS Error:', e);
+        pendingAction = {
+          type: 'CUSTOM_MODAL',
+          title: '⚠️ ERROR DE SISTEMA',
+          content: `<p style="color:#666; font-weight:700;">${e.message}</p>`
+        };
+        render();
+      }
+    },
+    EDIT_RESIDENT: async (btn) => {
+      const id = btn.dataset.id;
+      const { data: res } = await supabase.from('subscriptions').select('*').eq('id', id).single();
+      if (!res) return;
+
+      editingResident = id;
+      await render(); // Re-render to update form button and inputs
+
+      document.getElementById('new-sub-name').value = res.resident_name;
+      document.getElementById('new-sub-price').value = res.custom_price;
+      document.getElementById('new-sub-count').value = res.slots_count;
+      document.getElementById('new-sub-tower').value = res.tower || '';
+      document.getElementById('new-sub-floor').value = res.floor || '';
+      document.getElementById('new-sub-apt').value = res.apt || '';
+      document.getElementById('new-sub-phone').value = res.phone || '';
+
+      const container = document.getElementById('new-sub-plates-container');
+      container.innerHTML = '';
+      const plates = res.plate.split(',').map(p => p.trim());
+      plates.forEach((p, idx) => {
+        const div = document.createElement('div');
+        div.style.display = 'flex';
+        div.style.gap = '8px';
+        div.innerHTML = `
+          <input type="text" class="new-sub-plate-input" value="${p}" placeholder="Placa Vehículo ${idx + 1}" style="flex:1; padding:15px; border-radius:12px; border:none; background:rgba(255,255,255,0.1); color:white; font-weight:700; text-transform:uppercase;">
+          ${idx > 0 ? `<button type="button" onclick="this.parentElement.remove()" style="background:rgba(230,57,70,0.2); color:#e63946; border:none; width:45px; border-radius:12px; cursor:pointer; font-weight:900;">✕</button>` : ''}
+        `;
+        container.appendChild(div);
       });
       
-      if(!error) {
-        document.getElementById('new-sub-name').value = '';
-        document.getElementById('new-sub-plate').value = '';
-        document.getElementById('new-sub-slot').value = '';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    CANCEL_EDIT_RESIDENT: () => {
+      editingResident = null;
+      render();
+    },
+    CONFIRM_PAYMENT: async (btn) => {
+      const pid = btn.dataset.id
+      const sid = btn.dataset.sid
+      
+      // Fetch payment and subscription details
+      const { data: pay } = await supabase.from('payments').select('*').eq('id', pid).single()
+      const { data: sub } = await supabase.from('subscriptions').select('*').eq('id', sid).single()
+      
+      if (!pay || !sub) return alert('Error al recuperar datos del pago')
+
+      const amount = pay.amount
+      const price = sub.custom_price || 1
+      const currentExp = new Date(sub.expiry_date)
+      const startBase = new Date(Math.max(Date.now(), currentExp.getTime()))
+      const daysToAdd = Math.round((amount / price) * 30)
+      startBase.setDate(startBase.getDate() + daysToAdd)
+
+      await supabase.from('payments').update({ status: 'CONFIRMED' }).eq('id', pid)
+      await supabase.from('subscriptions').update({ expiry_date: startBase.toISOString() }).eq('id', sid)
+
+      // Log movement so it reflects in the global cash total
+      logMovement({
+        type: 'MENSUALIDAD',
+        plate: sub.plate.split(',')[0].trim(),
+        slot: 'MENSUAL',
+        category: 'RESIDENTE',
+        guardName: 'Sistema (Appr)',
+        payMethod: pay.method,
+        amount: amount,
+        reference: pay.reference,
+        paymentStatus: 'PAGADO'
+      })
+
+      logAudit(`Aprobó pago de $${amount} para ${sub.resident_name}`)
+      render()
+    },
+    REJECT_PAYMENT: async (btn) => {
+      await supabase.from('payments').update({ status: 'REJECTED' }).eq('id', btn.dataset.id)
+      render()
+    },
+    RESIDENT_PAYMENTS: async (btn) => {
+      const sid = btn.dataset.id
+      const name = btn.dataset.name
+      const { data: pays } = await supabase.from('payments').select('*').eq('subscription_id', sid).order('payment_date', { ascending: false })
+      const l = document.getElementById('modal-layer')
+      l.style.pointerEvents = 'auto'
+      const ML = { EFECTIVO: '💵 Efectivo', PAGO_MOVIL: '📱 Pago Móvil', TRANSFERENCIA: '🏦 Transferencia' }
+      l.innerHTML = `
+        <div style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);backdrop-filter:blur(12px);display:flex;align-items:flex-end;justify-content:center;z-index:9999;">
+          <div style="background:white;border-radius:32px 32px 0 0;width:100%;max-width:480px;padding:30px 25px 40px;max-height:85vh;overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:25px;">
+              <div>
+                <div style="font-size:0.6rem;font-weight:800;color:#bbb;text-transform:uppercase;">Pagos Reportados</div>
+                <div style="font-size:1.1rem;font-weight:900;color:#1a1a2e;">${name}</div>
+              </div>
+              <button data-action="CANCEL_MODAL" style="background:#f4f4f4;border:none;width:36px;height:36px;border-radius:50%;font-size:1.2rem;cursor:pointer;">×</button>
+            </div>
+            ${!pays?.length ? '<div style="text-align:center;padding:40px;color:#bbb;font-size:0.85rem;font-weight:700;">Sin reportes de pago</div>' : pays.map(p => `
+              <div style="background:${p.status==='CONFIRMED'?'#f0fdf4':p.status==='REJECTED'?'#fff1f2':'#fafafa'};border:1.5px solid ${p.status==='CONFIRMED'?'#86efac':p.status==='REJECTED'?'#fca5a5':'#e5e7eb'};border-radius:20px;padding:18px;margin-bottom:12px;">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
+                  <div>
+                    <div style="font-weight:900;color:#1a1a2e;font-size:1rem;">$${p.amount}</div>
+                    <div style="font-size:0.65rem;color:#666;font-weight:700;margin-top:3px;">${ML[p.method]||p.method} · ${new Date(p.payment_date).toLocaleDateString()}</div>
+                    ${p.reference ? `<div style="font-size:0.6rem;color:#999;font-weight:700;">Ref: ${p.reference}</div>` : ''}
+                  </div>
+                  <span style="background:${p.status==='CONFIRMED'?'#22c55e':p.status==='REJECTED'?'#e63946':'#f59e0b'};color:white;padding:4px 10px;border-radius:20px;font-size:0.55rem;font-weight:900;">${p.status==='CONFIRMED'?'CONFIRMADO':p.status==='REJECTED'?'RECHAZADO':'PENDIENTE'}</span>
+                </div>
+                ${p.status === 'PENDING' ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;"><button data-action="CONFIRM_PAYMENT" data-id="${p.id}" data-sid="${sid}" style="padding:12px;background:#1a1a2e;color:#F5C518;border:none;border-radius:14px;font-weight:900;font-size:0.7rem;cursor:pointer;">✓ CONFIRMAR</button><button data-action="REJECT_PAYMENT" data-id="${p.id}" style="padding:12px;background:#fff0f0;color:#e63946;border:none;border-radius:14px;font-weight:900;font-size:0.7rem;cursor:pointer;">✕ RECHAZAR</button></div>` : ''}
+              </div>`).join('')}
+          </div>
+        </div>`
+    },
+    SEND_RESIDENT_ACCESS: (btn) => {
+      const phone = btn.dataset.phone;
+      const plate = btn.dataset.plate;
+      const state = getParkingState();
+      
+      if (!phone) {
+        pendingAction = {
+          type: 'CUSTOM_MODAL',
+          title: '⚠️ SIN TELÉFONO',
+          content: `<p style="color:#666; font-weight:700;">Este residente no tiene un número registrado para enviar el acceso.</p>`
+        };
         render();
-      } else alert('Error al registrar residente');
+        return;
+      }
+      
+      const firstPlate = plate.split(',')[0].trim();
+      const url = `${window.location.origin}/?setup=${firstPlate}&bld=${state.buildingCode}`;
+      const msg = `¡Bienvenido a Sloty! 🚗\n\nTu acceso para ${state.buildingName} está listo.\n\nPor favor, ingresa al siguiente enlace para crear tu PIN de acceso personal:\n\n${url}`;
+      
+      window.open(`https://wa.me/${phone.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`, '_blank');
+    },
+    TOGGLE_COMING: async (btn) => {
+      const id = btn.dataset.id;
+      const state = getParkingState();
+      const { data: sub } = await supabase.from('subscriptions').select('is_coming').eq('id', id).single();
+      const newState = !sub?.is_coming;
+      
+      const { error } = await supabase.from('subscriptions').update({ is_coming: newState }).eq('id', id);
+      if(!error) render();
     },
     DELETE_RESIDENT: async (btn) => {
-      if(!confirm('¿Eliminar esta suscripción?')) return;
-      const { error } = await supabase.from('subscriptions').delete().eq('id', btn.dataset.id);
-      if(!error) render(); else alert('Error al eliminar');
+      const id = btn.dataset.id;
+      pendingAction = {
+        type: 'CONFIRM_MODAL',
+        title: '¿ELIMINAR RESIDENTE?',
+        content: `<p style="color:#666; font-weight:700;">Esta acción revocará el acceso y eliminará el registro permanentemente.</p>`,
+        confirmAction: async () => {
+          const { error } = await supabase.from('subscriptions').delete().eq('id', id);
+          if(!error) {
+             pendingAction = null;
+             render();
+          } else {
+             pendingAction = {
+               type: 'CUSTOM_MODAL',
+               title: '❌ ERROR',
+               content: `<p style="color:#666; font-weight:700;">No se pudo eliminar el registro.</p>`
+             };
+             render();
+          }
+        }
+      };
+      render();
     },
     GEN_CREDENTIAL: async (btn) => {
       const id = btn.dataset.id;
@@ -408,17 +666,26 @@ export const initAdmin = (container) => {
 
   window._admin_tab = (tab) => { activeTab = tab; render() }
 
-  container.onclick = (e) => {
+  container.addEventListener('click', (e) => {
     const trigger = e.target.closest('[data-action]')
-    if (trigger && actions[trigger.dataset.action]) actions[trigger.dataset.action](trigger)
-  }
+    if (trigger) {
+      const action = trigger.dataset.action
+      if (actions[action]) {
+        try {
+          actions[action](trigger)
+        } catch (err) {
+          console.error('Error in action:', action, err)
+        }
+      }
+    }
+  })
 
   const renderShell = (state) => {
     container.innerHTML = `
       <div id="admin-shell" style="background:#f8f9fa; min-height:100vh; font-family:var(--font); color:var(--primary);">
         <div id="admin-header"></div>
         <main id="admin-main" style="padding-top:10px;"></main>
-        <div id="modal-layer"></div>
+        <div id="modal-layer" style="pointer-events:none;"></div>
         
         <nav id="admin-nav" style="position:fixed; bottom:0; left:0; width:100%; background:#1a1a2e; padding:10px 15px calc(env(safe-area-inset-bottom, 8px) + 8px); display:flex; justify-content:space-around; align-items:center; z-index:1000; box-shadow:0 -5px 30px rgba(0,0,0,0.2);">
           <div class="admin-tab-btn" data-action="TAB" data-tab="HOME" style="display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; color:rgba(255,255,255,0.4); transition:color 0.3s; flex:1;">
@@ -439,14 +706,18 @@ export const initAdmin = (container) => {
           </div>
           <div class="admin-tab-btn" data-action="TAB" data-tab="PERSONAL" style="display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; color:rgba(255,255,255,0.4); transition:color 0.3s; flex:1;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px; height:22px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            <span style="font-size:0.55rem; font-weight:800; letter-spacing:0.5px;">EQUIPO</span>
+            <span style="font-size:0.55rem; font-weight:800; letter-spacing:0.5px;">PERSONAL</span>
+          </div>
+          <div class="admin-tab-btn" data-action="TAB" data-tab="ABONOS" style="display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; color:rgba(255,255,255,0.4); transition:color 0.3s; flex:1;">
+            <div style="width:22px; height:22px;">${ICONS.CARD}</div>
+            <span style="font-size:0.55rem; font-weight:800; letter-spacing:0.5px;">ABONOS</span>
           </div>
         </nav>
       </div>`
     elMain = container.querySelector('#admin-main')
   }
 
-  const renderHeader = (state) => {
+  const renderHeader = async (state) => {
     const header = container.querySelector('#admin-header')
     if (!header) return
     const unread = (state.notifications || []).filter(n => n.unread).length
@@ -460,15 +731,20 @@ export const initAdmin = (container) => {
       const rev = (state.movements || []).filter(m => new Date(m.timestamp) >= new Date().setHours(0,0,0,0)).reduce((acc, m) => acc + (m.amount || 0), 0)
       metricHtml = `<div class="header-status" style="background:rgba(34,197,94,0.15); color:#22c55e;"><span>$${rev.toFixed(2)}</span></div>`
     } else if (activeTab === 'SUBS') {
-      const { data: sCount } = await supabase.from('subscriptions').select('count', { count: 'exact' }).eq('building_id', state.buildingId)
-      metricHtml = `<div class="header-status" style="background:rgba(59,130,246,0.15); color:#3b82f6;"><span>${sCount || 0} RESIDENTES</span></div>`
+      // Fetch count in background to not block render
+      metricHtml = `<div class="header-status" id="sub-count-badge" style="background:rgba(59,130,246,0.15); color:#3b82f6;"><span>... RESIDENTES</span></div>`
+      supabase.from('subscriptions').select('count', { count: 'exact' }).eq('building_id', state.buildingId)
+        .then(({count}) => {
+          const badge = container.querySelector('#sub-count-badge')
+          if(badge) badge.innerHTML = `<span>${count || 0} RESIDENTES</span>`
+        })
     } else if (activeTab === 'HOME') {
       metricHtml = `<div class="header-status"><span>ADMIN</span></div>`
     } else {
       metricHtml = `<div class="header-status"><span>ACTIVO</span></div>`
     }
 
-    const titles = { STRUCTURE:'Estructura', SUBS:'Mensualidades', FINANCE:'Finanzas', PERSONAL:'Personal', REPORTES:'Reportes', SETTINGS:'Auditoría', NOTIFICATIONS:'Notificaciones', PROFILE:'Perfil' }
+    const titles = { STRUCTURE:'Pisos', SUBS:'Mensuales', FINANCE:'Caja', PERSONAL:'Personal', REPORTES:'Reportes', SETTINGS:'Auditoría', NOTIFICATIONS:'Notificaciones', PROFILE:'Perfil' }
     const isHome = activeTab === 'HOME'
 
     header.innerHTML = `
@@ -476,8 +752,8 @@ export const initAdmin = (container) => {
         <!-- HEADER TOP: Logo & Context -->
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:${isHome ? '15px' : '0'};">
           <div style="display:flex; align-items:center; gap:12px;">
-            ${!isHome ? `<div data-action="TAB" data-tab="HOME" style="cursor:pointer; color:rgba(255,255,255,0.4); width:24px; height:24px; display:flex; align-items:center; justify-content:center; margin-right:4px;">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="width:20px; height:20px;"><path d="m15 18-6-6 6-6"/></svg>
+            ${!isHome ? `<div data-action="TAB" data-tab="HOME" style="cursor:pointer; color:white; width:24px; height:24px; display:flex; align-items:center; justify-content:center; margin-right:4px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" style="width:20px; height:20px;"><path d="m15 18-6-6 6-6"/></svg>
             </div>` : ''}
             <div data-action="TAB" data-tab="HOME" style="cursor:pointer; display:flex; flex-direction:column;">
               <img src="/icons/Sloty logo negro.png" style="height:60px; filter:brightness(0) invert(1); margin-bottom:-5px; object-fit:contain; object-position:left;" onerror="this.style.display='none'">
@@ -509,7 +785,7 @@ export const initAdmin = (container) => {
         ${isHome ? `
           <!-- BUILDING IDENTITY (ONLY HOME) -->
           <div style="display:flex; align-items:center; justify-content:space-between; margin-top:20px; margin-bottom:4px;">
-            <div style="font-size:1.8rem; font-weight:900; line-height:1.1;">${state.buildingName.toLowerCase()}</div>
+            <div style="font-size:1.8rem; font-weight:900; line-height:1.1;">${state.buildingName}</div>
             <div data-action="TAB" data-tab="PROFILE" style="cursor:pointer; color:var(--accent); width:24px; height:24px;">
                ${ICONS.EDIT}
             </div>
@@ -530,28 +806,59 @@ export const initAdmin = (container) => {
       </div>`
   }
 
-  const renderHome = (state, ads = []) => {
-    const total = state.stats?.totalSpots || 0
-    const occ = state.stats?.occupied || 0
+  const renderHome = async (state, ads = []) => {
+    const movements = state.movements || []
+    const stats = state.stats || { totalSpots: 0, occupied: 0 }
+    const total = stats.totalSpots || 0
+    const occ = stats.occupied || 0
     const perc = total > 0 ? Math.round((occ / total) * 100) : 0
-    const dash = 251.2 // 2 * PI * 40
+    const dash = 251.2
     const offset = dash - (perc / 100) * dash
-    
-    const activeAds = ads.filter(a => a.active) || []
+
+    const activeAds = (ads || []).filter(a => a.active) || []
 
     let avgHours = 0;
-    const salidas = (state.movements || []).filter(m => m.type === 'SALIDA');
+    const salidas = movements.filter(m => m.type === 'SALIDA');
     if (salidas.length > 0) {
       let totalMs = 0; let counted = 0;
       salidas.forEach(sal => {
-         const ing = (state.movements || []).find(m => m.type === 'INGRESO' && m.plate === sal.plate && m.timestamp < sal.timestamp);
-         if (ing) {
-            totalMs += (new Date(sal.timestamp) - new Date(ing.timestamp));
-            counted++;
-         }
+        const ing = movements.find(m => m.type === 'INGRESO' && m.plate === sal.plate && m.timestamp < sal.timestamp);
+        if (ing) { totalMs += (new Date(sal.timestamp) - new Date(ing.timestamp)); counted++; }
       });
       if (counted > 0) avgHours = (totalMs / counted) / (1000 * 60 * 60);
     }
+
+    // --- MONTHLY INTELLIGENCE: fetch live data ---
+    const now = new Date()
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+    const in7days = new Date(now.getTime() + 7 * 86400000).toISOString()
+
+    const [subsRes, paysRes, pendRes] = await Promise.all([
+      supabase.from('subscriptions').select('id,custom_price,expiry_date,status').eq('building_id', state.buildingId),
+      supabase.from('payments').select('amount').eq('building_id', state.buildingId).eq('status', 'CONFIRMED').gte('payment_date', monthStart),
+      supabase.from('payments').select('id').eq('building_id', state.buildingId).eq('status', 'PENDING')
+    ])
+
+    const subs = subsRes.data || []
+    const pays = paysRes.data || []
+    const pends = pendRes.data || []
+
+    const proyectado = subs.reduce((a, s) => a + (s.custom_price || 0), 0)
+    const cobradoMes = pays.reduce((a, p) => a + (p.amount || 0), 0)
+    const pendientesCount = pends.length
+    const porVencer = subs.filter(s => {
+      const exp = new Date(s.expiry_date)
+      return exp > now && exp <= new Date(in7days)
+    }).length
+    const vencidos = subs.filter(s => new Date(s.expiry_date) < now).length
+    const activos = subs.filter(s => new Date(s.expiry_date) >= now).length
+
+    const statCard = (label, value, sub, color, tab = 'SUBS') => `
+      <div data-action="TAB" data-tab="${tab}" style="background:white;padding:18px;border-radius:22px;border:1px solid #f0f0f0;cursor:pointer;box-shadow:0 4px 15px rgba(0,0,0,0.03);">
+        <div style="font-size:0.5rem;font-weight:800;color:#bbb;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">${label}</div>
+        <div style="font-size:1.5rem;font-weight:900;color:${color};">${value}</div>
+        <div style="font-size:0.55rem;font-weight:700;color:#bbb;margin-top:4px;">${sub}</div>
+      </div>`
 
     return `
       <div style="padding:20px; padding-bottom:100px; background:#f8f9fa;">
@@ -563,25 +870,21 @@ export const initAdmin = (container) => {
               <div style="position:relative; width:100px; height:100px;">
                 <svg width="100" height="100" viewBox="0 0 100 100" style="transform:rotate(-90deg);">
                   <circle cx="50" cy="50" r="40" stroke="#eee" stroke-width="10" fill="none" />
-                  <circle cx="50" cy="50" r="40" stroke="#22c55e" stroke-width="10" fill="none" 
+                  <circle cx="50" cy="50" r="40" stroke="#22c55e" stroke-width="10" fill="none"
                     stroke-dasharray="${dash}" stroke-dashoffset="${offset}" stroke-linecap="round" style="transition:all 1s;" />
                 </svg>
-                <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:1.2rem; font-weight:900; color:var(--primary);">
-                  ${perc}%
-                </div>
+                <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:1.2rem; font-weight:900; color:var(--primary);">${perc}%</div>
               </div>
               <div style="margin-top:15px; text-align:center;">
                 <div style="font-size:0.8rem; font-weight:900; color:var(--primary);">${occ} de ${total}</div>
                 <div style="font-size:0.55rem; font-weight:700; color:#999;">OCUPADOS</div>
               </div>
            </div>
-           
            <div class="mini-stat-card">
               <div style="font-size:0.55rem; font-weight:800; color:#999; text-transform:uppercase;">FLUJO DEL DÍA</div>
               <div style="font-size:1.4rem; font-weight:900; color:var(--primary);">${(state.movements || []).filter(m => new Date(m.timestamp) >= new Date().setHours(0,0,0,0)).length}</div>
               <div style="font-size:0.5rem; color:#22c55e; font-weight:700;">Hoy</div>
            </div>
-           
            <div class="mini-stat-card">
               <div style="font-size:0.55rem; font-weight:800; color:#999; text-transform:uppercase;">PERMANENCIA</div>
               <div style="font-size:1.4rem; font-weight:900; color:var(--primary);">${avgHours > 0 ? avgHours.toFixed(1) + 'h' : '0.0h'}</div>
@@ -589,25 +892,58 @@ export const initAdmin = (container) => {
            </div>
         </div>
 
+        <!-- RESUMEN MENSUAL -->
+        <div style="margin-bottom:25px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+            <div style="font-size:0.7rem; font-weight:900; color:var(--primary); text-transform:uppercase; letter-spacing:1px;">RESUMEN MENSUAL</div>
+            <div style="font-size:0.6rem; font-weight:700; color:#bbb;">${now.toLocaleString('es-ES',{month:'long',year:'numeric'}).toUpperCase()}</div>
+          </div>
+
+          <!-- PROYECTADO + COBRADO: destacados -->
+          <div style="background:#1a1a2e; border-radius:24px; padding:22px; margin-bottom:12px; display:grid; grid-template-columns:1fr 1fr; gap:0;">
+            <div style="border-right:1px solid rgba(255,255,255,0.1); padding-right:20px;">
+              <div style="font-size:0.5rem;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">INGRESO PROYECTADO</div>
+              <div style="font-size:1.8rem;font-weight:900;color:#F5C518;">$${proyectado}</div>
+              <div style="font-size:0.55rem;font-weight:700;color:rgba(255,255,255,0.3);margin-top:4px;">${activos} residentes activos</div>
+            </div>
+            <div style="padding-left:20px;">
+              <div style="font-size:0.5rem;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">COBRADO ESTE MES</div>
+              <div style="font-size:1.8rem;font-weight:900;color:#22c55e;">$${cobradoMes.toFixed(0)}</div>
+              <div style="font-size:0.55rem;font-weight:700;color:rgba(255,255,255,0.3);margin-top:4px;">${proyectado > 0 ? Math.round((cobradoMes/proyectado)*100) : 0}% del proyectado</div>
+            </div>
+          </div>
+
+          <!-- ALERTAS: grid 2x2 -->
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            ${statCard('PENDIENTES DE CONFIRMAR', pendientesCount, 'Pagos reportados', pendientesCount > 0 ? '#f59e0b' : '#22c55e', 'SUBS')}
+            ${statCard('POR VENCER', porVencer, 'Próximos 7 días', porVencer > 0 ? '#f59e0b' : '#22c55e', 'SUBS')}
+            ${statCard('MOROSOS', vencidos, 'Suscripción vencida', vencidos > 0 ? '#e63946' : '#22c55e', 'SUBS')}
+            ${statCard('AL CORRIENTE', activos, 'Solventes hoy', '#22c55e', 'SUBS')}
+          </div>
+        </div>
+
         <!-- QUICK FEATURES GRID -->
         <div style="font-size:0.7rem; font-weight:900; color:var(--primary); margin-bottom:15px; text-transform:uppercase; letter-spacing:1px;">GESTIÓN RÁPIDA</div>
         <div class="feature-grid-clean">
-           <div class="feature-item-clean" data-action="TAB" data-tab="STRUCTURE">
-             ${ICONS.STRUCTURE} <span>Estructura</span>
-           </div>
-           <div class="feature-item-clean" data-action="TAB" data-tab="PERSONAL">
-             ${ICONS.PERSONAL} <span>Personal</span>
-           </div>
-           <div class="feature-item-clean" data-action="TAB" data-tab="REPORTES">
-             ${ICONS.HISTORY} <span>Reportes</span>
-           </div>
-           <div class="feature-item-clean" data-action="TAB" data-tab="FINANCE">
-             ${ICONS.FINANCE} <span>Finanzas</span>
-           </div>
-           <div class="feature-item-clean" data-action="TAB" data-tab="SETTINGS">
-             ${ICONS.SETTINGS}
-             <span>Auditoría</span>
-           </div>
+            <div class="feature-item-clean" data-action="TAB" data-tab="STRUCTURE">
+              ${ICONS.STRUCTURE} <span>Pisos</span>
+            </div>
+            <div class="feature-item-clean" data-action="TAB" data-tab="PERSONAL">
+              ${ICONS.PERSONAL} <span>Personal</span>
+            </div>
+            <div class="feature-item-clean" data-action="TAB" data-tab="REPORTES">
+              ${ICONS.HISTORY} <span>Reportes</span>
+            </div>
+            <div class="feature-item-clean" data-action="TAB" data-tab="FINANCE">
+              ${ICONS.FINANCE} <span>Caja</span>
+            </div>
+            <div class="feature-item-clean" data-action="TAB" data-tab="SUBS">
+              ${ICONS.SUBS} <span>Mensual</span>
+            </div>
+            <div class="feature-item-clean" data-action="TAB" data-tab="SETTINGS">
+              ${ICONS.SETTINGS}
+              <span>Auditoría</span>
+            </div>
 
            <!-- ADS CAROUSEL INSIDE GRID FOR PERFECT WIDTH ALIGNMENT -->
            ${activeAds.length ? `
@@ -810,13 +1146,13 @@ export const initAdmin = (container) => {
            `).join('') || '<div style="text-align:center; padding:20px; color:#ccc; font-size:0.75rem; border:2px dashed #eee; border-radius:20px;">No hay cierres registrados</div>'}
         </div>
 
-        <!-- RECENT EXCEDENTS -->
-        <div style="font-size:0.7rem; font-weight:900; color:var(--primary); margin-bottom:15px; text-transform:uppercase; letter-spacing:1px;">ÚLTIMOS EXCEDENTES (+8H) COBRADOS</div>
+        <!-- RECENT EXCEDENTS / SUBS -->
+        <div style="font-size:0.7rem; font-weight:900; color:var(--primary); margin-bottom:15px; text-transform:uppercase; letter-spacing:1px;">ÚLTIMOS PAGOS EXTRA / MENSUALIDADES</div>
         <div style="background:white; border-radius:24px; padding:10px; border:1px solid #f0f0f0;">
            ${excedents.length ? excedents.map(m => `
              <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; border-bottom:1px solid #f9f9f9;">
                 <div>
-                   <div style="font-size:0.75rem; font-weight:900; color:var(--primary);">${m.plate || '---'}</div>
+                   <div style="font-size:0.75rem; font-weight:900; color:var(--primary);">${m.category === 'RESIDENTE' ? '⭐ ' : ''}${m.plate || '---'} <span style="font-size:0.55rem; color:#999; font-weight:800;">${m.type === 'MENSUALIDAD' ? '(Mensualidad)' : '(Excedente)'}</span></div>
                    <div style="font-size:0.55rem; color:#bbb; font-weight:700;">${new Date(m.timestamp).toLocaleTimeString()}</div>
                 </div>
                 <div style="font-size:0.9rem; font-weight:900; color:#22c55e;">+$${m.amount.toFixed(2)}</div>
@@ -1014,7 +1350,7 @@ export const initAdmin = (container) => {
     switch(activeTab) {
       case 'HOME': 
         const { data: adsData } = await supabase.from('ads').select('*').order('timestamp', { ascending: false })
-        html = renderHome(state, adsData || []); 
+        html = await renderHome(state, adsData || []); 
         break
       case 'SUBS': html = await renderMonthlySystem(state); break
       case 'PERSONAL': html = renderPersonnel(state); break
@@ -1024,6 +1360,7 @@ export const initAdmin = (container) => {
       case 'SETTINGS': html = renderAuditLog(state); break
       case 'NOTIFICATIONS': html = renderNotifications(state); break
       case 'PROFILE': html = renderProfile(state); break
+      case 'ABONOS': html = await renderAbonos(state); break
     }
     elMain.innerHTML = `<div class="responsive-container" style="padding-bottom:100px;">${html}</div>`; if(activeTab==='PERSONAL') setupPersonnelHooks()
   }
@@ -1093,75 +1430,397 @@ export const initAdmin = (container) => {
     </div>`
 
   const renderModal = () => {
-    const l = container.querySelector('#modal-layer'); if(!l) return; if(!pendingAction){ l.innerHTML=''; return }
-    l.innerHTML = `<div style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;backdrop-filter:blur(10px);"><div style="background:white;padding:30px;border-radius:32px;width:100%;max-width:380px;text-align:center;"><h3 style="font-weight:900;margin-bottom:10px;">Confirmar eliminación</h3><p style="color:#666;font-size:0.85rem;margin-bottom:30px;">Esta acción es permanente y afectará la base de datos.</p><div style="display:flex;flex-direction:column;gap:10px;"><button data-action="CONFIRM_DELETE" style="background:#e63946;color:white;border:none;padding:18px;border-radius:18px;font-weight:900;">ELIMINAR AHORA</button><button data-action="CANCEL_MODAL" style="background:#f4f4f4;color:#333;border:none;padding:18px;border-radius:18px;font-weight:900;">VOLVER</button></div></div></div>`
-  }
+    const l = container.querySelector('#modal-layer'); if(!l) return; 
+    if(!pendingAction){ 
+      l.innerHTML=''; 
+      l.style.pointerEvents = 'none';
+      return 
+    }
+    l.style.pointerEvents = 'auto';
 
+    if (pendingAction.type === 'CUSTOM_MODAL') {
+      l.innerHTML = `
+        <div style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); display:flex; align-items:center; justify-content:center; z-index:9999; padding:20px; backdrop-filter:blur(15px); animation: fadeIn 0.3s ease;">
+          <div style="background:white; padding:35px 25px; border-radius:35px; width:100%; max-width:380px; text-align:center; box-shadow:0 25px 50px rgba(0,0,0,0.3); animation: slideUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);">
+            <div style="font-size:1.4rem; font-weight:900; color:var(--primary); margin-bottom:15px; text-transform:uppercase; letter-spacing:1px;">${pendingAction.title}</div>
+            <div style="margin-bottom:30px;">${pendingAction.content}</div>
+            <button data-action="CANCEL_MODAL" style="width:100%; background:var(--primary); color:var(--accent); border:none; padding:20px; border-radius:20px; font-weight:900; font-size:0.9rem; cursor:pointer; letter-spacing:1px;">ENTENDIDO</button>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    if (pendingAction.type === 'CONFIRM_MODAL') {
+      l.innerHTML = `
+        <div style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); display:flex; align-items:center; justify-content:center; z-index:9999; padding:20px; backdrop-filter:blur(15px);">
+          <div style="background:white; padding:35px 25px; border-radius:35px; width:100%; max-width:380px; text-align:center;">
+            <div style="font-size:1.4rem; font-weight:900; color:#e63946; margin-bottom:15px; text-transform:uppercase;">${pendingAction.title}</div>
+            <div style="margin-bottom:30px;">${pendingAction.content}</div>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              <button id="modal-confirm-btn" style="width:100%; background:#e63946; color:white; border:none; padding:18px; border-radius:18px; font-weight:900; font-size:0.9rem; cursor:pointer;">ELIMINAR AHORA</button>
+              <button data-action="CANCEL_MODAL" style="width:100%; background:#f4f4f4; color:#333; border:none; padding:18px; border-radius:18px; font-weight:900; font-size:0.9rem; cursor:pointer;">CANCELAR</button>
+            </div>
+          </div>
+        </div>
+      `;
+      const cBtn = l.querySelector('#modal-confirm-btn');
+      if(cBtn) cBtn.onclick = pendingAction.confirmAction;
+      return;
+    }
+
+      l.innerHTML = `
+        <div style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;backdrop-filter:blur(10px);">
+          <div style="background:white;padding:30px;border-radius:32px;width:100%;max-width:380px;text-align:center;">
+            <h3 style="font-weight:900;margin-bottom:10px;">Confirmar acción</h3>
+            <p style="color:#666;font-size:0.85rem;margin-bottom:30px;">¿Estás seguro de continuar con esta operación?</p>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <button data-action="CONFIRM_DELETE" style="background:#e63946;color:white;border:none;padding:18px;border-radius:18px;font-weight:900;">CONFIRMAR</button>
+              <button data-action="CANCEL_MODAL" style="background:#f4f4f4;color:#333;border:none;padding:18px;border-radius:18px;font-weight:900;">VOLVER</button>
+            </div>
+          </div>
+        </div>
+      `;
   }
 
   const renderMonthlySystem = async (state) => {
-    const { data: subs } = await supabase.from('subscriptions').select('*').eq('building_id', state.buildingId)
+    // Force a fresh fetch from Supabase
+    const { data: subs, error: fetchErr } = await supabase.from('subscriptions')
+      .select('*')
+      .eq('building_id', state.buildingId)
+      .order('created_at', { ascending: false });
+      
     const { data: bld } = await supabase.from('buildings').select('monthly_rate, monthly_slots_limit').eq('id', state.buildingId).single()
     
+    if (fetchErr) console.error("Error fetching residents:", fetchErr);
+    
+    // Check if we need to show abono form for someone
+    const abonoTarget = container.querySelector('#abono-form-container');
+
     return `
     <div style="padding:20px; padding-bottom:120px; background:#f8f9fa;">
-      <h2 style="font-weight:900; color:var(--primary); font-size:1.4rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:20px;">SISTEMA DE MENSUALIDADES</h2>
+      <h2 style="font-weight:900; color:var(--primary); font-size:1.4rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:20px;">SISTEMA DE RESIDENTES</h2>
       
-      <!-- CONFIGURACION -->
-      <div style="background:white; padding:25px; border-radius:28px; box-shadow:0 10px 30px rgba(0,0,0,0.03); border:1.5px solid #f0f0f0; margin-bottom:25px;">
-        <div style="font-size:0.7rem; font-weight:800; color:#999; text-transform:uppercase; margin-bottom:15px; letter-spacing:1px;">AJUSTES DE TARIFA</div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px;">
-           <div>
-              <label style="font-size:0.55rem; font-weight:800; color:#bbb; display:block; margin-bottom:5px;">PRECIO MENSUAL ($)</label>
-              <input type="number" id="sub-rate" value="${bld?.monthly_rate || 0}" style="width:100%; padding:12px; border:1.5px solid #eee; border-radius:12px; font-weight:900; color:var(--primary); outline:none;">
-           </div>
-           <div>
-              <label style="font-size:0.55rem; font-weight:800; color:#bbb; display:block; margin-bottom:5px;">CUPOS MÁXIMOS</label>
-              <input type="number" id="sub-limit" value="${bld?.monthly_slots_limit || 0}" style="width:100%; padding:12px; border:1.5px solid #eee; border-radius:12px; font-weight:900; color:var(--primary); outline:none;">
-           </div>
-        </div>
-        <button data-action="SAVE_SUB_SETTINGS" style="width:100%; padding:14px; background:var(--primary); color:var(--accent); border:none; border-radius:12px; font-weight:900; margin-top:20px; cursor:pointer; font-size:0.75rem;">ACTUALIZAR AJUSTES</button>
-      </div>
-
       <!-- NUEVO RESIDENTE -->
       <div style="background:#1a1a2e; padding:25px; border-radius:28px; color:white; margin-bottom:25px; box-shadow:0 15px 35px rgba(26,26,46,0.3);">
-         <div style="font-size:0.7rem; font-weight:800; color:var(--accent); text-transform:uppercase; margin-bottom:15px;">NUEVO RESIDENTE</div>
+         <div style="font-size:0.7rem; font-weight:800; color:var(--accent); text-transform:uppercase; margin-bottom:15px;">NUEVO RESIDENTE (CONTRATO)</div>
          <div style="display:grid; gap:12px;">
             <input type="text" id="new-sub-name" placeholder="Nombre Completo" style="padding:15px; border-radius:12px; border:none; background:rgba(255,255,255,0.1); color:white; font-weight:700;">
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-               <input type="text" id="new-sub-plate" placeholder="Placa" style="padding:15px; border-radius:12px; border:none; background:rgba(255,255,255,0.1); color:white; font-weight:700; text-transform:uppercase;">
-               <input type="text" id="new-sub-slot" placeholder="Puesto (Opc)" style="padding:15px; border-radius:12px; border:none; background:rgba(255,255,255,0.1); color:white; font-weight:700;">
+            <div id="new-sub-plates-container" style="display:grid; gap:8px;">
+               <div style="display:flex; gap:8px;">
+                  <input type="text" class="new-sub-plate-input" placeholder="Placa Vehículo 1" style="flex:1; padding:15px; border-radius:12px; border:none; background:rgba(255,255,255,0.1); color:white; font-weight:700; text-transform:uppercase;">
+               </div>
             </div>
-            <button data-action="ADD_RESIDENT" style="padding:18px; background:var(--accent); color:var(--primary); border:none; border-radius:14px; font-weight:900; font-size:0.8rem; cursor:pointer; margin-top:5px;">REGISTRAR Y ACTIVAR</button>
+            <button id="add-plate-field" type="button" style="background:none; border:1px dashed rgba(255,255,255,0.3); color:rgba(255,255,255,0.6); padding:10px; border-radius:12px; font-size:0.7rem; font-weight:700; cursor:pointer; margin-top:5px;">+ AÑADIR OTRO VEHÍCULO</button>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+               <div>
+                  <label style="font-size:0.5rem; color:rgba(255,255,255,0.4); display:block; margin-bottom:4px;">PRECIO ACORDADO ($)</label>
+                  <input type="number" id="new-sub-price" value="${bld?.monthly_rate || 0}" style="width:100%; padding:15px; border-radius:12px; border:none; background:rgba(255,255,255,0.1); color:white; font-weight:900;">
+               </div>
+               <div>
+                  <label style="font-size:0.5rem; color:rgba(255,255,255,0.4); display:block; margin-bottom:4px;">CANT. PUESTOS</label>
+                  <input type="number" id="new-sub-count" value="1" style="width:100%; padding:15px; border-radius:12px; border:none; background:rgba(255,255,255,0.1); color:white; font-weight:900;">
+               </div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+               <div>
+                  <label style="font-size:0.5rem; color:rgba(255,255,255,0.4); display:block; margin-bottom:4px;">TORRE</label>
+                  <input type="text" id="new-sub-tower" placeholder="Ej: A" style="width:100%; padding:15px; border-radius:12px; border:none; background:rgba(255,255,255,0.1); color:white; font-weight:700;">
+               </div>
+               <div>
+                  <label style="font-size:0.5rem; color:rgba(255,255,255,0.4); display:block; margin-bottom:4px;">PISO</label>
+                  <input type="text" id="new-sub-floor" placeholder="Ej: 4" style="width:100%; padding:15px; border-radius:12px; border:none; background:rgba(255,255,255,0.1); color:white; font-weight:700;">
+               </div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+               <div>
+                  <label style="font-size:0.5rem; color:rgba(255,255,255,0.4); display:block; margin-bottom:4px;">APARTAMENTO</label>
+                  <input type="text" id="new-sub-apt" placeholder="Ej: 402" style="width:100%; padding:15px; border-radius:12px; border:none; background:rgba(255,255,255,0.1); color:white; font-weight:700;">
+               </div>
+               <div>
+                  <label style="font-size:0.5rem; color:rgba(255,255,255,0.4); display:block; margin-bottom:4px;">TELÉFONO</label>
+                  <input type="tel" id="new-sub-phone" placeholder="+58..." style="width:100%; padding:15px; border-radius:12px; border:none; background:rgba(255,255,255,0.1); color:white; font-weight:700;">
+               </div>
+            </div>
+            <div style="display:flex; gap:10px;">
+               <button data-action="ADD_RESIDENT" style="flex:2; padding:18px; background:var(--accent); color:var(--primary); border:none; border-radius:14px; font-weight:900; font-size:0.8rem; cursor:pointer; margin-top:5px; text-transform:uppercase;">${editingResident ? 'GUARDAR CAMBIOS' : 'REGISTRAR Y ACTIVAR'}</button>
+               ${editingResident ? `<button data-action="CANCEL_EDIT_RESIDENT" style="flex:1; padding:18px; background:rgba(255,255,255,0.1); color:white; border:none; border-radius:14px; font-weight:700; font-size:0.8rem; cursor:pointer; margin-top:5px;">CANCELAR</button>` : ''}
+            </div>
          </div>
       </div>
 
       <!-- LISTA DE RESIDENTES -->
-      <div style="font-size:0.7rem; font-weight:900; color:var(--primary); margin-bottom:15px; text-transform:uppercase; letter-spacing:1px;">RESIDENTES ACTIVOS (${subs?.length || 0})</div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+        <div style="font-size:0.7rem; font-weight:900; color:var(--primary); text-transform:uppercase; letter-spacing:1px;">RESIDENTES ACTIVOS (${subs?.length || 0})</div>
+        <div style="font-size:0.6rem; color:#999; font-weight:800;">TOTAL: $${(subs || []).reduce((a,b)=>a+(b.custom_price||0),0)}/mes</div>
+      </div>
+
       <div style="display:grid; gap:12px;">
         ${(subs || []).map(r => `
-          <div style="background:white; padding:20px; border-radius:24px; border:1.5px solid #f0f0f0; display:flex; justify-content:space-between; align-items:center;">
-             <div>
-                <div style="font-weight:900; color:var(--primary); font-size:0.9rem;">${r.resident_name}</div>
-                <div style="font-size:0.6rem; font-weight:700; color:#999; margin-top:4px;">PLACA: <span style="color:var(--primary);">${r.plate}</span> · PUESTO: ${r.slot_label || 'SIN ASIGNAR'}</div>
-                <div style="font-size:0.55rem; color:#22c55e; font-weight:800; margin-top:6px; text-transform:uppercase;">Vence: ${new Date(r.expiry_date).toLocaleDateString()}</div>
+          <div style="background:white; padding:20px; border-radius:28px; border:1.5px solid ${r.is_coming ? '#F5C518' : '#f0f0f0'}; box-shadow:0 10px 30px rgba(0,0,0,0.03); position:relative; overflow:hidden;">
+             ${r.is_coming ? `<div style="position:absolute; top:0; left:0; background:#F5C518; color:#1a1a2e; padding:4px 12px; font-size:0.55rem; font-weight:900; border-bottom-right-radius:12px; animation: pulse 2s infinite;">EN CAMINO 🚗</div>` : ''}
+             
+             <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:15px;">
+                <div style="flex:1;">
+                   <div style="font-weight:900; color:var(--primary); font-size:1.1rem; line-height:1.2;">${r.resident_name}</div>
+                   <div style="display:flex; gap:8px; margin-top:5px;">
+                      <span style="font-size:0.6rem; background:#f0f2f5; padding:3px 8px; border-radius:8px; font-weight:800; color:#666;">TORRE ${r.tower || '-'}</span>
+                      <span style="font-size:0.6rem; background:#f0f2f5; padding:3px 8px; border-radius:8px; font-weight:800; color:#666;">APTO ${r.apt || '-'}</span>
+                   </div>
+                </div>
+                <div style="text-align:right;">
+                   <div style="font-size:0.9rem; font-weight:900; color:#22c55e;">$${r.custom_price || 0}</div>
+                   <div style="font-size:0.5rem; color:#bbb; font-weight:800; text-transform:uppercase;">MENSUAL</div>
+                </div>
              </div>
-             <div style="display:flex; gap:8px;">
-                <button data-action="GEN_CREDENTIAL" data-id="${r.id}" style="background:#f4f4f4; color:var(--primary); border:none; width:40px; height:40px; border-radius:12px; font-size:1.2rem; cursor:pointer;">🪪</button>
-                <button data-action="DELETE_RESIDENT" data-id="${r.id}" style="background:rgba(230,57,70,0.1); color:#e63946; border:none; width:40px; height:40px; border-radius:12px; font-size:1.2rem; cursor:pointer;">🗑️</button>
+
+             <div style="background:#fafafa; border-radius:16px; padding:12px; margin-bottom:15px; border:1px solid #f0f0f0;">
+                <div style="font-size:0.5rem; color:#999; font-weight:800; text-transform:uppercase; margin-bottom:4px;">Vehículos Registrados</div>
+                <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                   ${r.plate.split(',').map(p => `<span style="background:#1a1a2e; color:var(--accent); font-size:0.7rem; font-weight:900; padding:4px 10px; border-radius:8px;">${p.trim()}</span>`).join('')}
+                </div>
+             </div>
+
+             <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid #f0f0f0; pt:15px; margin-top:5px; padding-top:15px;">
+                <div style="font-size:0.65rem; color:#999; font-weight:700;">
+                   Vence: <span style="color:${new Date(r.expiry_date) > new Date() ? '#22c55e' : '#e63946'}; font-weight:900;">${new Date(r.expiry_date).toLocaleDateString()}</span>
+                </div>
+                <div style="display:flex; gap:10px;">
+                   <button data-action="RESIDENT_PAYMENTS" data-id="${r.id}" data-name="${r.resident_name}" style="background:#f4f4f4; border:none; width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#3b82f6;">
+                      <div style="width:18px; height:18px;">${ICONS.FINANCE}</div>
+                   </button>
+                   <button data-action="EDIT_RESIDENT" data-id="${r.id}" style="background:#f4f4f4; border:none; width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#666;">
+                      <div style="width:18px; height:18px;">${ICONS.EDIT}</div>
+                   </button>
+                   <button data-action="GEN_CREDENTIAL" data-id="${r.id}" style="background:#f4f4f4; border:none; width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#666;">
+                      <div style="width:18px; height:18px;">${ICONS.CARD}</div>
+                   </button>
+                   <button data-action="SEND_RESIDENT_ACCESS" data-id="${r.id}" data-phone="${r.phone}" data-plate="${r.plate}" style="background:#22c55e; border:none; width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:white; font-weight:900; font-size:1.1rem;">
+                      W
+                   </button>
+                   <button data-action="DELETE_RESIDENT" data-id="${r.id}" style="background:#fff0f0; border:none; width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#e63946;">
+                      <div style="width:18px; height:18px;">${ICONS.TRASH}</div>
+                   </button>
+                </div>
              </div>
           </div>
         `).join('')}
-        ${!subs?.length ? '<div style="text-align:center; padding:40px; color:#ccc; font-weight:700; font-size:0.8rem;">No hay residentes registrados</div>' : ''}
+        ${!subs?.length ? '<div style="text-align:center; padding:100px 20px; color:#ccc; font-weight:900; font-size:0.8rem;">NO HAY RESIDENTES REGISTRADOS</div>' : ''}
       </div>
     </div>`
+  }
+
+  const renderAbonos = async (state) => {
+    const { data: subs } = await supabase.from('subscriptions').select('*').eq('building_id', state.buildingId).order('resident_name');
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+    
+    // Calculate total abonos today from movements
+    const abonosToday = (state.movements || []).filter(m => m.type === 'MENSUALIDAD' && m.timestamp.startsWith(today)).reduce((a,b)=>a+(b.amount||0), 0);
+    
+    return `
+    <div style="padding:20px; padding-bottom:120px; background:#f8f9fa;">
+      <h2 style="font-weight:900; color:var(--primary); font-size:1.4rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:20px;">REGISTRO DE ABONOS</h2>
+      
+      <!-- ABONO STATS -->
+      <div style="background:#1a1a2e; padding:25px; border-radius:28px; color:white; margin-bottom:25px; display:flex; justify-content:space-between; align-items:center; box-shadow:0 15px 35px rgba(26,26,46,0.2);">
+         <div>
+            <div style="font-size:0.6rem; font-weight:800; color:var(--accent); text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">COBRADO HOY (ABONOS)</div>
+            <div style="font-size:1.8rem; font-weight:900;">$${abonosToday.toFixed(2)}</div>
+         </div>
+         <div style="background:rgba(255,255,255,0.1); width:50px; height:50px; border-radius:15px; display:flex; align-items:center; justify-content:center;">
+            <div style="width:24px; height:24px; color:var(--accent);">${ICONS.FINANCE}</div>
+         </div>
+      </div>
+
+      <div style="background:white; padding:20px; border-radius:24px; margin-bottom:25px; border:1px solid #eee;">
+         <div style="font-size:0.7rem; font-weight:800; color:#999; margin-bottom:15px; text-transform:uppercase;">BUSCAR RESIDENTE</div>
+         <input type="text" id="abono-search" placeholder="Nombre o Placa..." onkeyup="filterAbonos(this.value)" style="width:100%; padding:15px; border-radius:15px; border:1.5px solid #f0f0f0; font-family:var(--font); font-weight:700; outline:none; background:#fafafa;">
+      </div>
+
+      <div id="abonos-list" style="display:grid; gap:12px;">
+        ${(subs || []).map(r => {
+          const exp = new Date(r.expiry_date);
+          const isExpired = exp < now;
+          return `
+          <div class="abono-card" data-search="${r.resident_name.toLowerCase()} ${r.plate.toLowerCase()}" style="background:white; padding:20px; border-radius:24px; border:1.5px solid #f0f0f0; display:flex; justify-content:space-between; align-items:center; box-shadow:0 10px 30px rgba(0,0,0,0.02);">
+             <div>
+                <div style="font-weight:900; color:var(--primary); font-size:1rem;">${r.resident_name}</div>
+                <div style="font-size:0.7rem; font-weight:700; color:#666; margin-top:2px;">Placa: ${r.plate}</div>
+                <div style="font-size:0.65rem; font-weight:800; color:${isExpired ? '#e63946' : '#22c55e'}; margin-top:4px;">
+                   Vence: ${exp.toLocaleDateString()} ${isExpired ? '(VENCIDO)' : ''}
+                </div>
+             </div>
+             <button data-action="SHOW_ABONO_FORM" data-id="${r.id}" data-name="${r.resident_name}" data-price="${r.custom_price}" style="background:#1a1a2e; color:var(--accent); border:none; padding:12px 18px; border-radius:15px; font-weight:900; font-size:0.75rem; cursor:pointer; box-shadow:0 8px 20px rgba(26,26,46,0.15);">
+                REGISTRAR ABONO
+             </button>
+          </div>
+          `
+        }).join('')}
+      </div>
+
+      <!-- RECENT ABONOS -->
+      <div style="margin-top:40px;">
+        <div style="font-size:0.7rem; font-weight:900; color:var(--primary); text-transform:uppercase; letter-spacing:1px; margin-bottom:15px;">ÚLTIMOS ABONOS REGISTRADOS</div>
+        <div style="background:white; border-radius:24px; border:1px solid #eee; overflow:hidden;">
+          ${(state.movements || []).filter(m => m.type === 'MENSUALIDAD').slice(0, 5).map(m => `
+            <div style="padding:15px 20px; border-bottom:1px solid #f9f9f9; display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <div style="font-size:0.85rem; font-weight:900; color:var(--primary);">${m.plate}</div>
+                <div style="font-size:0.55rem; color:#bbb; font-weight:700;">${new Date(m.timestamp).toLocaleString()} · ${m.payMethod}</div>
+              </div>
+              <div style="text-align:right;">
+                <div style="font-size:0.9rem; font-weight:900; color:#22c55e;">+$${m.amount.toFixed(2)}</div>
+                <div style="font-size:0.45rem; color:#999; font-weight:800; text-transform:uppercase;">Ref: ${m.reference || 'EFEC'}</div>
+              </div>
+            </div>
+          `).join('') || '<div style="padding:40px; text-align:center; color:#ccc; font-weight:700; font-size:0.7rem;">No hay abonos recientes</div>'}
+        </div>
+      </div>
+
+    </div>
+    <script>
+      window.filterAbonos = (val) => {
+        const term = val.toLowerCase();
+        document.querySelectorAll('.abono-card').forEach(c => {
+          c.style.display = c.dataset.search.includes(term) ? 'flex' : 'none';
+        });
+      }
+    </script>`
+  }
+
+  // Add new actions for abonos
+  Object.assign(actions, {
+    SHOW_ABONO_FORM: (btn) => {
+      const { id, name, price } = btn.dataset;
+      const l = document.getElementById('modal-layer');
+      l.style.pointerEvents = 'auto';
+      l.innerHTML = `
+        <div style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);backdrop-filter:blur(15px);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;">
+          <div style="background:white; border-radius:35px; width:100%; max-width:400px; padding:35px 25px; box-shadow:0 25px 50px rgba(0,0,0,0.3); animation: slideUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);">
+            <h2 style="font-weight:900; color:var(--primary); margin-bottom:5px; text-align:center;">REGISTRAR ABONO</h2>
+            <div style="font-size:0.8rem; font-weight:700; color:#666; text-align:center; margin-bottom:25px;">${name}</div>
+            
+            <div style="margin-bottom:20px;">
+              <label style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:8px; display:block; text-transform:uppercase;">Monto del Abono ($)</label>
+              <input id="abono-amount" type="number" step="0.01" value="${price}" style="width:100%; box-sizing:border-box; border:2.5px solid #f0f0f0; border-radius:18px; padding:20px; font-size:1.5rem; font-weight:900; outline:none; font-family:var(--font); text-align:center;">
+              <div id="abono-preview" style="font-size:0.6rem; font-weight:800; color:#22c55e; margin-top:8px; text-align:center;">Extenderá: 30 días aprox.</div>
+            </div>
+
+            <div style="margin-bottom:25px;">
+              <label style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:8px; display:block; text-transform:uppercase;">Método de Pago</label>
+              <select id="abono-method" style="width:100%; padding:15px; border-radius:15px; border:2.5px solid #f0f0f0; font-family:var(--font); font-weight:800; outline:none; appearance:none; background:#fafafa;">
+                <option value="EFECTIVO">💵 EFECTIVO</option>
+                <option value="PAGO_MOVIL">📱 PAGO MÓVIL</option>
+                <option value="TRANSFERENCIA">🏦 TRANSFERENCIA</option>
+              </select>
+            </div>
+
+            <div id="abono-ref-container" style="margin-bottom:25px; display:none;">
+              <label style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:8px; display:block; text-transform:uppercase;">Referencia</label>
+              <input id="abono-ref" type="text" placeholder="Ej: 4522" style="width:100%; box-sizing:border-box; border:2.5px solid #f0f0f0; border-radius:18px; padding:18px; font-size:1.1rem; font-weight:900; outline:none; font-family:var(--font);">
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+               <button data-action="SUBMIT_ABONO" data-id="${id}" data-price="${price}" style="padding:20px; background:#1a1a2e; color:var(--accent); border:none; border-radius:20px; font-weight:900; cursor:pointer; font-size:0.8rem; text-transform:uppercase;">PROCESAR</button>
+               <button data-action="CANCEL_MODAL" style="padding:20px; background:#f4f4f4; color:#666; border:none; border-radius:20px; font-weight:900; cursor:pointer; font-size:0.8rem; text-transform:uppercase;">CANCELAR</button>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      const amountInput = l.querySelector('#abono-amount');
+      const preview = l.querySelector('#abono-preview');
+      const methodSelect = l.querySelector('#abono-method');
+      const refContainer = l.querySelector('#abono-ref-container');
+
+      amountInput.oninput = () => {
+        const val = parseFloat(amountInput.value) || 0;
+        const days = Math.round((val / price) * 30);
+        preview.textContent = `Extenderá: ${days} días aprox.`;
+      };
+
+      methodSelect.onchange = () => {
+        refContainer.style.display = methodSelect.value === 'EFECTIVO' ? 'none' : 'block';
+      };
+    },
+    SUBMIT_ABONO: async (btn) => {
+      const id = btn.dataset.id;
+      const price = parseFloat(btn.dataset.price) || 1;
+      const amount = parseFloat(document.getElementById('abono-amount').value) || 0;
+      const method = document.getElementById('abono-method').value;
+      const ref = document.getElementById('abono-ref')?.value || '';
+      
+      if (amount <= 0) return alert('Monto inválido');
+      
+      btn.textContent = 'PROCESANDO...';
+      btn.disabled = true;
+
+      const { data: res } = await supabase.from('subscriptions').select('expiry_date, plate').eq('id', id).single();
+      const currentExp = new Date(res.expiry_date);
+      const startBase = new Date(Math.max(Date.now(), currentExp.getTime()));
+      const daysToAdd = Math.round((amount / price) * 30);
+      startBase.setDate(startBase.getDate() + daysToAdd);
+
+      const state = getParkingState();
+      
+      await supabase.from('payments').insert({
+        building_id: state.buildingId,
+        subscription_id: id,
+        amount: amount,
+        method: method,
+        reference: ref,
+        status: 'CONFIRMED',
+        payment_date: new Date().toISOString()
+      });
+
+      await supabase.from('subscriptions').update({
+        expiry_date: startBase.toISOString()
+      }).eq('id', id);
+
+      // Log movement for financial tracking
+      logMovement({
+        type: 'MENSUALIDAD',
+        plate: res.plate.split(',')[0].trim(),
+        slot: 'ABONO',
+        category: 'RESIDENTE',
+        guardName: 'Administrador',
+        payMethod: method,
+        amount: amount,
+        reference: ref,
+        paymentStatus: 'PAGADO'
+      });
+
+      logAudit(`Registró abono de $${amount} para residente ID ${id}`);
+      pendingAction = null;
+      render();
+    }
+  });
+
+  const initPlateAdder = () => {
+    const btn = document.getElementById('add-plate-field');
+    const container = document.getElementById('new-sub-plates-container');
+    if (btn && container) {
+      btn.onclick = () => {
+        const div = document.createElement('div');
+        div.style.display = 'flex';
+        div.style.gap = '8px';
+        div.innerHTML = `
+          <input type="text" class="new-sub-plate-input" placeholder="Placa Vehículo ${container.children.length + 1}" style="flex:1; padding:15px; border-radius:12px; border:none; background:rgba(255,255,255,0.1); color:white; font-weight:700; text-transform:uppercase;">
+          <button type="button" onclick="this.parentElement.remove()" style="background:rgba(230,57,70,0.2); color:#e63946; border:none; width:45px; border-radius:12px; cursor:pointer; font-weight:900;">✕</button>
+        `;
+        container.appendChild(div);
+      };
+    }
   }
 
   const render = async () => {
     const s = getParkingState()
     if (!elMain) renderShell(s)
     renderHeader(s)
-    await renderTabContent(s); renderModal()
+    await renderTabContent(s); 
+    renderModal()
+    initPlateAdder()
     container.querySelectorAll('.admin-tab-btn').forEach(v => {
       const active = v.dataset.tab === activeTab
       v.style.color = active ? '#F5C518' : 'rgba(255,255,255,0.4)'

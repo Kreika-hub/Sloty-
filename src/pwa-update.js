@@ -11,9 +11,22 @@ window.addEventListener('beforeinstallprompt', (e) => {
 })
 
 const showInstallBanner = () => {
-  // No mostrar si ya existe o si ya está instalada
+  // 1. No mostrar si ya existe el banner
   if (document.getElementById('pwa-install-banner')) return
-  if (window.matchMedia('(display-mode: standalone)').matches) return
+
+  // 2. No mostrar si ya está en modo APP (PWA instalada)
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone
+  if (isStandalone) return
+
+  // 3. No mostrar si ya se instaló (marca manual)
+  if (localStorage.getItem('pwa_installed') === 'true') return
+
+  // 4. No mostrar si se rechazó recientemente (ahora 30 días)
+  const dismissedAt = localStorage.getItem('pwa_dismissed_at')
+  if (dismissedAt) {
+    const daysSince = (Date.now() - parseInt(dismissedAt)) / (1000 * 60 * 60 * 24)
+    if (daysSince < 30) return 
+  }
 
   const banner = document.createElement('div')
   banner.id = 'pwa-install-banner'
