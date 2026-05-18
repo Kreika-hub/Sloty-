@@ -6,7 +6,7 @@ try {
 
   console.log('Committing changes...');
   // Escape quotes for cmd/sh execution safely
-  execSync('git commit -m "fix: guard bugs criticos + tablas subscriptions/payments"', { stdio: 'inherit' });
+  execSync('git commit -m "fix: guard vars, render, buildingId fallbacks"', { stdio: 'inherit' });
 
   console.log('Fetching remote changes...');
   execSync('git fetch', { stdio: 'inherit' });

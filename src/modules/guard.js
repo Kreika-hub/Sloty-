@@ -185,6 +185,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
     SHOW_SUB_PAYMENT: async () => {
       currentView = 'SUB_PAYMENT_LOADING'; render()
       const buildingId = state.buildingId || localStorage.getItem('sloty_building_id')
+      if (!buildingId) { showToast('Edificio no identificado', 'error'); return }
       
       const [ { data: subs }, { data: pays } ] = await Promise.all([
         supabase.from('subscriptions').select('*').eq('building_id', buildingId),
