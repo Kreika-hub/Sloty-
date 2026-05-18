@@ -1,6 +1,13 @@
 import { execSync } from 'child_process';
 
 try {
+  console.log('Staging changes...');
+  execSync('git add .', { stdio: 'inherit' });
+
+  console.log('Committing changes...');
+  // Escape quotes for cmd/sh execution safely
+  execSync('git commit -m "fix: guard bugs criticos + tablas subscriptions/payments"', { stdio: 'inherit' });
+
   console.log('Fetching remote changes...');
   execSync('git fetch', { stdio: 'inherit' });
   

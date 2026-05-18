@@ -15,6 +15,9 @@ export const initGuard = (container, guardName = 'Guardia') => {
   let subPaymentMethod = 'EFECTIVO_USD'
   let selectedResident = null
   let elModal = null
+  let elToast = null
+  let elShell = null
+  let elContent = null
 
   const showNativePush = (title, msg, icon = '🛡️') => {
     const push = document.createElement('div')
@@ -947,9 +950,11 @@ export const initGuard = (container, guardName = 'Guardia') => {
 
   const checkIncomingResidents = async () => {
     if (currentView !== 'MAP') return;
+    const buildingId = state.buildingId || localStorage.getItem('sloty_building_id')
+    if (!buildingId) return;
     const { data: incoming } = await supabase.from('subscriptions')
       .select('*')
-      .eq('building_id', state.buildingId)
+      .eq('building_id', buildingId)
       .eq('is_coming', true);
     
     const bannerArea = document.getElementById('incoming-residents-area');
@@ -973,8 +978,6 @@ export const initGuard = (container, guardName = 'Guardia') => {
 
   const render = () => {
     const freshState = getParkingState()
-    if (selectedGuard) renderPinPad()
-    else renderSelection()
     if (!elShell) renderShell(freshState)
     elShell.innerHTML = renderHeader(freshState)
     
