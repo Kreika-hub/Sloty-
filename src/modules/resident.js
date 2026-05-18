@@ -47,6 +47,9 @@ export function initResident(container, subscription) {
             <option value="PAGO_MOVIL">📱 Pago Móvil</option>
             <option value="TRANSFERENCIA">🏦 Transferencia</option>
           </select>
+          <div id="pago-movil-note" style="display:none;background:rgba(245,197,24,0.1);border:1.5px solid #F5C518;border-radius:14px;padding:12px;font-size:0.65rem;color:#D97706;font-weight:700;margin-top:8px;text-align:left;line-height:1.3;">
+            ⚠️ Nota: Recuerda que debes colocar el valor del Pago Móvil en Bolívares (Bs.)
+          </div>
         </div>
 
         <div>
@@ -251,7 +254,13 @@ export function initResident(container, subscription) {
       const methodSel = document.getElementById('pay-method')
       const refGroup = document.getElementById('pay-ref-group')
       if (methodSel && refGroup) {
-        const toggleRef = () => { refGroup.style.display = methodSel.value === 'EFECTIVO' ? 'none' : 'block' }
+        const toggleRef = () => { 
+          refGroup.style.display = methodSel.value === 'EFECTIVO' ? 'none' : 'block'
+          const pmNote = document.getElementById('pago-movil-note')
+          if (pmNote) {
+            pmNote.style.display = methodSel.value === 'PAGO_MOVIL' ? 'block' : 'none'
+          }
+        }
         methodSel.onchange = toggleRef
         toggleRef()
       }

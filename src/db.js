@@ -259,16 +259,22 @@ export const saveParkingState = (state) => {
       
       // Personnel UPSERT
       if (state.personnel) {
-         const pPayload = state.personnel.map(p => ({
-             id: p.id,
-             building_id: state.buildingId,
-             name: p.name,
-             pin: p.pin,
-             phone: p.phone,
-             shift: p.shift,
-             photo: p.photo,
-             status: p.status
-         }))
+         const pPayload = state.personnel.map(p => {
+             const item = {
+                 id: p.id,
+                 building_id: state.buildingId,
+                 name: p.name,
+                 phone: p.phone,
+                 shift: p.shift,
+                 photo: p.photo,
+                 status: p.status || 'Pendiente Activación',
+                 active: p.active !== false
+             }
+             if (p.pin) {
+                 item.pin = p.pin
+             }
+             return item;
+         })
          if (pPayload.length > 0) {
             enqueueSync({ table: 'personnel', action: 'UPSERT', data: pPayload })
          }

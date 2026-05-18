@@ -559,7 +559,7 @@ const renderBuildingLogin = () => {
     </div>
   `
 
-  $('btn-back-welcome').onclick = () => showOnly('welcome')
+  $('btn-back-to-welcome').onclick = () => showOnly('welcome')
   $('btn-validate-build').onclick = async () => {
     const entered = $('build-code-input').value.trim().toUpperCase()
     if (!entered) { $('build-error').textContent = 'Ingresa un código'; return }
@@ -571,7 +571,6 @@ const renderBuildingLogin = () => {
       .from('buildings')
       .select('id, name, code')
       .eq('code', entered)
-      .eq('active', true)
       .single()
 
     if (error || !data) {
@@ -611,9 +610,10 @@ const renderGuardPin = () => {
       .from('personnel')
       .select('*')
       .eq('building_id', buildingId)
-      .eq('active', true)
 
     state.personnel = personnel || []
+
+    const activeGuards = (state.personnel || []).filter(p => p.pin && p.status === 'Activo')
 
     screens.guardPin.innerHTML = `
       <div style="min-height:100vh;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;padding:40px 24px;">
@@ -625,14 +625,14 @@ const renderGuardPin = () => {
         <p style="color:rgba(255,255,255,0.4);font-size:0.65rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 32px;">SELECCIONA TU PERFIL</p>
         
         <div style="width:100%;max-width:320px;display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-          ${(state.personnel || []).map(p => `
+          ${activeGuards.map(p => `
             <div class="guard-card" data-id="${p.id}" style="background:rgba(255,255,255,0.05);padding:20px 10px;border-radius:18px;text-align:center;cursor:pointer;border:2px solid transparent;transition:all 0.2s;">
               <div style="width:60px;height:60px;border-radius:50%;background:#333;margin:0 auto 10px;overflow:hidden;border:2px solid rgba(255,255,255,0.1);">
                 ${p.photo ? `<img src="${p.photo}" style="width:100%;height:100%;object-fit:cover;">` : `<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#666;font-weight:900;">${p.name.charAt(0)}</div>`}
               </div>
               <div style="color:white;font-weight:700;font-size:0.8rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.name}</div>
             </div>
-          `).join(state.personnel?.length ? '' : '<p style="color:rgba(255,255,255,0.3);grid-column:span 2;padding:40px 0;">No hay guardias registrados.</p>')}
+          `).join(activeGuards.length ? '' : '<p style="color:rgba(255,255,255,0.3);grid-column:span 2;padding:40px 0;">No hay guardias registrados.</p>')}
         </div>
         
         <p style="color:rgba(255,255,255,0.2);font-size:0.75rem;margin-top:auto;padding-top:40px;">${state.buildingName || 'Edificio'}</p>
@@ -744,7 +744,61 @@ const checkInvitationLink = async () => {
   const params = new URLSearchParams(window.location.search);
   const plate = params.get('setup');
   const bldCode = params.get('bld');
+  const guardId = params.get('setup_guard');
   
+  if (guardId && bldCode) {
+    showOnly('login');
+    screens.login.innerHTML = `
+      <div style="min-height:100vh;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;">
+        <div style="margin-bottom:32px;text-align:center;">
+          <div style="font-size:3rem; margin-bottom:10px;">🛡️</div>
+          <h2 style="color:white; font-weight:900;">ACTIVACIÓN DE GUARDIA</h2>
+          <p style="color:rgba(255,255,255,0.4);font-size:0.8rem;font-weight:600;margin-top:4px;">Crea tu PIN personal de 4 dígitos</p>
+        </div>
+        <div style="width:100%;max-width:340px;display:flex;flex-direction:column;gap:14px;">
+          <input type="password" id="guard-setup-pin-1" placeholder="NUEVO PIN (4 DÍGITOS)" maxlength="4" inputmode="numeric"
+            style="width:100%;padding:18px;border-radius:12px;border:2px solid #F5C518;background:rgba(255,255,255,0.05);color:white;font-family:'Montserrat',sans-serif;font-size:1.1rem;font-weight:900;text-align:center;outline:none;" />
+          <input type="password" id="guard-setup-pin-2" placeholder="REPETIR PIN" maxlength="4" inputmode="numeric"
+            style="width:100%;padding:18px;border-radius:12px;border:2px solid #F5C518;background:rgba(255,255,255,0.05);color:white;font-family:'Montserrat',sans-serif;font-size:1.1rem;font-weight:900;text-align:center;outline:none;" />
+          
+          <button id="btn-save-guard-pin" style="width:100%;padding:18px;background:#F5C518;color:#1a1a2e;border:none;border-radius:14px;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:900;cursor:pointer;margin-top:8px;">
+            ACTIVAR MI CUENTA
+          </button>
+          <p id="guard-setup-error" style="color:#e63946;text-align:center;font-size:0.85rem;font-weight:700;min-height:20px;"></p>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('btn-save-guard-pin').onclick = async () => {
+      const pin1 = document.getElementById('guard-setup-pin-1').value;
+      const pin2 = document.getElementById('guard-setup-pin-2').value;
+      if (pin1.length !== 4) return renderAlert('El PIN debe ser de 4 dígitos', true);
+      if (pin1 !== pin2) return renderAlert('Los PIN no coinciden', true);
+
+      document.getElementById('btn-save-guard-pin').textContent = 'Activando...';
+      const { data: bld } = await supabase.from('buildings').select('id, name, code').eq('code', bldCode).single();
+      if (!bld) return renderAlert('Error: Edificio no encontrado', true);
+
+      const { data: guard, error } = await supabase.from('personnel').update({ pin: pin1, status: 'Activo', active: true }).eq('id', guardId).select('name').single();
+      if (!error && guard) {
+        localStorage.setItem('sloty_active_building', bld.code);
+        localStorage.setItem('sloty_building_id', bld.id);
+        localStorage.setItem('sloty_building_name', bld.name);
+        
+        window.history.replaceState({}, document.title, '/');
+        renderAlert('¡Cuenta activada con éxito! Iniciando sesión...');
+        setTimeout(() => {
+          showOnly('main');
+          initGuard(screens.main, guard.name);
+        }, 1500);
+      } else {
+        renderAlert('Error al activar cuenta. Intenta de nuevo.', true);
+        document.getElementById('btn-save-guard-pin').textContent = 'ACTIVAR MI CUENTA';
+      }
+    };
+    return true;
+  }
+
   if (plate && bldCode) {
     showOnly('login');
     screens.login.innerHTML = `

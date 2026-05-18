@@ -16,6 +16,26 @@ export const initGuard = (container, guardName = 'Guardia') => {
   let selectedResident = null
   let elModal = null
 
+  const showNativePush = (title, msg, icon = '🛡️') => {
+    const push = document.createElement('div')
+    push.style = `position:fixed; top:20px; left:20px; right:20px; background:rgba(255,255,255,0.95); backdrop-filter:blur(20px); padding:15px; border-radius:22px; display:flex; gap:12px; align-items:center; z-index:10001; box-shadow:0 15px 40px rgba(0,0,0,0.15); border:1px solid #eee; transform:translateY(-150%); transition:transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);`
+    push.innerHTML = `
+      <div style="width:45px; height:45px; background:var(--primary); border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:1.4rem;">${icon}</div>
+      <div style="flex:1;">
+        <div style="font-weight:900; color:var(--primary); font-size:0.85rem; letter-spacing:0.3px;">${title}</div>
+        <div style="font-size:0.75rem; color:#666; font-weight:700;">${msg}</div>
+      </div>
+    `
+    container.appendChild(push)
+    setTimeout(() => { push.style.transform = 'translateY(0)' }, 100)
+    setTimeout(() => { push.style.transform = 'translateY(-150%)'; setTimeout(() => push.remove(), 600) }, 5000)
+  }
+
+  // Welcome Notification
+  setTimeout(() => {
+    showNativePush('¡HOLA, ' + guardName.toUpperCase() + '!', 'Tu turno ha iniciado correctamente. Que tengas una excelente guardia.', '👋')
+  }, 1000)
+
   const showToast = (msg, type = 'info') => {
     if (!elToast) {
       elToast = document.createElement('div')
@@ -182,8 +202,22 @@ export const initGuard = (container, guardName = 'Guardia') => {
       const id = btn.dataset.id
       selectedResident = cachedResidents.find(r => r.id === id)
       subPaymentAmount = selectedResident.custom_price || 0
-      subPaymentMethod = 'EFECTIVO_USD'
+      subPaymentMethod = 'EFECTIVO'
       currentView = 'SUB_PAYMENT_FORM'; render()
+      
+      // Setup dynamic form fields
+      setTimeout(() => {
+        const sel = document.getElementById('sub-pay-method-select')
+        const bankC = document.getElementById('sub-pay-bank-container')
+        const refC = document.getElementById('sub-pay-ref-container')
+        if (sel) {
+          sel.onchange = () => {
+            const isDig = ['PAGO_MOVIL', 'TRANSFERENCIA'].includes(sel.value)
+            bankC.style.display = isDig ? 'block' : 'none'
+            refC.style.display = isDig ? 'block' : 'none'
+          }
+        }
+      }, 50)
     },
     SET_SUB_METHOD: (btn) => {
       subPaymentMethod = btn.dataset.method; render()
@@ -191,16 +225,22 @@ export const initGuard = (container, guardName = 'Guardia') => {
     SUBMIT_SUB_PAYMENT: async () => {
       const amount = parseFloat(document.getElementById('sub-pay-amount').value) || 0
       const ref = document.getElementById('sub-pay-ref')?.value?.trim() || ''
-      if (subPaymentMethod === 'PAGO_MOVIL' && !ref) return showToast('Introduce la referencia', 'error')
+      const bank = document.getElementById('sub-pay-bank')?.value || ''
+      const date = document.getElementById('sub-pay-date')?.value || new Date().toISOString().split('T')[0]
+      const method = document.getElementById('sub-pay-method-select').value
+
+      if (['PAGO_MOVIL', 'TRANSFERENCIA'].includes(method) && !ref) return showToast('Introduce la referencia', 'error')
 
       // Registramos el pago como PENDIENTE para aprobación de admin
       await supabase.from('payments').insert({
          building_id: state.buildingId || localStorage.getItem('sloty_building_id'),
          subscription_id: selectedResident.id,
          amount: amount,
-         method: subPaymentMethod,
+         method: method,
          reference: ref,
-         status: 'PENDING'
+         status: 'PENDING',
+         payment_date: date,
+         bank: bank
       })
 
       // IMPORTANTE: NO actualizamos expiry_date aquí. Eso lo hace el admin al aprobar.
@@ -212,9 +252,10 @@ export const initGuard = (container, guardName = 'Guardia') => {
          category: 'RESIDENTE',
          guardName,
          amount: amount,
-         payMethod: subPaymentMethod,
+         payMethod: method,
          reference: ref,
-         paymentStatus: 'PENDIENTE'
+         paymentStatus: 'PENDIENTE',
+         metadata: { bank, date }
       })
 
       showToast('Pago registrado. Pendiente de aprobación por administración.', 'success')
@@ -749,7 +790,10 @@ export const initGuard = (container, guardName = 'Guardia') => {
                  <input id="pay-ref" type="text" placeholder="Ej: 4522" 
                     style="width:100%; border:2px solid #eee; border-radius:18px; padding:18px; font-size:1.4rem; font-weight:900; outline:none; font-family:'Montserrat';">
               </div>
-            ` : ''}
+               <div style="background:rgba(245,197,24,0.1); border:1.5px solid #F5C518; border-radius:14px; padding:12px; font-size:0.65rem; color:#D97706; font-weight:700; margin-top:12px; line-height:1.3; text-align:left;">
+                  ⚠️ Nota: Recuerda colocar el valor equivalente en Bolívares (Bs.)
+               </div>
+             ` : ''}
          </div>
 
          <button data-action="SUBMIT_PAYMENT" style="width:100%; padding:22px; background:#22c55e; color:white; border:none; border-radius:22px; font-weight:900; font-size:1rem; box-shadow:0 10px 25px rgba(34,197,94,0.3);">
@@ -817,7 +861,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
            ${subPaymentMethod === 'PAGO_MOVIL' ? `
               <div style="margin-bottom:20px;">
                  <label style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:8px; display:block;">REFERENCIA (Últimos 4-6)</label>
-                 <input id="sub-pay-ref" type="text" placeholder="Ej: 4522" style="width:100%; border:2px solid #eee; border-radius:18px; padding:18px; font-size:1.4rem; font-weight:900; outline:none; font-family:'Montserrat';">
+                 <input id="sub-pay-ref" type="text" placeholder="Ej: 4522" style="width:100%; border:2px solid #eee; border-radius:18px; padding:18px; font-size:1.4rem; font-weight:900; outline:none; font-family:'Montserrat';"></div><div style="background:rgba(245,197,24,0.1); border:1.5px solid #F5C518; border-radius:14px; padding:12px; font-size:0.65rem; color:#D97706; font-weight:700; margin-top:12px; line-height:1.3; text-align:left;">⚠️ Nota: Recuerda colocar el valor equivalente en Bolívares (Bs.)</div><div style="display:none;"
               </div>
            ` : ''}
 

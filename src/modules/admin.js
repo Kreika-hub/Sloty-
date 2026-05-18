@@ -1,4 +1,4 @@
-import { getParkingState, saveParkingState, logAudit, getCleanPrefix, supabase, logMovement } from '../db.js'
+import { getParkingState, saveParkingState, logAudit, getCleanPrefix, supabase, logMovement, syncDown } from '../db.js'
 
 export const initAdmin = (container) => {
   console.log('[Sloty] Inicializando Panel Admin...')
@@ -131,46 +131,54 @@ export const initAdmin = (container) => {
       saveParkingState(state)
       render()
     },
-    ADD_GUARD: () => {
+    ADD_GUARD: async () => {
       const name = document.getElementById('guard-name').value.trim();
-      const pin = document.getElementById('guard-pin').value.trim();
       const phone = document.getElementById('guard-phone').value.trim();
       const shift = document.getElementById('guard-shift').value;
       const photoEl = document.getElementById('guard-photo-preview');
-      const photo = photoEl ? photoEl.src : null;
-      if (!name || !pin) {
+      const photo = (photoEl && photoEl.style.display !== 'none') ? photoEl.src : null;
+      
+      if (!name || !phone) {
         pendingAction = {
           type: 'CUSTOM_MODAL',
           title: '⚠️ DATOS INCOMPLETOS',
-          content: `<p style="color:#666; font-weight:700;">El nombre y el PIN son obligatorios para registrar personal.</p>`
+          content: `<p style="color:#666; font-weight:700;">El nombre y el teléfono son obligatorios.</p>`
         };
         render();
         return;
       }
+      
       const state = getParkingState();
       state.personnel = state.personnel || [];
       
       if (editingGuard) {
         const idx = state.personnel.findIndex(p => p.id === editingGuard);
-        if (idx !== -1) state.personnel[idx] = { ...state.personnel[idx], name, pin, phone, shift, photo };
+        if (idx !== -1) state.personnel[idx] = { ...state.personnel[idx], name, phone, shift, photo };
         editingGuard = null;
       } else {
-        state.personnel.push({ id: Date.now().toString(), name, pin, phone, shift, photo, status: 'Activo' });
+        // Al crear nuevo, NO le ponemos PIN. Se creará vía Onboarding
+        state.personnel.push({ id: Date.now().toString(), name, phone, shift, photo, status: 'Pendiente Activación' });
       }
       
       logAudit(`Actualizó/Registró guardia: ${name}`);
       saveParkingState(state);
+      
+      // Clear form inputs
+      document.getElementById('guard-name').value = '';
+      document.getElementById('guard-phone').value = '';
+      const previewEl = document.getElementById('guard-photo-preview');
+      if (previewEl) {
+         previewEl.src = '';
+         previewEl.style.display = 'none';
+      }
+      const placeholderEl = document.getElementById('photo-placeholder');
+      if (placeholderEl) {
+         placeholderEl.style.display = 'block';
+      }
+      
       render();
     },
-    EDIT_GUARD: (btn) => {
-      editingGuard = btn.dataset.id;
-      render();
-    },
-    CANCEL_EDIT: () => {
-      editingGuard = null;
-      render();
-    },
-    SEND_WHATSAPP: (btn) => {
+    SEND_WHATSAPP_GUARD: (btn) => {
       const id = btn.dataset.id;
       const state = getParkingState();
       const g = state.personnel.find(p => p.id === id);
@@ -184,8 +192,9 @@ export const initAdmin = (container) => {
         return;
       }
       
-      const url = window.location.origin;
-      const msg = `Bienvenido a Sloty. Tu acceso de guardia para ${state.buildingName} es: ${url}\n\nCódigo Edificio: ${state.buildingCode}\nTu PIN: ${g.pin}`;
+      const url = `${window.location.origin}/?setup_guard=${g.id}&bld=${state.buildingCode}`;
+      const msg = `¡Bienvenido a Sloty, ${g.name}! 🛡️\n\nTu acceso para ${state.buildingName} está listo.\n\nPor favor, ingresa al siguiente enlace para activar tu cuenta y crear tu PIN de acceso:\n\n${url}`;
+      
       window.open(`https://wa.me/${g.phone.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`, '_blank');
     },
     DELETE_GUARD: (btn) => {
@@ -193,6 +202,10 @@ export const initAdmin = (container) => {
       const state = getParkingState();
       state.personnel = state.personnel.filter(p => p.id !== gId);
       saveParkingState(state);
+      render();
+    },
+    CANCEL_EDIT: () => {
+      editingGuard = null;
       render();
     },
     CONFIRM_DELETE: () => {
@@ -206,9 +219,49 @@ export const initAdmin = (container) => {
       }
       saveParkingState(state); pendingAction = null; render()
     },
+    SEND_DEBT_WS: (btn) => {
+      const { name, debt, phone } = btn.dataset;
+      if (!phone) return alert('No hay teléfono registrado');
+      const msg = `Hola ${name}, te saludamos de la Administración. Te recordamos que presentas un saldo pendiente de $${debt} en tu mensualidad. Por favor, realiza tu pago para mantener tu acceso activo. ¡Gracias!`;
+      window.open(`https://wa.me/${phone.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`, '_blank');
+    },
+    SHOW_RESIDENT_HISTORY: (btn) => {
+      const { id, name } = btn.dataset;
+      const state = getParkingState();
+      // Filter movements for this resident by plate (we'll look for movements where plate matches resident's plate)
+      const res = state.personnel.find(p => p.id === id) || { plate: '' }; // Wait, this logic is for subscriptions
+      // Let's find the subscription instead
+      supabase.from('subscriptions').select('plate').eq('id', id).single().then(({data}) => {
+         const plate = data?.plate?.split(',')[0].trim();
+         const history = (state.movements || []).filter(m => m.type === 'MENSUALIDAD' && m.plate.includes(plate));
+         
+         pendingAction = {
+           type: 'CUSTOM_MODAL',
+           title: `Historial: ${name}`,
+           content: `
+             <div style="max-height:300px; overflow-y:auto; padding:10px; text-align:left;">
+                ${history.map(h => `
+                  <div style="padding:15px; border-bottom:1px solid #f8f8f8; display:flex; justify-content:space-between; align-items:center;">
+                     <div>
+                        <div style="font-size:0.8rem; font-weight:900;">$${h.amount.toFixed(2)}</div>
+                        <div style="font-size:0.55rem; color:#bbb;">${new Date(h.timestamp).toLocaleDateString()} · ${h.payMethod}</div>
+                     </div>
+                     <div style="font-size:0.6rem; color:#22c55e; font-weight:900; background:rgba(34,197,94,0.1); padding:4px 8px; border-radius:6px;">PAGADO</div>
+                  </div>
+                `).join('') || '<div style="padding:40px; text-align:center; color:#ccc;">No hay historial de pagos</div>'}
+             </div>
+           `
+         };
+         render();
+      });
+    },
     CANCEL_MODAL: () => { pendingAction = null; render() },
     TAB: (btn) => { activeTab = btn.dataset.tab; render() },
-    SYNC: () => {
+    SYNC: async () => {
+      const state = getParkingState();
+      if (state.buildingCode) {
+        await syncDown(state.buildingCode);
+      }
       render();
       const btn = container.querySelector('[data-action="SYNC"]');
       if(btn) {
@@ -1289,9 +1342,8 @@ export const initAdmin = (container) => {
         <input type="text" id="guard-name" value="${editG?.name || ''}" placeholder="Nombre Completo" style="width:100%; box-sizing:border-box; padding:18px; border:1.5px solid #f0f0f0; border-radius:18px; margin-bottom:12px; font-family:var(--font); font-weight:700; outline:none; background:#fafafa;">
         <input type="tel" id="guard-phone" value="${editG?.phone || ''}" placeholder="Teléfono WhatsApp (Ej: 58412...)" style="width:100%; box-sizing:border-box; padding:18px; border:1.5px solid #f0f0f0; border-radius:18px; margin-bottom:12px; font-family:var(--font); font-weight:700; outline:none; background:#fafafa;">
         
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:25px;">
-          <input type="text" id="guard-pin" value="${editG?.pin || ''}" placeholder="PIN (4)" maxlength="4" style="width:100%; box-sizing:border-box; min-width:0; padding:18px; border:1.5px solid #f0f0f0; border-radius:18px; font-family:var(--font); font-weight:900; text-align:center; background:#fafafa; outline:none;">
-          <select id="guard-shift" style="width:100%; box-sizing:border-box; min-width:0; padding:18px; border:1.5px solid #f0f0f0; border-radius:18px; background:#fafafa; font-family:var(--font); font-weight:700; outline:none; appearance:none;">
+        <div style="margin-bottom:25px;">
+          <select id="guard-shift" style="width:100%; box-sizing:border-box; padding:18px; border:1.5px solid #f0f0f0; border-radius:18px; background:#fafafa; font-family:var(--font); font-weight:700; outline:none; appearance:none;">
             <option value="Mañana" ${editG?.shift==='Mañana'?'selected':''}>Mañana</option>
             <option value="Tarde" ${editG?.shift==='Tarde'?'selected':''}>Tarde</option>
             <option value="Noche" ${editG?.shift==='Noche'?'selected':''}>Noche</option>
@@ -1327,14 +1379,14 @@ export const initAdmin = (container) => {
                      <div style="font-size:0.5rem; background:#f0f0f0; padding:2px 8px; border-radius:10px; font-weight:800; color:#999; text-transform:uppercase;">${p.shift}</div>
                   </div>
                   <div style="font-size:0.7rem; color:#bbb; font-weight:700; margin-top:2px;">
-                     PIN: <span style="color:var(--primary);">${p.pin}</span> · 
+                     ${p.pin ? `PIN: <span style="color:var(--primary);">${p.pin}</span>` : '<span style="color:#e63946;">PENDIENTE ACTIVACIÓN</span>'} · 
                      <span style="color:#22c55e; font-weight:800;">${todayCount} movs hoy</span>
                   </div>
                 </div>
               </div>
               
               <div style="display:flex; align-items:center; gap:10px;">
-                 <button data-action="SEND_WHATSAPP" data-id="${p.id}" style="background:#22c55e; color:white; border:none; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; font-weight:900; font-size:1rem; box-shadow:0 5px 15px rgba(34,197,94,0.2);">W</button>
+                 <button data-action="SEND_WHATSAPP_GUARD" data-id="${p.id}" style="background:#22c55e; color:white; border:none; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; font-weight:900; font-size:1rem; box-shadow:0 5px 15px rgba(34,197,94,0.2);">W</button>
                  <button data-action="EDIT_GUARD" data-id="${p.id}" style="background:#f4f4f4; color:#999; border:none; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:0.8rem;">✎</button>
                  <button data-action="DELETE_GUARD" data-id="${p.id}" style="color:#ffccd5; background:none; border:none; font-weight:900; cursor:pointer; font-size:0.65rem; text-transform:uppercase;">×</button>
               </div>
@@ -1638,22 +1690,54 @@ export const initAdmin = (container) => {
          <input type="text" id="abono-search" placeholder="Nombre o Placa..." onkeyup="filterAbonos(this.value)" style="width:100%; padding:15px; border-radius:15px; border:1.5px solid #f0f0f0; font-family:var(--font); font-weight:700; outline:none; background:#fafafa;">
       </div>
 
-      <div id="abonos-list" style="display:grid; gap:12px;">
+      <div id="abonos-list" style="display:grid; gap:15px;">
         ${(subs || []).map(r => {
           const exp = new Date(r.expiry_date);
           const isExpired = exp < now;
+          const monthlyPrice = r.custom_price || 0;
+          
+          // Calculate amount paid for the "current period" 
+          // We consider payments since the last month from now
+          const periodStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+          const paidThisMonth = (state.movements || []).filter(m => m.type === 'MENSUALIDAD' && m.plate.includes(r.plate.split(',')[0]) && m.timestamp >= periodStart).reduce((a,b)=>a+(b.amount||0), 0);
+          
+          const pending = Math.max(0, monthlyPrice - paidThisMonth);
+          const hasDebt = isExpired || pending > 0;
+
           return `
-          <div class="abono-card" data-search="${r.resident_name.toLowerCase()} ${r.plate.toLowerCase()}" style="background:white; padding:20px; border-radius:24px; border:1.5px solid #f0f0f0; display:flex; justify-content:space-between; align-items:center; box-shadow:0 10px 30px rgba(0,0,0,0.02);">
-             <div>
-                <div style="font-weight:900; color:var(--primary); font-size:1rem;">${r.resident_name}</div>
-                <div style="font-size:0.7rem; font-weight:700; color:#666; margin-top:2px;">Placa: ${r.plate}</div>
-                <div style="font-size:0.65rem; font-weight:800; color:${isExpired ? '#e63946' : '#22c55e'}; margin-top:4px;">
-                   Vence: ${exp.toLocaleDateString()} ${isExpired ? '(VENCIDO)' : ''}
+          <div class="abono-card" data-search="${r.resident_name.toLowerCase()} ${r.plate.toLowerCase()}" style="background:white; padding:22px; border-radius:30px; border:1.5px solid ${hasDebt ? '#ffccd5' : '#f0f0f0'}; display:flex; flex-direction:column; gap:15px; box-shadow:0 12px 35px rgba(0,0,0,0.03); transition:transform 0.2s;">
+             <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                <div>
+                   <div style="font-weight:900; color:var(--primary); font-size:1.1rem;">${r.resident_name}</div>
+                   <div style="font-size:0.7rem; font-weight:700; color:#999; margin-top:2px;">🚗 ${r.plate}</div>
+                </div>
+                <div style="text-align:right;">
+                   <div style="font-size:1rem; font-weight:950; color:var(--primary);">$${monthlyPrice}</div>
+                   <div style="font-size:0.5rem; font-weight:800; color:#bbb; text-transform:uppercase;">MENSUALIDAD</div>
                 </div>
              </div>
-             <button data-action="SHOW_ABONO_FORM" data-id="${r.id}" data-name="${r.resident_name}" data-price="${r.custom_price}" style="background:#1a1a2e; color:var(--accent); border:none; padding:12px 18px; border-radius:15px; font-weight:900; font-size:0.75rem; cursor:pointer; box-shadow:0 8px 20px rgba(26,26,46,0.15);">
-                REGISTRAR ABONO
-             </button>
+
+             <div style="background:#f8f9fa; border-radius:20px; padding:15px; display:grid; grid-template-columns:1fr 1fr; gap:10px; border:1px solid #f0f0f0;">
+                <div>
+                   <div style="font-size:0.55rem; font-weight:800; color:#999; text-transform:uppercase; margin-bottom:4px;">PAGADO MES</div>
+                   <div style="font-size:0.9rem; font-weight:900; color:#22c55e;">$${paidThisMonth.toFixed(2)}</div>
+                </div>
+                <div style="text-align:right;">
+                   <div style="font-size:0.55rem; font-weight:800; color:#999; text-transform:uppercase; margin-bottom:4px;">PENDIENTE</div>
+                   <div style="font-size:0.9rem; font-weight:900; color:${pending > 0 ? '#e63946' : '#22c55e'};">${pending > 0 ? `-$${pending.toFixed(2)}` : 'SOLVENTE'}</div>
+                </div>
+             </div>
+
+             <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div style="font-size:0.7rem; font-weight:800; color:${isExpired ? '#e63946' : '#666'};">
+                   Vence: ${exp.toLocaleDateString()} ${isExpired ? '<span style="background:#fee2e2; color:#ef4444; padding:2px 6px; border-radius:6px; margin-left:5px;">VENCIDO</span>' : ''}
+                </div>
+                <div style="display:flex; gap:8px;">
+                   <button data-action="SEND_DEBT_WS" data-id="${r.id}" data-name="${r.resident_name}" data-debt="${pending}" data-phone="${r.phone}" style="background:#22c55e; color:white; border:none; width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer;">W</button>
+                   <button data-action="SHOW_RESIDENT_HISTORY" data-id="${r.id}" data-name="${r.resident_name}" style="background:#f4f4f4; color:#666; border:none; width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer;">H</button>
+                   <button data-action="SHOW_ABONO_FORM" data-id="${r.id}" data-name="${r.resident_name}" data-price="${r.custom_price}" style="background:#1a1a2e; color:var(--accent); border:none; padding:0 15px; border-radius:12px; font-weight:900; font-size:0.65rem; cursor:pointer;">REGISTRAR</button>
+                </div>
+             </div>
           </div>
           `
         }).join('')}
@@ -1707,12 +1791,33 @@ export const initAdmin = (container) => {
               <div id="abono-preview" style="font-size:0.6rem; font-weight:800; color:#22c55e; margin-top:8px; text-align:center;">Extenderá: 30 días aprox.</div>
             </div>
 
-            <div style="margin-bottom:25px;">
-              <label style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:8px; display:block; text-transform:uppercase;">Método de Pago</label>
-              <select id="abono-method" style="width:100%; padding:15px; border-radius:15px; border:2.5px solid #f0f0f0; font-family:var(--font); font-weight:800; outline:none; appearance:none; background:#fafafa;">
-                <option value="EFECTIVO">💵 EFECTIVO</option>
-                <option value="PAGO_MOVIL">📱 PAGO MÓVIL</option>
-                <option value="TRANSFERENCIA">🏦 TRANSFERENCIA</option>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px;">
+              <div>
+                <label style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:8px; display:block; text-transform:uppercase;">Fecha de Pago</label>
+                <input id="abono-date" type="date" value="${new Date().toISOString().split('T')[0]}" style="width:100%; box-sizing:border-box; border:2.5px solid #f0f0f0; border-radius:15px; padding:12px; font-family:var(--font); font-weight:700; outline:none; background:#fafafa;">
+              </div>
+              <div>
+                <label style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:8px; display:block; text-transform:uppercase;">Método</label>
+                <select id="abono-method" style="width:100%; padding:12px; border-radius:15px; border:2.5px solid #f0f0f0; font-family:var(--font); font-weight:800; outline:none; appearance:none; background:#fafafa;">
+                  <option value="EFECTIVO">💵 EFECTIVO</option>
+                  <option value="PAGO_MOVIL">📱 PAGO MÓVIL</option>
+                  <option value="TRANSFERENCIA">🏦 TRANSFERENCIA</option>
+                </select>
+              </div>
+            </div>
+
+            <div id="abono-bank-container" style="margin-bottom:20px; display:none;">
+              <label style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:8px; display:block; text-transform:uppercase;">Banco Emisor</label>
+              <select id="abono-bank" style="width:100%; padding:15px; border-radius:15px; border:2.5px solid #f0f0f0; font-family:var(--font); font-weight:800; outline:none; appearance:none; background:#fafafa;">
+                <option value="">Seleccionar Banco...</option>
+                <option value="BANESCO">Banesco</option>
+                <option value="BDV">Banco de Venezuela</option>
+                <option value="MERCANTIL">Mercantil</option>
+                <option value="PROVINCIAL">Provincial</option>
+                <option value="BNC">BNC</option>
+                <option value="BANCAMIGA">Bancamiga</option>
+                <option value="BANPLUS">Banplus</option>
+                <option value="OTRO">Otro / Internacional</option>
               </select>
             </div>
 
@@ -1734,6 +1839,9 @@ export const initAdmin = (container) => {
       const methodSelect = l.querySelector('#abono-method');
       const refContainer = l.querySelector('#abono-ref-container');
 
+      const bankContainer = l.querySelector('#abono-bank-container');
+      const bankSelect = l.querySelector('#abono-bank');
+
       amountInput.oninput = () => {
         const val = parseFloat(amountInput.value) || 0;
         const days = Math.round((val / price) * 30);
@@ -1741,7 +1849,9 @@ export const initAdmin = (container) => {
       };
 
       methodSelect.onchange = () => {
-        refContainer.style.display = methodSelect.value === 'EFECTIVO' ? 'none' : 'block';
+        const isDigital = ['PAGO_MOVIL', 'TRANSFERENCIA'].includes(methodSelect.value);
+        refContainer.style.display = isDigital ? 'block' : 'none';
+        bankContainer.style.display = isDigital ? 'block' : 'none';
       };
     },
     SUBMIT_ABONO: async (btn) => {
@@ -1750,6 +1860,8 @@ export const initAdmin = (container) => {
       const amount = parseFloat(document.getElementById('abono-amount').value) || 0;
       const method = document.getElementById('abono-method').value;
       const ref = document.getElementById('abono-ref')?.value || '';
+      const bank = document.getElementById('abono-bank')?.value || '';
+      const date = document.getElementById('abono-date')?.value || new Date().toISOString().split('T')[0];
       
       if (amount <= 0) return alert('Monto inválido');
       
@@ -1771,7 +1883,8 @@ export const initAdmin = (container) => {
         method: method,
         reference: ref,
         status: 'CONFIRMED',
-        payment_date: new Date().toISOString()
+        payment_date: date,
+        bank: bank
       });
 
       await supabase.from('subscriptions').update({
@@ -1788,7 +1901,8 @@ export const initAdmin = (container) => {
         payMethod: method,
         amount: amount,
         reference: ref,
-        paymentStatus: 'PAGADO'
+        paymentStatus: 'PAGADO',
+        metadata: { bank: bank, date: date }
       });
 
       logAudit(`Registró abono de $${amount} para residente ID ${id}`);
