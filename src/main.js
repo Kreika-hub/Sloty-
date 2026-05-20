@@ -779,7 +779,7 @@ const checkInvitationLink = async () => {
       const { data: bld } = await supabase.from('buildings').select('id, name, code').eq('code', bldCode).single();
       if (!bld) return renderAlert('Error: Edificio no encontrado', true);
 
-      const { data: guard, error } = await supabase.from('personnel').update({ pin: pin1, status: 'Activo', active: true }).eq('id', guardId).select('name').single();
+      const { data: guard, error } = await supabase.from('personnel').update({ pin: pin1, status: 'Activo' }).eq('id', guardId).select('name').single();
       if (!error && guard) {
         localStorage.setItem('sloty_active_building', bld.code);
         localStorage.setItem('sloty_building_id', bld.id);
