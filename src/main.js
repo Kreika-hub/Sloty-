@@ -775,11 +775,13 @@ const checkInvitationLink = async () => {
       if (pin1.length !== 4) return renderAlert('El PIN debe ser de 4 dígitos', true);
       if (pin1 !== pin2) return renderAlert('Los PIN no coinciden', true);
 
+      const guardIdToUse = guardIdDecoded || guardId;
+
       document.getElementById('btn-save-guard-pin').textContent = 'Activando...';
       const { data: bld } = await supabase.from('buildings').select('id, name, code').eq('code', bldCode).single();
       if (!bld) return renderAlert('Error: Edificio no encontrado', true);
 
-      const { data: guard, error } = await supabase.from('personnel').update({ pin: pin1, status: 'Activo' }).eq('id', guardId).select('name').single();
+      const { data: guard, error } = await supabase.from('personnel').update({ pin: pin1, status: 'Activo' }).eq('id', guardIdToUse).select('name').single();
       if (!error && guard) {
         localStorage.setItem('sloty_active_building', bld.code);
         localStorage.setItem('sloty_building_id', bld.id);
