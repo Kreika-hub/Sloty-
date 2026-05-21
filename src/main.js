@@ -809,8 +809,9 @@ const checkInvitationLink = async () => {
         
         window.history.replaceState({}, document.title, '/');
         renderAlert('¡Cuenta activada con éxito! Iniciando sesión...');
-        setTimeout(() => {
+        setTimeout(async () => {
           showOnly('main');
+          await syncDown(bld.code);
           initGuard(screens.main, guard.name);
         }, 1500);
       } else {
