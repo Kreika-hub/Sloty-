@@ -745,6 +745,19 @@ const checkInvitationLink = async () => {
   const plate = params.get('setup');
   const bldCode = params.get('bld');
   const guardId = params.get('setup_guard');
+  // Guard ID may be base64‑encoded and URL‑encoded. Decode safely.
+  let guardIdDecoded = null;
+  if (guardId) {
+    try {
+      guardIdDecoded = atob(decodeURIComponent(guardId));
+    } catch (e) {
+      console.warn('Guard ID decoding failed, using raw value', e);
+      guardIdDecoded = guardId; // fallback to raw
+    }
+  }
+  console.log('guardId param:', guardId, 'decoded:', guardIdDecoded);
+
+
   
   if (guardId && bldCode) {
     showOnly('login');
