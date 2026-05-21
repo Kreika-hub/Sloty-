@@ -157,7 +157,7 @@ export const initAdmin = (container) => {
         editingGuard = null;
       } else {
         // Al crear nuevo, NO le ponemos PIN. Se creará vía Onboarding
-        state.personnel.push({ id: Date.now().toString(), name, phone, shift, photo });
+        state.personnel.push({ id: crypto.randomUUID(), name, phone, shift, photo });
       }
       
       saveParkingState(state);

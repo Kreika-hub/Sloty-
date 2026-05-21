@@ -16,10 +16,28 @@ const getSyncQueue = () => {
     } catch(e) { return [] }
 }
 
+const MAX_QUEUE_SIZE = 200
+
 const enqueueSync = (task) => {
-    const queue = getSyncQueue()
-    queue.push({ _internalId: Date.now() + Math.random(), ...task })
-    localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(queue))
+    let queue = getSyncQueue()
+    queue.push({ _internalId: Date.now() + Math.random(), _retries: 0, ...task })
+    // Trim oldest items if queue is too large
+    if (queue.length > MAX_QUEUE_SIZE) {
+        queue = queue.slice(queue.length - MAX_QUEUE_SIZE)
+    }
+    try {
+        localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(queue))
+    } catch (e) {
+        // QuotaExceededError - aggressively trim queue and retry
+        console.warn('[Sloty] localStorage quota exceeded, trimming sync queue')
+        queue = queue.slice(Math.floor(queue.length / 2))
+        try {
+            localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(queue))
+        } catch (e2) {
+            // Last resort: clear the queue entirely
+            localStorage.setItem(SYNC_QUEUE_KEY, '[]')
+        }
+    }
     triggerSyncUp()
 }
 
@@ -36,13 +54,20 @@ const triggerSyncUp = async () => {
     const queue = getSyncQueue()
     if (queue.length === 0) { isSyncing = false; return }
 
-    const successIds = []
+    const removeIds = []
     
     for (const task of queue) {
         try {
             // Sanitize bad personnel data that was queued previously
             if (task.table === 'personnel' && Array.isArray(task.data)) {
                 task.data.forEach(item => delete item.active);
+                // Remove personnel items with non-UUID ids (old Date.now() format)
+                const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+                task.data = task.data.filter(item => uuidRegex.test(item.id));
+                if (task.data.length === 0) {
+                    removeIds.push(task._internalId);
+                    continue;
+                }
             }
 
             if (task.action === 'INSERT') {
@@ -54,14 +79,20 @@ const triggerSyncUp = async () => {
                 const { error } = await supabase.from(task.table).upsert(task.data, options)
                 if (error) throw error
             }
-            successIds.push(task._internalId)
+            removeIds.push(task._internalId)
         } catch (e) {
             console.error('[Sloty Sync Error]:', e, 'Task:', task)
-            break 
+            // Track retries — discard tasks that keep failing
+            task._retries = (task._retries || 0) + 1
+            if (task._retries >= 3) {
+                console.warn('[Sloty] Discarding task after 3 failures:', task)
+                removeIds.push(task._internalId)
+            }
+            // Continue processing other tasks instead of breaking
         }
     }
     
-    if (successIds.length > 0) cleanQueue(successIds)
+    if (removeIds.length > 0) cleanQueue(removeIds)
     isSyncing = false
 }
 
