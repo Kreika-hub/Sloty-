@@ -807,7 +807,8 @@ const checkInvitationLink = async () => {
           initGuard(screens.main, guard.name);
         }, 1500);
       } else {
-        renderAlert('Error al activar cuenta. Intenta de nuevo.', true);
+        console.error("Error activando guardia:", error, "ID:", guardIdToUse);
+        renderAlert('Error: ' + (error?.message || 'Intenta de nuevo'), true);
         document.getElementById('btn-save-guard-pin').textContent = 'ACTIVAR MI CUENTA';
       }
     };

@@ -40,6 +40,11 @@ const triggerSyncUp = async () => {
     
     for (const task of queue) {
         try {
+            // Sanitize bad personnel data that was queued previously
+            if (task.table === 'personnel' && Array.isArray(task.data)) {
+                task.data.forEach(item => delete item.active);
+            }
+
             if (task.action === 'INSERT') {
                 const { error } = await supabase.from(task.table).insert(task.data)
                 if (error) throw error
@@ -267,8 +272,7 @@ export const saveParkingState = (state) => {
                  phone: p.phone,
                  shift: p.shift,
                  photo: p.photo,
-                 status: p.status || 'Pendiente Activación',
-                 active: p.active !== false
+                 status: p.status || 'Pendiente Activación'
              }
              if (p.pin) {
                  item.pin = p.pin
