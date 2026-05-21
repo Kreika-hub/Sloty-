@@ -7,6 +7,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
   let selectedSlot = null
   let currentView = 'MAP'
   let activeLevel = null
+  let currentTab = 'HOME'
   let qrScanner = null
   let scannerActive = false
   let pendingPayment = null // { amount, method, type, slot, plate, category, metadata, phone, entryData }
@@ -177,7 +178,29 @@ export const initGuard = (container, guardName = 'Guardia') => {
       currentView = selectedSlot.status==='FREE' ? 'ENTRY' : 'EXIT'
       render()
     },
-    BACK_MAP: () => { stopScanner(); currentView = 'MAP'; scannerActive = false; render() },
+    BACK_MAP: () => { stopScanner(); currentView = 'MAP'; currentTab = 'HOME'; scannerActive = false; render() },
+    SWITCH_TAB: (btn) => { 
+       currentTab = btn.dataset.tab; 
+       if (currentTab === 'PAY') actions.SHOW_SUB_PAYMENT();
+       else if (currentTab === 'STATS') { currentView = 'CLOSURE'; render(); }
+       else { currentView = 'MAP'; render(); }
+    },
+    FAST_EXIT_SEARCH: () => {
+       const plate = document.getElementById('fast-exit-plate')?.value.trim().toUpperCase()
+       if (!plate) return showToast("Ingresa una placa", "error")
+       
+       let foundSlot = null
+       state.levels.forEach(lvl => {
+          const sIdx = lvl.slots.findIndex(s => s.plate && s.plate.toUpperCase().includes(plate))
+          if (sIdx !== -1) foundSlot = { ...lvl.slots[sIdx], levelName: lvl.name, sIdx }
+       })
+       if (!foundSlot) return showToast("Vehículo no encontrado", "error")
+       
+       if (foundSlot.status === 'FREE') return showToast("Puesto vacío", "error")
+       selectedSlot = foundSlot
+       currentView = 'EXIT'
+       render()
+    },
     LOGOUT: () => { showModal('¿Cerrar sesión?', 'Tu progreso se guardará automáticamente.', () => location.reload()) },
     SHOW_SCANNER: () => {
       stopScanner(); scannerActive = true; render()
@@ -478,12 +501,9 @@ export const initGuard = (container, guardName = 'Guardia') => {
             <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
             <div style="font-size:1.2rem;font-weight:900;">${guardName}</div>
             <div style="display:flex; gap:8px; align-items:center;">
-               <button data-action="CIERRE_CAJA" style="background:#22c55e;color:white;border:none;padding:5px 12px;border-radius:8px;font-size:0.65rem;font-weight:900;cursor:pointer;">CERRAR CAJA</button>
-               <button data-action="SHOW_SCANNER" style="background:#F5C518; color:#1a1a2e; border:none; width:36px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 4px 10px rgba(245,197,24,0.3);">
-                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px; height:18px;"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-               </button>
-               <button data-action="LOGOUT" style="background:rgba(255,255,255,0.1);color:white;border:none;padding:5px 12px;border-radius:8px;font-size:0.65rem;font-weight:900;cursor:pointer;">
+               <button data-action="LOGOUT" style="background:rgba(255,255,255,0.1);color:white;border:none;padding:5px 12px;border-radius:8px;font-size:0.65rem;font-weight:900;cursor:pointer; display:flex; align-items:center; gap:6px;">
                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:12px; height:12px;"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                 CERRAR SESIÓN
                </button>
             </div>
           </div>
@@ -563,13 +583,21 @@ export const initGuard = (container, guardName = 'Guardia') => {
         <div class="parking-column">${level.slots.slice(half).map((s,i)=>renderSpot(s,level.name,i+half)).join('')}</div>
       </div>
       
-      <div style="position:fixed; bottom:0; left:0; width:100%; padding:20px; z-index:1000; background: linear-gradient(0deg, #f0f2f5 70%, transparent);">
+      <div style="padding:20px; z-index:100; margin-bottom:80px;">
          <div id="scanner-wrapper" style="margin-bottom:15px; ${scannerActive ? '' : 'display:none;'}">
             <div id="qr-reader" style="border-radius:24px; overflow:hidden; background: #000; aspect-ratio: 1/1; box-shadow:0 10px 30px rgba(0,0,0,0.2);"></div>
             <button data-action="BACK_MAP" style="width:100%; padding:14px; background:white; color:#e63946; border:2px solid #e63946; border-radius:14px; margin-top:15px; font-weight:800; font-size:0.75rem;">CANCELAR ESCANEO</button>
          </div>
          
          ${!scannerActive ? `
+           <div style="background:white; padding:15px; border-radius:24px; box-shadow:0 10px 30px rgba(0,0,0,0.05); margin-bottom:15px;">
+              <div style="font-size:0.6rem; font-weight:900; color:#999; text-transform:uppercase; margin-bottom:10px;">SALIDA RÁPIDA</div>
+              <div style="display:flex; gap:10px;">
+                 <input type="text" id="fast-exit-plate" placeholder="Ej. ABC123" style="flex:1; border:2px solid #eee; border-radius:14px; padding:14px; font-weight:900; outline:none; text-transform:uppercase;">
+                 <button data-action="FAST_EXIT_SEARCH" style="background:#1a1a2e; color:#F5C518; border:none; padding:0 20px; border-radius:14px; font-weight:900;">BUSCAR</button>
+              </div>
+           </div>
+           
            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
               <button data-action="SHOW_SCANNER" style="background:#1a1a2e; color:#F5C518; padding:18px; border:none; border-radius:18px; font-weight:900; font-size:0.8rem; display:flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 10px 20px rgba(26,26,46,0.3);">
                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px; height:20px;"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
@@ -577,9 +605,6 @@ export const initGuard = (container, guardName = 'Guardia') => {
               </button>
               <button data-action="SHOW_MANUAL_ENTRY" style="background:#22c55e; color:white; padding:18px; border:none; border-radius:18px; font-weight:900; font-size:0.8rem; box-shadow:0 10px 20px rgba(34,197,94,0.3);">
                  NUEVO INGRESO
-              </button>
-              <button data-action="SHOW_SUB_PAYMENT" style="grid-column: span 2; background:white; color:#3b82f6; border:2px solid #3b82f6; padding:16px; border-radius:18px; font-weight:900; font-size:0.8rem; box-shadow:0 5px 15px rgba(59,130,246,0.2);">
-                 COBRAR MENSUALIDAD (RESIDENTES)
               </button>
            </div>
          ` : ''}
@@ -883,9 +908,27 @@ export const initGuard = (container, guardName = 'Guardia') => {
       acc[m.payMethod] = (acc[m.payMethod] || 0) + (m.amount || 0)
       return acc
     }, {})
+    
+    const todayEntries = state.movements.filter(m => m.type === 'entry' && !m.closed && m.guardName === guardName).length;
+    const todayExits = state.movements.filter(m => m.type === 'SALIDA' && !m.closed && m.guardName === guardName).length;
 
     return `
     <div style="padding:20px; padding-bottom:120px;">
+       
+       <div style="background:white; border-radius:32px; padding:25px; box-shadow:0 10px 30px rgba(0,0,0,0.05); margin-bottom:20px;">
+          <h2 style="font-weight:950; color:var(--primary); margin-bottom:15px; text-align:center;">RENDIMIENTO</h2>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+             <div style="background:rgba(34,197,94,0.1); border:1.5px solid rgba(34,197,94,0.3); border-radius:20px; padding:15px; text-align:center;">
+                <div style="font-size:1.8rem; font-weight:950; color:#22c55e;">${todayEntries}</div>
+                <div style="font-size:0.6rem; font-weight:800; color:#22c55e; text-transform:uppercase;">AUTOS ENTRARON</div>
+             </div>
+             <div style="background:rgba(230,57,70,0.1); border:1.5px solid rgba(230,57,70,0.3); border-radius:20px; padding:15px; text-align:center;">
+                <div style="font-size:1.8rem; font-weight:950; color:#e63946;">${todayExits}</div>
+                <div style="font-size:0.6rem; font-weight:800; color:#e63946; text-transform:uppercase;">AUTOS SALIERON</div>
+             </div>
+          </div>
+       </div>
+
        <div style="background:white; border-radius:32px; padding:25px; box-shadow:0 10px 30px rgba(0,0,0,0.05);">
           <h2 style="font-weight:950; color:var(--primary); margin-bottom:5px; text-align:center;">CORTE DE CAJA</h2>
           <div style="font-size:0.65rem; font-weight:800; color:#bbb; text-align:center; margin-bottom:25px; text-transform:uppercase;">${guardName.toUpperCase()} · ${new Date().toLocaleDateString()}</div>
@@ -977,6 +1020,25 @@ export const initGuard = (container, guardName = 'Guardia') => {
     }
   }
 
+  const renderBottomNav = () => {
+    return `
+      <div style="position:fixed; bottom:0; left:0; width:100%; height:70px; background:white; border-top:1px solid #eee; z-index:2000; display:flex; justify-content:space-around; align-items:center; padding-bottom:env(safe-area-inset-bottom);">
+         <button data-action="SWITCH_TAB" data-tab="HOME" style="background:none; border:none; display:flex; flex-direction:column; align-items:center; gap:4px; color:${currentTab==='HOME' ? '#1a1a2e' : '#bbb'};">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:24px; height:24px;"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            <span style="font-size:0.6rem; font-weight:900;">INICIO</span>
+         </button>
+         <button data-action="SWITCH_TAB" data-tab="PAY" style="background:none; border:none; display:flex; flex-direction:column; align-items:center; gap:4px; color:${currentTab==='PAY' ? '#1a1a2e' : '#bbb'};">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:24px; height:24px;"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+            <span style="font-size:0.6rem; font-weight:900;">PAGOS</span>
+         </button>
+         <button data-action="SWITCH_TAB" data-tab="STATS" style="background:none; border:none; display:flex; flex-direction:column; align-items:center; gap:4px; color:${currentTab==='STATS' ? '#1a1a2e' : '#bbb'};">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:24px; height:24px;"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
+            <span style="font-size:0.6rem; font-weight:900;">CIERRE</span>
+         </button>
+      </div>
+    `
+  }
+
   const render = () => {
     const freshState = getParkingState()
     if (!elShell) renderShell(freshState)
@@ -1002,10 +1064,14 @@ export const initGuard = (container, guardName = 'Guardia') => {
     if (currentView === 'MAP') checkIncomingResidents();
     
     const footer = container.querySelector('#guard-footer-area')
-    footer.innerHTML = currentView !== 'MAP' ? `
-      <div style="position:fixed;bottom:0;left:0;width:100%;padding:16px;background:white;border-top:1px solid #eee;z-index:200;">
-        <button data-action="BACK_MAP" style="width:100%;padding:16px;background:#f8f9fa;border:none;border-radius:16px;font-weight:700;color:#999;">← VOLVER AL MAPA</button>
-      </div>` : ''
+    if (['MAP', 'SUB_PAYMENT', 'CLOSURE', 'SUB_PAYMENT_LOADING'].includes(currentView)) {
+       footer.innerHTML = renderBottomNav();
+    } else {
+       footer.innerHTML = `
+         <div style="position:fixed;bottom:0;left:0;width:100%;padding:16px;background:white;border-top:1px solid #eee;z-index:200;">
+           <button data-action="BACK_MAP" style="width:100%;padding:16px;background:#f8f9fa;border:none;border-radius:16px;font-weight:700;color:#999;">← VOLVER</button>
+         </div>`
+    }
   }
 
   setInterval(checkIncomingResidents, 5000);
