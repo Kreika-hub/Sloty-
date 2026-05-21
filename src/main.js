@@ -613,7 +613,7 @@ const renderGuardPin = () => {
 
     state.personnel = personnel || []
 
-    const activeGuards = (state.personnel || []).filter(p => p.pin && p.status === 'Activo')
+    const activeGuards = (state.personnel || []).filter(p => p.pin)
 
     screens.guardPin.innerHTML = `
       <div style="min-height:100vh;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;padding:40px 24px;">
@@ -745,14 +745,21 @@ const checkInvitationLink = async () => {
   const plate = params.get('setup');
   const bldCode = params.get('bld');
   const guardId = params.get('setup_guard');
-  // Guard ID may be base64‑encoded and URL‑encoded. Decode safely.
+  // Guard ID may be base64-encoded, or it may be a raw numeric ID (Date.now()).
+  // Only attempt base64 decode if the value is NOT already a plain number.
   let guardIdDecoded = null;
   if (guardId) {
-    try {
-      guardIdDecoded = atob(decodeURIComponent(guardId));
-    } catch (e) {
-      console.warn('Guard ID decoding failed, using raw value', e);
-      guardIdDecoded = guardId; // fallback to raw
+    const rawDecoded = decodeURIComponent(guardId);
+    if (/^\d+$/.test(rawDecoded)) {
+      // It's a plain numeric ID — use as-is
+      guardIdDecoded = rawDecoded;
+    } else {
+      try {
+        guardIdDecoded = atob(rawDecoded);
+      } catch (e) {
+        console.warn('Guard ID base64 decoding failed, using raw value', e);
+        guardIdDecoded = rawDecoded;
+      }
     }
   }
   console.log('guardId param:', guardId, 'decoded:', guardIdDecoded);
@@ -794,7 +801,7 @@ const checkInvitationLink = async () => {
       const { data: bld } = await supabase.from('buildings').select('id, name, code').eq('code', bldCode).single();
       if (!bld) return renderAlert('Error: Edificio no encontrado', true);
 
-      const { data: guard, error } = await supabase.from('personnel').update({ pin: pin1, status: 'Activo' }).eq('id', guardIdToUse).select('name').single();
+      const { data: guard, error } = await supabase.from('personnel').update({ pin: pin1 }).eq('id', guardIdToUse).select('name').single();
       if (!error && guard) {
         localStorage.setItem('sloty_active_building', bld.code);
         localStorage.setItem('sloty_building_id', bld.id);

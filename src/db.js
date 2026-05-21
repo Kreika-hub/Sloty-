@@ -271,8 +271,7 @@ export const saveParkingState = (state) => {
                  name: p.name,
                  phone: p.phone,
                  shift: p.shift,
-                 photo: p.photo,
-                 status: p.status || 'Pendiente Activación'
+                 photo: p.photo
              }
              if (p.pin) {
                  item.pin = p.pin

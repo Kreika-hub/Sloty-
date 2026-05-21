@@ -157,11 +157,11 @@ export const initAdmin = (container) => {
         editingGuard = null;
       } else {
         // Al crear nuevo, NO le ponemos PIN. Se creará vía Onboarding
-        state.personnel.push({ id: Date.now().toString(), name, phone, shift, photo, status: 'Pendiente Activación' });
+        state.personnel.push({ id: Date.now().toString(), name, phone, shift, photo });
       }
       
-      logAudit(`Actualizó/Registró guardia: ${name}`);
       saveParkingState(state);
+      logAudit(`Actualizó/Registró guardia: ${name}`);
       
       // Clear form inputs
       document.getElementById('guard-name').value = '';
