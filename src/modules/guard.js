@@ -231,20 +231,6 @@ export const initGuard = (container, guardName = 'Guardia') => {
       subPaymentAmount = selectedResident.custom_price || 0
       subPaymentMethod = 'EFECTIVO'
       currentView = 'SUB_PAYMENT_FORM'; render()
-      
-      // Setup dynamic form fields
-      setTimeout(() => {
-        const sel = document.getElementById('sub-pay-method-select')
-        const bankC = document.getElementById('sub-pay-bank-container')
-        const refC = document.getElementById('sub-pay-ref-container')
-        if (sel) {
-          sel.onchange = () => {
-            const isDig = ['PAGO_MOVIL', 'TRANSFERENCIA'].includes(sel.value)
-            bankC.style.display = isDig ? 'block' : 'none'
-            refC.style.display = isDig ? 'block' : 'none'
-          }
-        }
-      }, 50)
     },
     SET_SUB_METHOD: (btn) => {
       subPaymentMethod = btn.dataset.method; render()
@@ -254,7 +240,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
       const ref = document.getElementById('sub-pay-ref')?.value?.trim() || ''
       const bank = document.getElementById('sub-pay-bank')?.value || ''
       const date = document.getElementById('sub-pay-date')?.value || new Date().toISOString().split('T')[0]
-      const method = document.getElementById('sub-pay-method-select').value
+      const method = subPaymentMethod
 
       if (['PAGO_MOVIL', 'TRANSFERENCIA'].includes(method) && !ref) return showToast('Introduce la referencia', 'error')
 
