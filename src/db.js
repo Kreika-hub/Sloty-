@@ -336,12 +336,14 @@ export const logMovement = (movement) => {
   
   saveParkingState(state)
   
+  if (!state.buildingId) { console.warn('[Sloty] logMovement: buildingId missing, skip sync'); return; }
+  
   enqueueSync({
       table: 'access_logs',
       action: 'INSERT',
       data: {
           id: entry.id,
-          building_id: state.buildingId || state.buildingCode, 
+          building_id: state.buildingId,
           timestamp: entry.timestamp,
           type: entry.type,
           plate: entry.plate,

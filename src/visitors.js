@@ -1,9 +1,17 @@
 import { supabase } from './db.js'
 
-const getBuildingId = () =>
-  localStorage.getItem('sloty_building_id') ||
-  localStorage.getItem('sloty_active_building') ||
-  null
+const getBuildingId = () => {
+  const fromState = (() => {
+    try {
+      const s = JSON.parse(localStorage.getItem('sloty_state'))
+      return s?.buildingId || null
+    } catch(e) { return null }
+  })()
+  return localStorage.getItem('sloty_building_id') || 
+         localStorage.getItem('sloty_active_building') || 
+         fromState || 
+         null
+}
 
 // Buscar visitante por placa (autocomplete)
 export const searchVisitorByPlate = async (plate) => {

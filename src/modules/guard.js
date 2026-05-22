@@ -550,7 +550,6 @@ export const initGuard = (container, guardName = 'Guardia') => {
       .from('personnel')
       .select('*')
       .eq('building_id', buildingId)
-      .eq('active', true)
 
     state.personnel = personnel || []
 
