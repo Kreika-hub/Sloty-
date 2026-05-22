@@ -258,6 +258,17 @@ export const initGuard = (container, guardName = 'Guardia') => {
 
       if (['PAGO_MOVIL', 'TRANSFERENCIA'].includes(method) && !ref) return showToast('Introduce la referencia', 'error')
 
+      const { data: existing } = await supabase
+        .from('payments')
+        .select('id')
+        .eq('subscription_id', selectedResident.id)
+        .eq('status', 'PENDING')
+        .limit(1)
+      if (existing && existing.length > 0) {
+        showToast('Este residente ya tiene un pago pendiente de aprobación', 'error')
+        return
+      }
+
       // Registramos el pago como PENDIENTE para aprobación de admin
       await supabase.from('payments').insert({
          building_id: state.buildingId || localStorage.getItem('sloty_building_id'),
@@ -639,7 +650,8 @@ export const initGuard = (container, guardName = 'Guardia') => {
 
   const renderEntryForm = () => {
     const now = new Date()
-    const limit = new Date(now.getTime() + (state.settings?.freeHours || 8) * 3600000)
+    const freeHours = state.settings?.freeHours || 8
+    const limit = new Date(now.getTime() + freeHours * 3600000)
     
     return `
     <div style="padding:20px;padding-bottom:100px;">
@@ -656,7 +668,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
                  <div style="font-size:0.9rem; font-weight:900;">${now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}).toLowerCase()}</div>
                </div>
                <div>
-                 <div style="font-size:0.55rem; font-weight:800; color:#F5C518; text-transform:uppercase;">VENCE LÍMITE (8h)</div>
+                 <div style="font-size:0.55rem; font-weight:800; color:#F5C518; text-transform:uppercase;">VENCE LÍMITE (${freeHours}h)</div>
                  <div style="font-size:0.9rem; font-weight:900; color:#F5C518;">${limit.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}).toLowerCase()}</div>
                </div>
             </div>
@@ -710,7 +722,8 @@ export const initGuard = (container, guardName = 'Guardia') => {
     const slot = selectedSlot
     const qrData = JSON.stringify({ plate: slot.plate, slot: slot.label })
     const now = new Date()
-    const limit = new Date(now.getTime() + (state.settings?.freeHours || 8) * 3600000)
+    const freeHours = state.settings?.freeHours || 8
+    const limit = new Date(now.getTime() + freeHours * 3600000)
     
     return `
     <div style="padding:20px; padding-bottom:120px;">
@@ -729,7 +742,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
                  <div style="font-size:0.65rem; color:#ccc; font-weight:700;">${slot.levelName}</div>
               </div>
               <div style="text-align:right;">
-                 <div style="font-size:0.6rem; font-weight:800; color:#bbb; text-transform:uppercase; margin-bottom:5px;">VENCE LÍMITE (8h)</div>
+                 <div style="font-size:0.6rem; font-weight:800; color:#bbb; text-transform:uppercase; margin-bottom:5px;">VENCE LÍMITE (${freeHours}h)</div>
                  <div style="font-size:1.6rem; font-weight:900; color:#e63946;">${limit.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}).toLowerCase()}</div>
                  <div style="font-size:0.65rem; color:#ccc; font-weight:700;">${limit.toLocaleDateString()}</div>
               </div>

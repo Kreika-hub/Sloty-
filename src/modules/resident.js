@@ -140,6 +140,11 @@ export function initResident(container, subscription) {
             <div style="color:${subData.is_coming ? '#1a1a2e' : 'white'};opacity:0.8;">${SVG.CAR}</div>
             <span>${subData.is_coming ? 'VOY EN CAMINO...' : 'AVISAR QUE LLEGO'}</span>
           </button>
+          ${subData.is_coming ? `
+          <p style="text-align:center; font-size:0.65rem; color:#999; font-weight:700; margin-top:10px; cursor:pointer;" id="res-cancel-coming">
+            Cancelar aviso
+          </p>
+          ` : ''}
         </div>`
 
     } else if (activeTab === 'PAGOS') {
@@ -237,6 +242,14 @@ export function initResident(container, subscription) {
             btnComing.disabled = true
             await supabase.from('subscriptions').update({ is_coming: newState }).eq('id', subData.id)
             subData.is_coming = newState
+            render()
+          }
+        }
+        const btnCancelComing = document.getElementById('res-cancel-coming')
+        if (btnCancelComing) {
+          btnCancelComing.onclick = async () => {
+            await supabase.from('subscriptions').update({ is_coming: false }).eq('id', subData.id)
+            subData.is_coming = false
             render()
           }
         }
