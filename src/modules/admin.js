@@ -9,6 +9,7 @@ export const initAdmin = (container) => {
   let editingGuard = null // Guard ID being edited
   let editingResident = null // Resident ID being edited
   let openPaletteLevel = null // Level name with open palette
+  let activeSettingsMenu = 'MAIN' // MAIN, TARIFFS, VISITORS, AUDIT
 
   const ICONS = {
     HOME: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
@@ -256,7 +257,55 @@ export const initAdmin = (container) => {
       });
     },
     CANCEL_MODAL: () => { pendingAction = null; render() },
-    TAB: (btn) => { activeTab = btn.dataset.tab; render() },
+    TAB: (btn) => { 
+       activeTab = btn.dataset.tab; 
+       if (activeTab === 'SETTINGS') activeSettingsMenu = 'MAIN';
+       render() 
+    },
+    SUBMENU: (btn) => {
+       activeSettingsMenu = btn.dataset.menu;
+       render();
+    },
+    TOGGLE_TARIFF: (btn) => {
+       const idx = parseInt(btn.dataset.idx);
+       const state = getParkingState();
+       if (!state.settings.tariffs) {
+           state.settings.tariffs = [ { id: 'T1', name: 'Tarifa Excedente', freeHours: state.settings.freeHours || 8, baseRate: state.settings.baseRate || 1, active: true } ]
+       }
+       state.settings.tariffs[idx].active = !state.settings.tariffs[idx].active;
+       saveParkingState(state);
+       render();
+    },
+    SAVE_TARIFFS: () => {
+       const state = getParkingState();
+       if (!state.settings.tariffs) {
+           state.settings.tariffs = [ { id: 'T1', name: 'Tarifa Excedente', freeHours: state.settings.freeHours || 8, baseRate: state.settings.baseRate || 1, active: true } ]
+       }
+       
+       const inputs = Array.from(document.querySelectorAll('.tariff-input'));
+       inputs.forEach(inp => {
+          const idx = parseInt(inp.dataset.idx);
+          const field = inp.dataset.field;
+          const val = parseFloat(inp.value) || 0;
+          if (state.settings.tariffs[idx]) {
+             state.settings.tariffs[idx][field] = val;
+          }
+       });
+       
+       if (state.settings.tariffs.length > 0) {
+           state.settings.freeHours = state.settings.tariffs[0].freeHours;
+           state.settings.baseRate = state.settings.tariffs[0].baseRate;
+       }
+       
+       saveParkingState(state);
+       logAudit('Configuró las tarifas del estacionamiento');
+       pendingAction = {
+           type: 'CUSTOM_MODAL',
+           title: '✅ TARIFAS GUARDADAS',
+           content: `<p style="color:#666; font-weight:700;">Las reglas de cobro han sido actualizadas exitosamente y se aplicarán de inmediato.</p>`
+       };
+       render();
+    },
     SYNC: async () => {
       const state = getParkingState();
       if (state.buildingCode) {
@@ -1247,71 +1296,158 @@ export const initAdmin = (container) => {
       </div>`
   }
 
-  const renderSettings = (state) => `
-    <div style="padding:20px; padding-bottom:120px;">
-
-      <div style="background:white; padding:25px; border-radius:32px; box-shadow:0 10px 30px rgba(0,0,0,0.04); border:1.5px solid #f0f0f0; margin-bottom:20px;">
-        <div style="font-size:0.7rem; font-weight:900; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:15px;">⏱️ TARIFAS Y TIEMPO DE CORTESÍA</div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:15px;">
-          <div><label style="font-size:0.6rem; font-weight:900; color:#bbb; display:block; margin-bottom:6px;">TIEMPO GRATIS (Hrs)</label><input type="number" id="set-freehours" value="${state.settings?.freeHours || 8}" style="width:100%; padding:14px; border:1.5px solid #eee; border-radius:14px; font-weight:900; font-family:var(--font); outline:none;"></div>
-          <div><label style="font-size:0.6rem; font-weight:900; color:#bbb; display:block; margin-bottom:6px;">TARIFA BASE ($)</label><input type="number" id="set-baserate" step="0.50" value="${state.settings?.baseRate || 1}" style="width:100%; padding:14px; border:1.5px solid #eee; border-radius:14px; font-weight:900; font-family:var(--font); outline:none;"></div>
-        </div>
-        <button data-action="SAVE_SETTINGS" style="width:100%; padding:15px; background:#1a1a2e; color:#F5C518; border:none; border-radius:16px; font-weight:900; cursor:pointer;">GUARDAR TARIFAS</button>
-      </div>
-
-      <div style="background:white; padding:25px; border-radius:32px; box-shadow:0 10px 30px rgba(0,0,0,0.04); border:1.5px solid #f0f0f0; margin-bottom:20px;">
-        <div style="font-size:0.7rem; font-weight:900; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">📋 CAMPOS DEL CUESTIONARIO DE VISITANTES</div>
-        <div style="font-size:0.65rem; color:#bbb; font-weight:700; margin-bottom:18px;">Estos campos le aparecen al guardia al registrar un visitante (ej: Torre, Apartamento, Piso)</div>
-        <div style="display:grid; gap:10px; margin-bottom:15px;">
-          ${(state.settings?.customFields || []).map(f => `
-            <div style="background:#f8f9fa; padding:14px 18px; border-radius:14px; display:flex; justify-content:space-between; align-items:center;">
-              <div><div style="font-size:0.85rem; font-weight:900; color:#1a1a2e;">${f.label}</div><div style="font-size:0.55rem; color:#bbb; font-weight:700; margin-top:2px;">ID: ${f.id}</div></div>
-              <button data-action="DELETE_CUSTOM_FIELD" data-id="${f.id}" style="background:rgba(230,57,70,0.1); color:#e63946; border:none; width:32px; height:32px; border-radius:50%; font-weight:900; cursor:pointer;">×</button>
-            </div>
-          `).join('') || '<div style="text-align:center; padding:15px; color:#ccc; font-size:0.75rem; border:2px dashed #eee; border-radius:14px;">No hay campos configurados</div>'}
-        </div>
-        <div style="display:flex; gap:10px;">
-          <input type="text" id="new-field-label" placeholder="Ej: Torre, Piso, Apartamento..." style="flex:1; padding:14px; border:1.5px solid #eee; border-radius:14px; font-weight:700; font-family:var(--font); outline:none;">
-          <button data-action="ADD_CUSTOM_FIELD" style="background:#22c55e; color:white; border:none; padding:0 22px; border-radius:14px; font-weight:900; cursor:pointer; font-size:1.3rem;">+</button>
-        </div>
-      </div>
-
-      <div style="background:white; padding:25px; border-radius:32px; box-shadow:0 10px 30px rgba(0,0,0,0.04); border:1.5px solid #f0f0f0; margin-bottom:20px;">
-        <div style="font-size:0.7rem; font-weight:900; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">🏷️ TIPOS DE VISITANTE</div>
-        <div style="font-size:0.65rem; color:#bbb; font-weight:700; margin-bottom:18px;">Define las categorías para clasificar visitantes (Visita, Mercado, Mudanza...)</div>
-        <div style="display:grid; gap:10px; margin-bottom:15px;">
-          ${(state.settings?.categories || []).map(c => `
-            <div style="background:#f8f9fa; padding:14px 18px; border-radius:14px; display:flex; justify-content:space-between; align-items:center;">
-              <div style="display:flex; align-items:center; gap:12px;">
-                <div style="width:34px; height:34px; background:${c.color}; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:0.75rem; font-weight:900; color:white;">${c.tag || c.label.charAt(0)}</div>
-                <div style="font-size:0.85rem; font-weight:900; color:#1a1a2e;">${c.label}</div>
-              </div>
-              <button data-action="DELETE_CATEGORY" data-id="${c.id}" style="background:rgba(230,57,70,0.1); color:#e63946; border:none; width:32px; height:32px; border-radius:50%; font-weight:900; cursor:pointer;">×</button>
-            </div>
-          `).join('') || '<div style="text-align:center; padding:15px; color:#ccc; font-size:0.75rem; border:2px dashed #eee; border-radius:14px;">No hay categorías configuradas</div>'}
-        </div>
-        <div style="display:flex; gap:10px; align-items:center;">
-          <input type="text" id="new-cat-label" placeholder="Ej: Mercado, Mudanza..." style="flex:1; padding:14px; border:1.5px solid #eee; border-radius:14px; font-weight:700; font-family:var(--font); outline:none;">
-          <input type="color" id="new-cat-color" value="#3b82f6" style="width:48px; height:48px; border:none; border-radius:12px; cursor:pointer; padding:2px;">
-          <button data-action="ADD_CATEGORY" style="background:#3b82f6; color:white; border:none; padding:0 20px; border-radius:14px; font-weight:900; cursor:pointer; height:48px; font-size:1.3rem;">+</button>
-        </div>
-      </div>
-
-      <div style="background:white; padding:25px; border-radius:32px; box-shadow:0 10px 30px rgba(0,0,0,0.04); border:1.5px solid #f0f0f0;">
-        <div style="font-size:0.7rem; font-weight:900; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:15px;">📜 BITÁCORA DE AUDITORÍA</div>
-        <div style="display:grid; gap:8px; max-height:300px; overflow-y:auto;">
-          ${(state.auditLog || []).slice(0,30).map(l => `
-            <div style="background:#f8f9fa; padding:12px 16px; border-radius:12px;">
-              <div style="font-size:0.8rem; font-weight:900; color:#1a1a2e;">${l.action}</div>
-              <div style="display:flex; justify-content:space-between; margin-top:4px;">
-                <div style="font-size:0.55rem; color:#bbb; font-weight:700;">${l.user}</div>
-                <div style="font-size:0.55rem; color:#bbb;">${new Date(l.timestamp).toLocaleString()}</div>
-              </div>
-            </div>
-          `).join('') || '<div style="text-align:center; padding:20px; color:#bbb; font-size:0.75rem;">Sin registros</div>'}
-        </div>
-      </div>
-    </div>`
+  const renderSettings = (state) => {
+    if (activeSettingsMenu === 'MAIN') {
+       return `
+       <div style="padding:20px; padding-bottom:120px;">
+          <h2 style="font-weight:900; color:var(--primary); font-size:1.4rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:25px;">CONFIGURACIÓN</h2>
+          
+          <div style="display:grid; gap:15px;">
+             <div data-action="SUBMENU" data-menu="TARIFFS" style="background:white; padding:20px; border-radius:24px; border:1.5px solid #f0f0f0; display:flex; align-items:center; gap:15px; cursor:pointer; box-shadow:0 8px 20px rgba(0,0,0,0.02);">
+                <div style="width:50px; height:50px; border-radius:16px; background:rgba(34,197,94,0.1); color:#22c55e; display:flex; align-items:center; justify-content:center; font-size:1.5rem;">💰</div>
+                <div style="flex:1;">
+                   <div style="font-size:1rem; font-weight:900; color:var(--primary);">Tarifas y Reglas</div>
+                   <div style="font-size:0.65rem; color:#999; font-weight:700; margin-top:2px;">Configura el tiempo gratis y los montos a cobrar por horas</div>
+                </div>
+                <div style="color:#bbb; font-size:1.2rem; font-weight:900;">›</div>
+             </div>
+             
+             <div data-action="SUBMENU" data-menu="VISITORS" style="background:white; padding:20px; border-radius:24px; border:1.5px solid #f0f0f0; display:flex; align-items:center; gap:15px; cursor:pointer; box-shadow:0 8px 20px rgba(0,0,0,0.02);">
+                <div style="width:50px; height:50px; border-radius:16px; background:rgba(59,130,246,0.1); color:#3b82f6; display:flex; align-items:center; justify-content:center; font-size:1.5rem;">👥</div>
+                <div style="flex:1;">
+                   <div style="font-size:1rem; font-weight:900; color:var(--primary);">Visitantes</div>
+                   <div style="font-size:0.65rem; color:#999; font-weight:700; margin-top:2px;">Campos del cuestionario de ingreso y categorías</div>
+                </div>
+                <div style="color:#bbb; font-size:1.2rem; font-weight:900;">›</div>
+             </div>
+             
+             <div data-action="SUBMENU" data-menu="AUDIT" style="background:white; padding:20px; border-radius:24px; border:1.5px solid #f0f0f0; display:flex; align-items:center; gap:15px; cursor:pointer; box-shadow:0 8px 20px rgba(0,0,0,0.02);">
+                <div style="width:50px; height:50px; border-radius:16px; background:rgba(230,57,70,0.1); color:#e63946; display:flex; align-items:center; justify-content:center; font-size:1.5rem;">📜</div>
+                <div style="flex:1;">
+                   <div style="font-size:1rem; font-weight:900; color:var(--primary);">Bitácora de Auditoría</div>
+                   <div style="font-size:0.65rem; color:#999; font-weight:700; margin-top:2px;">Revisa las acciones de los administradores y configuraciones</div>
+                </div>
+                <div style="color:#bbb; font-size:1.2rem; font-weight:900;">›</div>
+             </div>
+          </div>
+       </div>`
+    }
+    
+    if (activeSettingsMenu === 'TARIFFS') {
+       const tariffs = state.settings?.tariffs || [
+           { id: 'T1', name: 'Tarifa Excedente', freeHours: state.settings?.freeHours || 8, baseRate: state.settings?.baseRate || 1, active: true }
+       ]
+       return `
+       <div style="padding:20px; padding-bottom:120px;">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px;">
+             <button data-action="SUBMENU" data-menu="MAIN" style="background:#f4f4f4; border:none; width:40px; height:40px; border-radius:12px; font-size:1.2rem; cursor:pointer; display:flex; align-items:center; justify-content:center; font-weight:900;">‹</button>
+             <h2 style="font-weight:900; color:var(--primary); font-size:1.2rem; margin:0; text-transform:uppercase;">TARIFAS</h2>
+          </div>
+          
+          <div style="background:white; padding:25px; border-radius:32px; box-shadow:0 10px 30px rgba(0,0,0,0.04); border:1.5px solid #f0f0f0; margin-bottom:20px;">
+             <div style="font-size:0.7rem; font-weight:900; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">REGLAS DE COBRO ACTIVAS</div>
+             <div style="font-size:0.65rem; color:#bbb; font-weight:700; margin-bottom:20px;">Estas reglas se evaluarán automáticamente cuando el guardia registre la salida de un vehículo.</div>
+             
+             <div style="display:grid; gap:12px; margin-bottom:20px;" id="tariffs-container">
+                ${tariffs.map((t, idx) => `
+                  <div style="background:${t.active ? '#f0fdf4' : '#fafafa'}; border:1.5px solid ${t.active ? '#bbf7d0' : '#eee'}; padding:15px; border-radius:16px;">
+                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                        <div style="font-size:0.9rem; font-weight:900; color:${t.active ? '#166534' : '#999'};">${t.name}</div>
+                        <button data-action="TOGGLE_TARIFF" data-idx="${idx}" style="background:none; border:none; color:${t.active ? '#22c55e' : '#ccc'}; cursor:pointer; padding:0; display:flex; align-items:center;">
+                           <svg width="40" height="24" viewBox="0 0 36 20" fill="${t.active ? '#22c55e' : '#e5e7eb'}" rx="10"><rect width="36" height="20" rx="10"/><circle cx="${t.active ? '26' : '10'}" cy="10" r="7" fill="white"/></svg>
+                        </button>
+                     </div>
+                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                        <div>
+                           <label style="font-size:0.55rem; font-weight:800; color:#999; display:block; margin-bottom:4px;">GRATIS (Horas)</label>
+                           <input type="number" class="tariff-input" data-field="freeHours" data-idx="${idx}" value="${t.freeHours}" ${!t.active ? 'disabled' : ''} style="width:100%; padding:10px; border:1.5px solid rgba(0,0,0,0.05); border-radius:10px; font-weight:900; font-family:var(--font); background:${t.active ? 'white' : 'rgba(255,255,255,0.5)'}; outline:none;">
+                        </div>
+                        <div>
+                           <label style="font-size:0.55rem; font-weight:800; color:#999; display:block; margin-bottom:4px;">MONTO ($)</label>
+                           <input type="number" step="0.5" class="tariff-input" data-field="baseRate" data-idx="${idx}" value="${t.baseRate}" ${!t.active ? 'disabled' : ''} style="width:100%; padding:10px; border:1.5px solid rgba(0,0,0,0.05); border-radius:10px; font-weight:900; font-family:var(--font); background:${t.active ? 'white' : 'rgba(255,255,255,0.5)'}; outline:none;">
+                        </div>
+                     </div>
+                  </div>
+                `).join('')}
+             </div>
+             
+             <button data-action="SAVE_TARIFFS" style="width:100%; padding:18px; background:var(--primary); color:white; border:none; border-radius:16px; font-weight:900; cursor:pointer; font-size:0.85rem; box-shadow:0 10px 20px rgba(0,0,0,0.1);">GUARDAR TARIFAS</button>
+          </div>
+       </div>`
+    }
+    
+    if (activeSettingsMenu === 'VISITORS') {
+       return `
+       <div style="padding:20px; padding-bottom:120px;">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px;">
+             <button data-action="SUBMENU" data-menu="MAIN" style="background:#f4f4f4; border:none; width:40px; height:40px; border-radius:12px; font-size:1.2rem; cursor:pointer; display:flex; align-items:center; justify-content:center; font-weight:900;">‹</button>
+             <h2 style="font-weight:900; color:var(--primary); font-size:1.2rem; margin:0; text-transform:uppercase;">VISITANTES</h2>
+          </div>
+          
+          <div style="background:white; padding:25px; border-radius:32px; box-shadow:0 10px 30px rgba(0,0,0,0.04); border:1.5px solid #f0f0f0; margin-bottom:20px;">
+             <div style="font-size:0.7rem; font-weight:900; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">📋 CUESTIONARIO DE INGRESO</div>
+             <div style="font-size:0.65rem; color:#bbb; font-weight:700; margin-bottom:18px;">Campos solicitados al guardia al registrar un visitante (ej: Torre, Piso).</div>
+             <div style="display:grid; gap:10px; margin-bottom:15px;">
+               ${(state.settings?.customFields || []).map(f => `
+                 <div style="background:#f8f9fa; padding:14px 18px; border-radius:14px; display:flex; justify-content:space-between; align-items:center;">
+                   <div><div style="font-size:0.85rem; font-weight:900; color:#1a1a2e;">${f.label}</div><div style="font-size:0.55rem; color:#bbb; font-weight:700; margin-top:2px;">ID: ${f.id}</div></div>
+                   <button data-action="DELETE_CUSTOM_FIELD" data-id="${f.id}" style="background:rgba(230,57,70,0.1); color:#e63946; border:none; width:32px; height:32px; border-radius:50%; font-weight:900; cursor:pointer;">×</button>
+                 </div>
+               `).join('') || '<div style="text-align:center; padding:15px; color:#ccc; font-size:0.75rem; border:2px dashed #eee; border-radius:14px;">No hay campos configurados</div>'}
+             </div>
+             <div style="display:flex; gap:10px;">
+               <input type="text" id="new-field-label" placeholder="Ej: Apartamento" style="flex:1; padding:14px; border:1.5px solid #eee; border-radius:14px; font-weight:700; font-family:var(--font); outline:none;">
+               <button data-action="ADD_CUSTOM_FIELD" style="background:#22c55e; color:white; border:none; padding:0 22px; border-radius:14px; font-weight:900; cursor:pointer; font-size:1.3rem;">+</button>
+             </div>
+          </div>
+          
+          <div style="background:white; padding:25px; border-radius:32px; box-shadow:0 10px 30px rgba(0,0,0,0.04); border:1.5px solid #f0f0f0;">
+             <div style="font-size:0.7rem; font-weight:900; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">🏷️ CATEGORÍAS</div>
+             <div style="font-size:0.65rem; color:#bbb; font-weight:700; margin-bottom:18px;">Tipos de visitante (Visita, Mudanza) para identificarlos en el mapa.</div>
+             <div style="display:grid; gap:10px; margin-bottom:15px;">
+               ${(state.settings?.categories || []).map(c => `
+                 <div style="background:#f8f9fa; padding:14px 18px; border-radius:14px; display:flex; justify-content:space-between; align-items:center;">
+                   <div style="display:flex; align-items:center; gap:12px;">
+                     <div style="width:34px; height:34px; background:${c.color}; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:0.75rem; font-weight:900; color:white;">${c.tag || c.label.charAt(0)}</div>
+                     <div style="font-size:0.85rem; font-weight:900; color:#1a1a2e;">${c.label}</div>
+                   </div>
+                   <button data-action="DELETE_CATEGORY" data-id="${c.id}" style="background:rgba(230,57,70,0.1); color:#e63946; border:none; width:32px; height:32px; border-radius:50%; font-weight:900; cursor:pointer;">×</button>
+                 </div>
+               `).join('') || '<div style="text-align:center; padding:15px; color:#ccc; font-size:0.75rem; border:2px dashed #eee; border-radius:14px;">No hay categorías configuradas</div>'}
+             </div>
+             <div style="display:flex; gap:10px; align-items:center;">
+               <input type="text" id="new-cat-label" placeholder="Ej: Delivery" style="flex:1; padding:14px; border:1.5px solid #eee; border-radius:14px; font-weight:700; font-family:var(--font); outline:none;">
+               <input type="color" id="new-cat-color" value="#3b82f6" style="width:48px; height:48px; border:none; border-radius:12px; cursor:pointer; padding:2px;">
+               <button data-action="ADD_CATEGORY" style="background:#3b82f6; color:white; border:none; padding:0 20px; border-radius:14px; font-weight:900; cursor:pointer; height:48px; font-size:1.3rem;">+</button>
+             </div>
+          </div>
+       </div>`
+    }
+    
+    if (activeSettingsMenu === 'AUDIT') {
+       return `
+       <div style="padding:20px; padding-bottom:120px;">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px;">
+             <button data-action="SUBMENU" data-menu="MAIN" style="background:#f4f4f4; border:none; width:40px; height:40px; border-radius:12px; font-size:1.2rem; cursor:pointer; display:flex; align-items:center; justify-content:center; font-weight:900;">‹</button>
+             <h2 style="font-weight:900; color:var(--primary); font-size:1.2rem; margin:0; text-transform:uppercase;">BITÁCORA DE AUDITORÍA</h2>
+          </div>
+          
+          <div style="background:white; padding:25px; border-radius:32px; box-shadow:0 10px 30px rgba(0,0,0,0.04); border:1.5px solid #f0f0f0;">
+             <div style="display:grid; gap:8px;">
+               ${(state.auditLog || []).slice(0,50).map(l => `
+                 <div style="background:#f8f9fa; padding:12px 16px; border-radius:12px;">
+                   <div style="font-size:0.8rem; font-weight:900; color:#1a1a2e;">${l.action}</div>
+                   <div style="display:flex; justify-content:space-between; margin-top:4px;">
+                     <div style="font-size:0.55rem; color:#bbb; font-weight:700;">${l.user}</div>
+                     <div style="font-size:0.55rem; color:#bbb;">${new Date(l.timestamp).toLocaleString()}</div>
+                   </div>
+                 </div>
+               `).join('') || '<div style="text-align:center; padding:20px; color:#bbb; font-size:0.75rem;">Sin registros</div>'}
+             </div>
+          </div>
+       </div>`
+    }
+  }
 
   const renderReports = (state) => {
     const now = new Date()
@@ -2012,8 +2148,8 @@ export const initAdmin = (container) => {
   }
 
   setInterval(async () => {
-    const s = getParkingState()
-    if (['HOME','FINANCE','REPORTES'].includes(activeTab)) await renderTabContent(s)
+    // Rendimiento: Eliminado renderTabContent() cada 4s que bloqueaba el main thread y hacía múltiples requests a DB.
+    // Solo actualizamos el carrusel y otras utilidades que no pesen.
     const t = container.querySelector('#main-carousel'); let carouselIndex = 0
     if (t && t.children.length > 1) { carouselIndex = (window._cIdx || 0) + 1; window._cIdx = carouselIndex % t.children.length; t.style.transform = `translateX(-${window._cIdx * 100}%)` }
   }, 4000)

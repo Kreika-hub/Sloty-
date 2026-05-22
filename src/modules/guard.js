@@ -355,6 +355,9 @@ export const initGuard = (container, guardName = 'Guardia') => {
       })
       
       if (timing === 'PRE') {
+         const activeTariffs = state.settings?.tariffs?.filter(t => t.active) || [];
+         const amountToCharge = activeTariffs.length > 0 ? activeTariffs[0].baseRate : (state.settings?.baseRate || 1);
+         
          pendingPayment = { 
            type:'PREPAGO', 
            plate, 
@@ -363,7 +366,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
            guardName, 
            phone, 
            metadata,
-           amount: (state.settings?.baseRate || 1),
+           amount: amountToCharge,
            method: payMethod,
            entryData: entryData // Save to update slot after payment
          }
@@ -382,10 +385,22 @@ export const initGuard = (container, guardName = 'Guardia') => {
     EXIT_PAID: () => {
       const entryTime = new Date(selectedSlot.entryTime)
       const hoursStayed = (new Date() - entryTime) / 3600000
-      const freeHours = state.settings?.freeHours || 8
-      let totalOwed = (hoursStayed > freeHours || selectedSlot.status === 'DEBT') ? (state.settings?.baseRate || 1) : 0
       
-      if (selectedSlot.paymentStatus === 'PAGADO') totalOwed = Math.max(0, totalOwed - (state.settings?.baseRate || 1))
+      let totalOwed = 0;
+      const activeTariffs = state.settings?.tariffs?.filter(t => t.active) || [];
+      
+      if (activeTariffs.length > 0) {
+         for (let t of activeTariffs) {
+             if (hoursStayed > t.freeHours || selectedSlot.status === 'DEBT') {
+                 totalOwed = Math.max(totalOwed, t.baseRate);
+             }
+         }
+      } else {
+         const freeHours = state.settings?.freeHours || 8
+         totalOwed = (hoursStayed > freeHours || selectedSlot.status === 'DEBT') ? (state.settings?.baseRate || 1) : 0
+      }
+      
+      if (selectedSlot.paymentStatus === 'PAGADO') totalOwed = 0; // Si ya pre-pagó, no debe nada.
 
       if (totalOwed > 0) {
         pendingPayment = {
