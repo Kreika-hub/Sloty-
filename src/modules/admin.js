@@ -306,6 +306,47 @@ export const initAdmin = (container) => {
        };
        render();
     },
+    ADD_CUSTOM_FIELD: () => {
+       const labelInput = document.getElementById('new-field-label');
+       const label = labelInput?.value.trim();
+       if (!label) return alert('Ingresa un nombre para el campo');
+       const state = getParkingState();
+       if (!state.settings.customFields) state.settings.customFields = [];
+       const id = label.toLowerCase().replace(/[^a-z0-9]/g, '');
+       if (state.settings.customFields.find(f => f.id === id)) return alert('Ya existe un campo similar');
+       state.settings.customFields.push({ id, label });
+       saveParkingState(state);
+       render();
+    },
+    DELETE_CUSTOM_FIELD: (btn) => {
+       const id = btn.dataset.id;
+       const state = getParkingState();
+       if (!state.settings.customFields) return;
+       state.settings.customFields = state.settings.customFields.filter(f => f.id !== id);
+       saveParkingState(state);
+       render();
+    },
+    ADD_CATEGORY: () => {
+       const labelInput = document.getElementById('new-cat-label');
+       const colorInput = document.getElementById('new-cat-color');
+       const label = labelInput?.value.trim();
+       if (!label) return alert('Ingresa un nombre para la categoría');
+       const state = getParkingState();
+       if (!state.settings.categories) state.settings.categories = [];
+       const id = label.toUpperCase().replace(/[^A-Z0-9]/g, '_');
+       if (state.settings.categories.find(c => c.id === id)) return alert('Ya existe esa categoría');
+       state.settings.categories.push({ id, label, tag: label.charAt(0).toUpperCase(), color: colorInput.value });
+       saveParkingState(state);
+       render();
+    },
+    DELETE_CATEGORY: (btn) => {
+       const id = btn.dataset.id;
+       const state = getParkingState();
+       if (!state.settings.categories) return;
+       state.settings.categories = state.settings.categories.filter(c => c.id !== id);
+       saveParkingState(state);
+       render();
+    },
     SYNC: async () => {
       const state = getParkingState();
       if (state.buildingCode) {
