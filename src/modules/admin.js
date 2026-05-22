@@ -300,12 +300,44 @@ export const initAdmin = (container) => {
     },
     FILTER_REPORTS: (btn) => { reportFilter = btn.dataset.filter; render() },
     SAVE_SETTINGS: () => {
-      const freeHours = parseFloat(document.getElementById('set-freehours').value) || 0
-      const baseRate = parseFloat(document.getElementById('set-baserate').value) || 0
-      const extraPerHour = parseFloat(document.getElementById('set-extra').value) || 0
+      const freeHours = parseFloat(document.getElementById('set-freehours')?.value) || 0
+      const baseRate = parseFloat(document.getElementById('set-baserate')?.value) || 0
       const state = getParkingState()
-      state.settings = { ...state.settings, freeHours, baseRate, extraPerHour }
-      saveParkingState(state); alert('Tarifas guardadas'); render()
+      state.settings = { ...state.settings, freeHours, baseRate }
+      saveParkingState(state); logAudit(`Actualizó tarifas: $${baseRate}, ${freeHours}h libres`); render()
+    },
+    ADD_CUSTOM_FIELD: () => {
+      const label = document.getElementById('new-field-label')?.value.trim()
+      if (!label) return
+      const id = label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'_')
+      const state = getParkingState()
+      if (!state.settings.customFields) state.settings.customFields = []
+      if (state.settings.customFields.find(f => f.id === id)) return
+      state.settings.customFields.push({ id, label, required: true })
+      saveParkingState(state); render()
+    },
+    DELETE_CUSTOM_FIELD: (btn) => {
+      const id = btn.dataset.id
+      const state = getParkingState()
+      state.settings.customFields = (state.settings.customFields || []).filter(f => f.id !== id)
+      saveParkingState(state); render()
+    },
+    ADD_CATEGORY: () => {
+      const label = document.getElementById('new-cat-label')?.value.trim()
+      const color = document.getElementById('new-cat-color')?.value || '#3b82f6'
+      if (!label) return
+      const id = label.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'_')
+      const state = getParkingState()
+      if (!state.settings.categories) state.settings.categories = []
+      if (state.settings.categories.find(c => c.id === id)) return
+      state.settings.categories.push({ id, label, color, tag: label.charAt(0).toUpperCase(), txt: '#ffffff' })
+      saveParkingState(state); render()
+    },
+    DELETE_CATEGORY: (btn) => {
+      const id = btn.dataset.id
+      const state = getParkingState()
+      state.settings.categories = (state.settings.categories || []).filter(c => c.id !== id)
+      saveParkingState(state); render()
     },
     DOWNLOAD_CSV: () => {
       const state = getParkingState(); const movs = state.movements || []
@@ -761,9 +793,9 @@ export const initAdmin = (container) => {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px; height:22px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             <span style="font-size:0.55rem; font-weight:800; letter-spacing:0.5px;">PERSONAL</span>
           </div>
-          <div class="admin-tab-btn" data-action="TAB" data-tab="ABONOS" style="display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; color:rgba(255,255,255,0.4); transition:color 0.3s; flex:1;">
-            <div style="width:22px; height:22px;">${ICONS.CARD}</div>
-            <span style="font-size:0.55rem; font-weight:800; letter-spacing:0.5px;">ABONOS</span>
+          <div class="admin-tab-btn" data-action="TAB" data-tab="SETTINGS" style="display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; color:rgba(255,255,255,0.4); transition:color 0.3s; flex:1;">
+            <div style="width:22px; height:22px;">${ICONS.SETTINGS}</div>
+            <span style="font-size:0.55rem; font-weight:800; letter-spacing:0.5px;">CONFIG</span>
           </div>
         </nav>
       </div>`
@@ -1215,31 +1247,69 @@ export const initAdmin = (container) => {
       </div>`
   }
 
-  const renderAuditLog = (state) => `
+  const renderSettings = (state) => `
     <div style="padding:20px; padding-bottom:120px;">
-      <h3 style="font-weight:900; margin-bottom:20px;">BITÁCORA DE AUDITORÍA</h3>
-      
-      <!-- AJUSTES RÁPIDOS -->
-      <div style="background:white; padding:20px; border-radius:32px; margin-bottom:30px; box-shadow:var(--shadow-sm);">
-        <div style="font-size:0.65rem; font-weight:800; color:#999; margin-bottom:15px; text-transform:uppercase;">CONFIGURACIÓN TARIFAS</div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:15px;">
-           <div><label style="font-size:0.55rem; font-weight:900; color:#999; display:block; margin-bottom:4px;">BASE $</label><input type="number" id="set-baserate" value="${state.settings.baseRate}" style="width:100%; padding:12px; border:1px solid #eee; border-radius:12px; font-weight:900; font-family:var(--font);"></div>
-           <div><label style="font-size:0.55rem; font-weight:900; color:#999; display:block; margin-bottom:4px;">LIBRE (Hrs)</label><input type="number" id="set-freehours" value="${state.settings.freeHours}" style="width:100%; padding:12px; border:1px solid #eee; border-radius:12px; font-weight:900; font-family:var(--font);"></div>
+
+      <div style="background:white; padding:25px; border-radius:32px; box-shadow:0 10px 30px rgba(0,0,0,0.04); border:1.5px solid #f0f0f0; margin-bottom:20px;">
+        <div style="font-size:0.7rem; font-weight:900; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:15px;">⏱️ TARIFAS Y TIEMPO DE CORTESÍA</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:15px;">
+          <div><label style="font-size:0.6rem; font-weight:900; color:#bbb; display:block; margin-bottom:6px;">TIEMPO GRATIS (Hrs)</label><input type="number" id="set-freehours" value="${state.settings?.freeHours || 8}" style="width:100%; padding:14px; border:1.5px solid #eee; border-radius:14px; font-weight:900; font-family:var(--font); outline:none;"></div>
+          <div><label style="font-size:0.6rem; font-weight:900; color:#bbb; display:block; margin-bottom:6px;">TARIFA BASE ($)</label><input type="number" id="set-baserate" step="0.50" value="${state.settings?.baseRate || 1}" style="width:100%; padding:14px; border:1.5px solid #eee; border-radius:14px; font-weight:900; font-family:var(--font); outline:none;"></div>
         </div>
-        <button data-action="SAVE_SETTINGS" style="width:100%; padding:14px; background:var(--accent); color:var(--primary); border:none; border-radius:14px; font-weight:900; cursor:pointer;">ACTUALIZAR</button>
+        <button data-action="SAVE_SETTINGS" style="width:100%; padding:15px; background:#1a1a2e; color:#F5C518; border:none; border-radius:16px; font-weight:900; cursor:pointer;">GUARDAR TARIFAS</button>
       </div>
 
-      <div style="display:grid; gap:8px;">
-        ${(state.auditLog || []).map(l => `
-          <div style="background:white; padding:12px 16px; border-radius:16px; border:1px solid #f0f0f0;">
-             <div style="font-size:0.8rem; font-weight:900; color:var(--primary);">${l.action}</div>
-             <div style="display:flex; justify-content:space-between; margin-top:4px;">
-                <div style="font-size:0.6rem; font-weight:700; color:#bbb;">Usu: ${l.user}</div>
-                <div style="font-size:0.6rem; color:#bbb;">${new Date(l.timestamp).toLocaleString()}</div>
-             </div>
-          </div>
-        `).join('')}
-        ${!(state.auditLog || []).length ? '<div style="text-align:center; padding:40px; color:#bbb;">No hay registros de auditoría</div>' : ''}
+      <div style="background:white; padding:25px; border-radius:32px; box-shadow:0 10px 30px rgba(0,0,0,0.04); border:1.5px solid #f0f0f0; margin-bottom:20px;">
+        <div style="font-size:0.7rem; font-weight:900; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">📋 CAMPOS DEL CUESTIONARIO DE VISITANTES</div>
+        <div style="font-size:0.65rem; color:#bbb; font-weight:700; margin-bottom:18px;">Estos campos le aparecen al guardia al registrar un visitante (ej: Torre, Apartamento, Piso)</div>
+        <div style="display:grid; gap:10px; margin-bottom:15px;">
+          ${(state.settings?.customFields || []).map(f => `
+            <div style="background:#f8f9fa; padding:14px 18px; border-radius:14px; display:flex; justify-content:space-between; align-items:center;">
+              <div><div style="font-size:0.85rem; font-weight:900; color:#1a1a2e;">${f.label}</div><div style="font-size:0.55rem; color:#bbb; font-weight:700; margin-top:2px;">ID: ${f.id}</div></div>
+              <button data-action="DELETE_CUSTOM_FIELD" data-id="${f.id}" style="background:rgba(230,57,70,0.1); color:#e63946; border:none; width:32px; height:32px; border-radius:50%; font-weight:900; cursor:pointer;">×</button>
+            </div>
+          `).join('') || '<div style="text-align:center; padding:15px; color:#ccc; font-size:0.75rem; border:2px dashed #eee; border-radius:14px;">No hay campos configurados</div>'}
+        </div>
+        <div style="display:flex; gap:10px;">
+          <input type="text" id="new-field-label" placeholder="Ej: Torre, Piso, Apartamento..." style="flex:1; padding:14px; border:1.5px solid #eee; border-radius:14px; font-weight:700; font-family:var(--font); outline:none;">
+          <button data-action="ADD_CUSTOM_FIELD" style="background:#22c55e; color:white; border:none; padding:0 22px; border-radius:14px; font-weight:900; cursor:pointer; font-size:1.3rem;">+</button>
+        </div>
+      </div>
+
+      <div style="background:white; padding:25px; border-radius:32px; box-shadow:0 10px 30px rgba(0,0,0,0.04); border:1.5px solid #f0f0f0; margin-bottom:20px;">
+        <div style="font-size:0.7rem; font-weight:900; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">🏷️ TIPOS DE VISITANTE</div>
+        <div style="font-size:0.65rem; color:#bbb; font-weight:700; margin-bottom:18px;">Define las categorías para clasificar visitantes (Visita, Mercado, Mudanza...)</div>
+        <div style="display:grid; gap:10px; margin-bottom:15px;">
+          ${(state.settings?.categories || []).map(c => `
+            <div style="background:#f8f9fa; padding:14px 18px; border-radius:14px; display:flex; justify-content:space-between; align-items:center;">
+              <div style="display:flex; align-items:center; gap:12px;">
+                <div style="width:34px; height:34px; background:${c.color}; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:0.75rem; font-weight:900; color:white;">${c.tag || c.label.charAt(0)}</div>
+                <div style="font-size:0.85rem; font-weight:900; color:#1a1a2e;">${c.label}</div>
+              </div>
+              <button data-action="DELETE_CATEGORY" data-id="${c.id}" style="background:rgba(230,57,70,0.1); color:#e63946; border:none; width:32px; height:32px; border-radius:50%; font-weight:900; cursor:pointer;">×</button>
+            </div>
+          `).join('') || '<div style="text-align:center; padding:15px; color:#ccc; font-size:0.75rem; border:2px dashed #eee; border-radius:14px;">No hay categorías configuradas</div>'}
+        </div>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <input type="text" id="new-cat-label" placeholder="Ej: Mercado, Mudanza..." style="flex:1; padding:14px; border:1.5px solid #eee; border-radius:14px; font-weight:700; font-family:var(--font); outline:none;">
+          <input type="color" id="new-cat-color" value="#3b82f6" style="width:48px; height:48px; border:none; border-radius:12px; cursor:pointer; padding:2px;">
+          <button data-action="ADD_CATEGORY" style="background:#3b82f6; color:white; border:none; padding:0 20px; border-radius:14px; font-weight:900; cursor:pointer; height:48px; font-size:1.3rem;">+</button>
+        </div>
+      </div>
+
+      <div style="background:white; padding:25px; border-radius:32px; box-shadow:0 10px 30px rgba(0,0,0,0.04); border:1.5px solid #f0f0f0;">
+        <div style="font-size:0.7rem; font-weight:900; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:15px;">📜 BITÁCORA DE AUDITORÍA</div>
+        <div style="display:grid; gap:8px; max-height:300px; overflow-y:auto;">
+          ${(state.auditLog || []).slice(0,30).map(l => `
+            <div style="background:#f8f9fa; padding:12px 16px; border-radius:12px;">
+              <div style="font-size:0.8rem; font-weight:900; color:#1a1a2e;">${l.action}</div>
+              <div style="display:flex; justify-content:space-between; margin-top:4px;">
+                <div style="font-size:0.55rem; color:#bbb; font-weight:700;">${l.user}</div>
+                <div style="font-size:0.55rem; color:#bbb;">${new Date(l.timestamp).toLocaleString()}</div>
+              </div>
+            </div>
+          `).join('') || '<div style="text-align:center; padding:20px; color:#bbb; font-size:0.75rem;">Sin registros</div>'}
+        </div>
       </div>
     </div>`
 
@@ -1409,7 +1479,7 @@ export const initAdmin = (container) => {
       case 'STRUCTURE': html = renderLevels(state); break
       case 'REPORTES': html = renderReports(state); break
       case 'FINANCE': html = renderFinanceSummary(state); break
-      case 'SETTINGS': html = renderAuditLog(state); break
+      case 'SETTINGS': html = renderSettings(state); break
       case 'NOTIFICATIONS': html = renderNotifications(state); break
       case 'PROFILE': html = renderProfile(state); break
       case 'ABONOS': html = await renderAbonos(state); break

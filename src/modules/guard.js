@@ -577,13 +577,8 @@ export const initGuard = (container, guardName = 'Guardia') => {
     <div id="incoming-residents-area" style="padding:0 20px;"></div>
 
     <div style="padding:16px 20px 100px;">
-      <div class="parking-canvas">
-        <div class="parking-column">${level.slots.slice(0,half).map((s,i)=>renderSpot(s,level.name,i)).join('')}</div>
-        <div class="parking-lane"><div style="opacity:0.1; font-size:3rem;">↑</div></div>
-        <div class="parking-column">${level.slots.slice(half).map((s,i)=>renderSpot(s,level.name,i+half)).join('')}</div>
-      </div>
       
-      <div style="padding:20px; z-index:100; margin-bottom:80px;">
+      <div style="z-index:100; margin-bottom:20px;">
          <div id="scanner-wrapper" style="margin-bottom:15px; ${scannerActive ? '' : 'display:none;'}">
             <div id="qr-reader" style="border-radius:24px; overflow:hidden; background: #000; aspect-ratio: 1/1; box-shadow:0 10px 30px rgba(0,0,0,0.2);"></div>
             <button data-action="BACK_MAP" style="width:100%; padding:14px; background:white; color:#e63946; border:2px solid #e63946; border-radius:14px; margin-top:15px; font-weight:800; font-size:0.75rem;">CANCELAR ESCANEO</button>
@@ -608,6 +603,12 @@ export const initGuard = (container, guardName = 'Guardia') => {
               </button>
            </div>
          ` : ''}
+      </div>
+
+      <div class="parking-canvas" style="margin-bottom:80px;">
+        <div class="parking-column">${level.slots.slice(0,half).map((s,i)=>renderSpot(s,level.name,i)).join('')}</div>
+        <div class="parking-lane"><div style="opacity:0.1; font-size:3rem;">↑</div></div>
+        <div class="parking-column">${level.slots.slice(half).map((s,i)=>renderSpot(s,level.name,i+half)).join('')}</div>
       </div>
     </div>`
   }
