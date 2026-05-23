@@ -229,27 +229,31 @@ export const initAdmin = (container) => {
     SHOW_RESIDENT_HISTORY: (btn) => {
       const { id, name } = btn.dataset;
       const state = getParkingState();
-      // Filter movements for this resident by plate (we'll look for movements where plate matches resident's plate)
-      const res = state.personnel.find(p => p.id === id) || { plate: '' }; // Wait, this logic is for subscriptions
       // Let's find the subscription instead
-      supabase.from('subscriptions').select('plate').eq('id', id).single().then(({data}) => {
-         const plate = data?.plate?.split(',')[0].trim();
-         const history = (state.movements || []).filter(m => m.type === 'MENSUALIDAD' && m.plate.includes(plate));
+      supabase.from('subscriptions').select('plate').eq('id', id).single().then(async ({data}) => {
+         const { data: history } = await supabase
+           .from('payments')
+           .select('amount, method, payment_date, status, reference')
+           .eq('subscription_id', id)
+           .order('payment_date', { ascending: false })
+           .limit(20)
          
          pendingAction = {
            type: 'CUSTOM_MODAL',
            title: `Historial: ${name}`,
            content: `
              <div style="max-height:300px; overflow-y:auto; padding:10px; text-align:left;">
-                ${history.map(h => `
+                ${history.map(h => {
+                  const bdg = h.status === 'CONFIRMED' ? {c:'#22c55e', bg:'rgba(34,197,94,0.1)', t:'PAGADO'} : h.status === 'PENDING' ? {c:'#f59e0b', bg:'rgba(245,158,11,0.1)', t:'PENDIENTE'} : {c:'#e63946', bg:'rgba(230,57,70,0.1)', t:'RECHAZADO'};
+                  return \`
                   <div style="padding:15px; border-bottom:1px solid #f8f8f8; display:flex; justify-content:space-between; align-items:center;">
                      <div>
-                        <div style="font-size:0.8rem; font-weight:900;">$${h.amount.toFixed(2)}</div>
-                        <div style="font-size:0.55rem; color:#bbb;">${new Date(h.timestamp).toLocaleDateString()} · ${h.payMethod}</div>
+                        <div style="font-size:0.8rem; font-weight:900;">$\${h.amount.toFixed(2)}</div>
+                        <div style="font-size:0.55rem; color:#bbb;">\${new Date(h.payment_date).toLocaleDateString()} · \${h.method}</div>
                      </div>
-                     <div style="font-size:0.6rem; color:#22c55e; font-weight:900; background:rgba(34,197,94,0.1); padding:4px 8px; border-radius:6px;">PAGADO</div>
+                     <div style="font-size:0.6rem; color:\${bdg.c}; font-weight:900; background:\${bdg.bg}; padding:4px 8px; border-radius:6px;">\${bdg.t}</div>
                   </div>
-                `).join('') || '<div style="padding:40px; text-align:center; color:#ccc;">No hay historial de pagos</div>'}
+                \`}).join('') || '<div style="padding:40px; text-align:center; color:#ccc;">No hay historial de pagos</div>'}
              </div>
            `
          };
@@ -1815,13 +1819,20 @@ export const initAdmin = (container) => {
       </div>
 
       <div style="display:grid; gap:12px;">
-        ${(subs || []).map(r => `
+        ${(subs || []).map(r => {
+          const daysLeft = Math.ceil((new Date(r.expiry_date) - new Date()) / 86400000)
+          const expiryBadge = daysLeft <= 5 && daysLeft >= 0
+            ? `<span style="background:#fff3cd; color:#856404; font-size:0.5rem; font-weight:900; padding:2px 6px; border-radius:6px; margin-left:6px;">⚠️ ${daysLeft}d</span>`
+            : daysLeft < 0
+            ? `<span style="background:#ffd6d6; color:#e63946; font-size:0.5rem; font-weight:900; padding:2px 6px; border-radius:6px; margin-left:6px;">VENCIDO</span>`
+            : ''
+          return `
           <div style="background:white; padding:20px; border-radius:28px; border:1.5px solid ${r.is_coming ? '#F5C518' : '#f0f0f0'}; box-shadow:0 10px 30px rgba(0,0,0,0.03); position:relative; overflow:hidden;">
              ${r.is_coming ? `<div style="position:absolute; top:0; left:0; background:#F5C518; color:#1a1a2e; padding:4px 12px; font-size:0.55rem; font-weight:900; border-bottom-right-radius:12px; animation: pulse 2s infinite;">EN CAMINO 🚗</div>` : ''}
              
              <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:15px;">
                 <div style="flex:1;">
-                   <div style="font-weight:900; color:var(--primary); font-size:1.1rem; line-height:1.2;">${r.resident_name}</div>
+                   <div style="font-weight:900; color:var(--primary); font-size:1.1rem; line-height:1.2;">${r.resident_name}${expiryBadge}</div>
                    <div style="display:flex; gap:8px; margin-top:5px;">
                       <span style="font-size:0.6rem; background:#f0f2f5; padding:3px 8px; border-radius:8px; font-weight:800; color:#666;">TORRE ${r.tower || '-'}</span>
                       <span style="font-size:0.6rem; background:#f0f2f5; padding:3px 8px; border-radius:8px; font-weight:800; color:#666;">APTO ${r.apt || '-'}</span>

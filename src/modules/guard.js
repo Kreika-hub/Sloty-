@@ -4,7 +4,11 @@ import { searchVisitorByPlate, saveVisitor, logAccess } from '../visitors.js'
 
 export const initGuard = (container, guardName = 'Guardia') => {
   let state = getParkingState()
-  let selectedSlot = null
+  let selectedSlot = (() => {
+    try {
+      return JSON.parse(localStorage.getItem('sloty_selected_slot')) || null
+    } catch(e) { return null }
+  })()
   let currentView = 'MAP'
   let activeLevel = null
   let currentTab = 'HOME'
@@ -137,6 +141,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
                   const sIdx = lvl.slots.findIndex(s => s.label === data.slot)
                   if (sIdx !== -1) {
                     selectedSlot = { ...lvl.slots[sIdx], levelName: lvl.name, sIdx }
+                    if (selectedSlot) { localStorage.setItem('sloty_selected_slot', JSON.stringify(selectedSlot)) } else { localStorage.removeItem('sloty_selected_slot') }
                     if (selectedSlot.status === 'FREE') {
                        showToast("Este puesto está vacío", "error")
                     } else {
@@ -175,6 +180,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
       const level = state.levels.find(l=>l.name===btn.dataset.level)
       const sIdx = parseInt(btn.dataset.sidx)
       selectedSlot = { ...level.slots[sIdx], levelName: btn.dataset.level, sIdx }
+      if (selectedSlot) { localStorage.setItem('sloty_selected_slot', JSON.stringify(selectedSlot)) } else { localStorage.removeItem('sloty_selected_slot') }
       currentView = selectedSlot.status==='FREE' ? 'ENTRY' : 'EXIT'
       render()
     },
@@ -198,6 +204,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
        
        if (foundSlot.status === 'FREE') return showToast("Puesto vacío", "error")
        selectedSlot = foundSlot
+       if (selectedSlot) { localStorage.setItem('sloty_selected_slot', JSON.stringify(selectedSlot)) } else { localStorage.removeItem('sloty_selected_slot') }
        currentView = 'EXIT'
        render()
     },
@@ -290,6 +297,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
        const freeIdx = level.slots.findIndex(s => s.status === 'FREE')
        if (freeIdx !== -1) {
           selectedSlot = { ...level.slots[freeIdx], levelName: level.name, sIdx: freeIdx }
+          if (selectedSlot) { localStorage.setItem('sloty_selected_slot', JSON.stringify(selectedSlot)) } else { localStorage.removeItem('sloty_selected_slot') }
           currentView = 'ENTRY'
           render()
        } else showToast("No hay puestos libres", "error")
@@ -329,6 +337,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
       
       lvl.slots[selectedSlot.sIdx] = entryData
       selectedSlot = { ...entryData, levelName: selectedSlot.levelName, sIdx: selectedSlot.sIdx }
+      if (selectedSlot) { localStorage.setItem('sloty_selected_slot', JSON.stringify(selectedSlot)) } else { localStorage.removeItem('sloty_selected_slot') }
       updateParkingState(state)
 
       // Guardar visitante en Supabase y registrar acceso
