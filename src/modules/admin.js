@@ -1,4 +1,4 @@
-import { getParkingState, saveParkingState, logAudit, getCleanPrefix, supabase, logMovement, syncDown } from '../db.js'
+import { getParkingState, saveParkingState, logAudit, getCleanPrefix, supabase, logMovement, syncDown, showToast } from '../db.js'
 
 export const initAdmin = (container) => {
   console.log('[Sloty] Inicializando Panel Admin...')
@@ -226,39 +226,37 @@ export const initAdmin = (container) => {
       const msg = `Hola ${name}, te saludamos de la Administración. Te recordamos que presentas un saldo pendiente de $${debt} en tu mensualidad. Por favor, realiza tu pago para mantener tu acceso activo. ¡Gracias!`;
       window.open(`https://wa.me/${phone.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`, '_blank');
     },
-    SHOW_RESIDENT_HISTORY: (btn) => {
+    SHOW_RESIDENT_HISTORY: async (btn) => {
       const { id, name } = btn.dataset;
-      const state = getParkingState();
-      // Let's find the subscription instead
-      supabase.from('subscriptions').select('plate').eq('id', id).single().then(async ({data}) => {
-         const { data: history } = await supabase
-           .from('payments')
-           .select('amount, method, payment_date, status, reference')
-           .eq('subscription_id', id)
-           .order('payment_date', { ascending: false })
-           .limit(20)
-         
-         pendingAction = {
-           type: 'CUSTOM_MODAL',
-           title: `Historial: ${name}`,
-           content: `
-             <div style="max-height:300px; overflow-y:auto; padding:10px; text-align:left;">
-                ${history.map(h => {
-                  const bdg = h.status === 'CONFIRMED' ? {c:'#22c55e', bg:'rgba(34,197,94,0.1)', t:'PAGADO'} : h.status === 'PENDING' ? {c:'#f59e0b', bg:'rgba(245,158,11,0.1)', t:'PENDIENTE'} : {c:'#e63946', bg:'rgba(230,57,70,0.1)', t:'RECHAZADO'};
-                  return \`
-                  <div style="padding:15px; border-bottom:1px solid #f8f8f8; display:flex; justify-content:space-between; align-items:center;">
-                     <div>
-                        <div style="font-size:0.8rem; font-weight:900;">$\${h.amount.toFixed(2)}</div>
-                        <div style="font-size:0.55rem; color:#bbb;">\${new Date(h.payment_date).toLocaleDateString()} · \${h.method}</div>
-                     </div>
-                     <div style="font-size:0.6rem; color:\${bdg.c}; font-weight:900; background:\${bdg.bg}; padding:4px 8px; border-radius:6px;">\${bdg.t}</div>
-                  </div>
-                \`}).join('') || '<div style="padding:40px; text-align:center; color:#ccc;">No hay historial de pagos</div>'}
-             </div>
-           `
-         };
-         render();
-      });
+      const { data: history } = await supabase
+        .from('payments')
+        .select('amount, method, payment_date, status, reference')
+        .eq('subscription_id', id)
+        .order('payment_date', { ascending: false })
+        .limit(20)
+
+      const modalContent = (history || []).map(h => {
+        const bdg = h.status === 'CONFIRMED'
+          ? { c: '#22c55e', bg: 'rgba(34,197,94,0.1)', t: 'PAGADO' }
+          : h.status === 'PENDING'
+          ? { c: '#f59e0b', bg: 'rgba(245,158,11,0.1)', t: 'PENDIENTE' }
+          : { c: '#e63946', bg: 'rgba(230,57,70,0.1)', t: 'RECHAZADO' }
+        return `
+          <div style="padding:15px; border-bottom:1px solid #f8f8f8; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="font-size:0.8rem; font-weight:900;">$${h.amount.toFixed(2)}</div>
+              <div style="font-size:0.55rem; color:#bbb;">${new Date(h.payment_date).toLocaleDateString()} · ${h.method}</div>
+            </div>
+            <div style="font-size:0.6rem; color:${bdg.c}; font-weight:900; background:${bdg.bg}; padding:4px 8px; border-radius:6px;">${bdg.t}</div>
+          </div>`
+      }).join('') || '<div style="padding:40px; text-align:center; color:#ccc;">No hay historial de pagos</div>'
+
+      pendingAction = {
+        type: 'CUSTOM_MODAL',
+        title: `Historial: ${name}`,
+        content: `<div style="max-height:300px; overflow-y:auto; padding:10px; text-align:left;">${modalContent}</div>`
+      }
+      render()
     },
     CANCEL_MODAL: () => { pendingAction = null; render() },
     TAB: (btn) => { 
@@ -2165,6 +2163,30 @@ export const initAdmin = (container) => {
     const t = container.querySelector('#main-carousel'); let carouselIndex = 0
     if (t && t.children.length > 1) { carouselIndex = (window._cIdx || 0) + 1; window._cIdx = carouselIndex % t.children.length; t.style.transform = `translateX(-${window._cIdx * 100}%)` }
   }, 4000)
+
+  // Realtime: escuchar nuevos pagos PENDING del guardia
+  const realtimeChannel = supabase
+    .channel('admin-payments-live')
+    .on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'payments',
+      filter: `status=eq.PENDING`
+    }, (payload) => {
+      // Solo actualizar si el pago es de este edificio
+      const currentState = getParkingState()
+      if (payload.new.building_id !== currentState.buildingId) return
+
+      // Mostrar toast sin rerenderizar toda la app
+      showToast('💰 Nuevo pago pendiente de aprobación', 'info')
+
+      // Actualizar solo el badge del header si existe
+      if (activeTab === 'HOME') render()
+    })
+    .subscribe()
+
+  // Limpiar canal al desmontar
+  container._cleanup = () => realtimeChannel.unsubscribe()
 
   render()
 }

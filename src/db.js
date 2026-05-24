@@ -422,3 +422,23 @@ export const markNotificationsRead = () => {
 export const resetState = () => {
   localStorage.removeItem(STORAGE_KEY)
 }
+
+export const showToast = (message, type = 'info') => {
+  const existing = document.getElementById('sloty-toast')
+  if (existing) existing.remove()
+  const toast = document.createElement('div')
+  toast.id = 'sloty-toast'
+  const colors = {
+    info:    { bg: '#1a1a2e', color: '#F5C518' },
+    success: { bg: '#22c55e', color: 'white'   },
+    error:   { bg: '#e63946', color: 'white'   }
+  }
+  const { bg, color } = colors[type] || colors.info
+  toast.style.cssText = `position:fixed; bottom:100px; left:50%; transform:translateX(-50%);
+    background:${bg}; color:${color}; padding:12px 24px; border-radius:20px;
+    font-weight:900; font-size:0.75rem; z-index:9999; box-shadow:0 8px 25px rgba(0,0,0,0.3);
+    animation:fadeIn 0.3s ease; pointer-events:none;`
+  toast.textContent = message
+  document.body.appendChild(toast)
+  setTimeout(() => toast.remove(), 3000)
+}
