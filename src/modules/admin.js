@@ -1,4 +1,4 @@
-import { getParkingState, saveParkingState, logAudit, getCleanPrefix, supabase, logMovement, syncDown, hasFeature, getBuildingPlan } from '../db.js'
+import { getParkingState, saveParkingState, logAudit, getCleanPrefix, supabase, logMovement, syncDown, hasFeature, getBuildingPlan, showToast } from '../db.js'
 
 export const initAdmin = (container) => {
   console.log('[Sloty] Inicializando Panel Admin...')
@@ -2188,6 +2188,24 @@ export const initAdmin = (container) => {
     const t = container.querySelector('#main-carousel'); let carouselIndex = 0
     if (t && t.children.length > 1) { carouselIndex = (window._cIdx || 0) + 1; window._cIdx = carouselIndex % t.children.length; t.style.transform = `translateX(-${window._cIdx * 100}%)` }
   }, 4000)
+
+  // Realtime: escuchar nuevos pagos PENDING del guardia
+  const realtimeChannel = supabase
+    .channel('admin-payments-live')
+    .on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'payments',
+      filter: `status=eq.PENDING`
+    }, (payload) => {
+      const currentState = getParkingState()
+      if (payload.new.building_id !== currentState.buildingId) return
+      showToast('💰 Nuevo pago pendiente de aprobación', 'info')
+      if (activeTab === 'HOME') render()
+    })
+    .subscribe()
+
+  container._cleanup = () => realtimeChannel.unsubscribe()
 
   render()
 }
