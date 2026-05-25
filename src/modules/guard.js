@@ -1,4 +1,4 @@
-import { getParkingState, updateParkingState, logMovement, logNotification, saveClosure, supabase } from '../db.js'
+import { getParkingState, updateParkingState, logMovement, logNotification, saveClosure, supabase, hasFeature } from '../db.js'
 import { searchVisitorByPlate, saveVisitor, logAccess } from '../visitors.js'
 // Html5Qrcode is loaded via CDN in index.html, accessible globally
 
@@ -856,6 +856,17 @@ export const initGuard = (container, guardName = 'Guardia') => {
   `
 
   const renderSubPaymentView = () => {
+     if (!hasFeature('debt_tracking')) {
+       return `<div style="padding:40px;text-align:center;">
+         <div style="font-size:2rem;margin-bottom:12px;">🔒</div>
+         <div style="font-weight:900;color:white;font-size:0.85rem;">
+           Función no disponible</div>
+         <div style="font-size:0.65rem;color:#999;margin-top:8px;line-height:1.5;">
+           El cobro de mensualidades está disponible desde el plan Plata.
+         </div>
+       </div>`
+     }
+
      const search = document.getElementById('sub-search')?.value.toLowerCase() || ''
      const filtered = cachedResidents.filter(r => r.resident_name.toLowerCase().includes(search) || r.plate.toLowerCase().includes(search))
 

@@ -708,6 +708,23 @@ const renderGuardPin = () => {
           const guard = (state.personnel || []).find(p => p.pin === pin)
           if (guard) {
             showOnly('main')
+            const currentState = getParkingState()
+            if (currentState.membership_status === 'SUSPENDED') {
+              screens.main.innerHTML = `
+                <div style="min-height:100vh;background:#1a1a2e;display:flex;
+                  flex-direction:column;align-items:center;justify-content:center;
+                  padding:40px;text-align:center;">
+                  <div style="font-size:3rem;margin-bottom:20px;">🔒</div>
+                  <div style="font-size:1.2rem;font-weight:900;color:white;
+                    margin-bottom:12px;">Servicio Suspendido</div>
+                  <div style="font-size:0.75rem;color:rgba(255,255,255,0.4);
+                    line-height:1.6;max-width:280px;">
+                    La membresía de este edificio no está activa. 
+                    Contacta al administrador de Sloty para reactivar el servicio.
+                  </div>
+                </div>`
+              return
+            }
             initGuard(screens.main, guard.name)
           } else {
             $('pin-error').textContent = 'PIN incorrecto. Intenta de nuevo.'
@@ -736,7 +753,26 @@ async function redirectByRole(userId) {
   }
   switch (roleData.role) {
     case 'MASTER': initMaster(screens.main); break
-    case 'ADMIN':  initAdmin(screens.main);  break
+    case 'ADMIN':  
+      const currentState = getParkingState()
+      if (currentState.membership_status === 'SUSPENDED') {
+        screens.main.innerHTML = `
+          <div style="min-height:100vh;background:#1a1a2e;display:flex;
+            flex-direction:column;align-items:center;justify-content:center;
+            padding:40px;text-align:center;">
+            <div style="font-size:3rem;margin-bottom:20px;">🔒</div>
+            <div style="font-size:1.2rem;font-weight:900;color:white;
+              margin-bottom:12px;">Servicio Suspendido</div>
+            <div style="font-size:0.75rem;color:rgba(255,255,255,0.4);
+              line-height:1.6;max-width:280px;">
+              La membresía de este edificio no está activa. 
+              Contacta al administrador de Sloty para reactivar el servicio.
+            </div>
+          </div>`
+        return
+      }
+      initAdmin(screens.main);  
+      break
     case 'GUARD':  renderGuardPin(); showOnly('guardPin'); break
     default:
       screens.main.innerHTML = `<p style="padding:40px;">Rol: ${roleData.role}</p>`

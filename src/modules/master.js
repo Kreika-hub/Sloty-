@@ -63,28 +63,65 @@ export const initMaster = (container) => {
       selectedBuildingData.membership_status = newStatus;
       render();
     },
-    REGISTER_PAYMENT: async (btn) => {
-      const bId = btn.dataset.id;
-      const plan = btn.dataset.plan;
-      const amount = parseFloat(prompt('Monto pagado:')) || 0;
-      if (amount <= 0) return;
+    REGISTER_PAYMENT: (btn) => {
+      const bId = btn.dataset.id
+      const plan = btn.dataset.plan
+      const bName = btn.dataset.name || 'Edificio'
       
-      const expiry = new Date();
-      expiry.setDate(expiry.getDate() + 30);
-      
-      await supabase.from('sloty_memberships').insert({
-        building_id: bId,
-        plan_key: plan,
-        status: 'CONFIRMED',
-        amount: amount,
-        paid_at: new Date().toISOString(),
-        expiry_date: expiry.toISOString()
-      });
-      
-      // Update building status and expiry if needed (we update membership_status)
-      await supabase.from('buildings').update({ membership_status: 'ACTIVE' }).eq('id', bId);
-      
-      render();
+      // Mostrar modal inline en master-content-area
+      const overlay = document.createElement('div')
+      overlay.id = 'master-modal'
+      overlay.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,0.7);
+        z-index:999;display:flex;align-items:flex-end;justify-content:center;`
+      overlay.innerHTML = `
+        <div style="background:#1a1a2e;border-radius:24px 24px 0 0;padding:30px;
+          width:100%;max-width:500px;border:1px solid rgba(255,255,255,0.1);">
+          <div style="font-size:1rem;font-weight:900;color:white;
+            margin-bottom:6px;">Registrar Pago</div>
+          <div style="font-size:0.7rem;color:#999;margin-bottom:20px;">${bName} · Plan ${plan}</div>
+          <input id="master-pay-amount" type="number" placeholder="Monto" min="0" step="0.01"
+            style="width:100%;padding:14px;border-radius:12px;border:none;
+            background:rgba(255,255,255,0.08);color:white;font-size:1rem;
+            font-weight:900;margin-bottom:12px;box-sizing:border-box;">
+          <input id="master-pay-ref" type="text" placeholder="Referencia (opcional)"
+            style="width:100%;padding:14px;border-radius:12px;border:none;
+            background:rgba(255,255,255,0.08);color:white;font-size:0.8rem;
+            font-weight:700;margin-bottom:20px;box-sizing:border-box;">
+          <div style="display:flex;gap:10px;">
+            <button id="master-pay-cancel"
+              style="flex:1;padding:14px;background:rgba(255,255,255,0.08);
+              color:white;border:none;border-radius:12px;font-weight:900;cursor:pointer;">
+              CANCELAR
+            </button>
+            <button id="master-pay-confirm"
+              style="flex:2;padding:14px;background:#F5C518;color:#1a1a2e;
+              border:none;border-radius:12px;font-weight:900;cursor:pointer;">
+              CONFIRMAR PAGO
+            </button>
+          </div>
+        </div>`
+      document.body.appendChild(overlay)
+
+      document.getElementById('master-pay-cancel').onclick = () => overlay.remove()
+      document.getElementById('master-pay-confirm').onclick = async () => {
+        const amount = parseFloat(document.getElementById('master-pay-amount').value) || 0
+        const ref = document.getElementById('master-pay-ref').value || ''
+        if (amount <= 0) { 
+          document.getElementById('master-pay-amount').style.border = '1px solid #e63946'
+          return 
+        }
+        overlay.remove()
+        const expiry = new Date()
+        expiry.setDate(expiry.getDate() + 30)
+        await supabase.from('sloty_memberships').insert({
+          building_id: bId, plan_key: plan, status: 'CONFIRMED',
+          amount, payment_reference: ref,
+          paid_at: new Date().toISOString(), expiry_date: expiry.toISOString()
+        })
+        await supabase.from('buildings')
+          .update({ membership_status: 'ACTIVE' }).eq('id', bId)
+        render()
+      }
     },
     ADD_AD: async (imgData) => {
       if(!imgData) return
@@ -214,7 +251,7 @@ export const initMaster = (container) => {
                    <span style="color:#999; font-size:0.6rem; font-weight:700;">Exp: ${b.last_expiry ? new Date(b.last_expiry).toLocaleDateString() : 'N/A'}</span>
                 </div>
              </div>
-             <button data-action="REGISTER_PAYMENT" data-id="${b.id}" data-plan="${b.plan||'TRIAL'}" style="background:#1a1a2e; color:#F5C518; border:1px solid #F5C518; padding:8px 12px; border-radius:8px; font-weight:900; font-size:0.65rem; cursor:pointer;">COBRAR</button>
+             <button data-action="REGISTER_PAYMENT" data-id="${b.id}" data-name="${b.name}" data-plan="${b.plan||'TRIAL'}" style="background:#1a1a2e; color:#F5C518; border:1px solid #F5C518; padding:8px 12px; border-radius:8px; font-weight:900; font-size:0.65rem; cursor:pointer;">COBRAR</button>
            </div>
          `).join('')}
        </div>
@@ -322,7 +359,7 @@ export const initMaster = (container) => {
       const { data: bld } = await supabase.from('buildings').select('*')
       const { data: mems } = await supabase.from('sloty_memberships').select('*').order('expiry_date', { ascending: false })
       const enrichedBld = (bld || []).map(b => {
-         const bMems = (mems || []).filter(m => m.building_id === b.id);
+         const bMems = (mems || []).filter(m => m.building_id === b.id && m.status === 'CONFIRMED');
          b.last_expiry = bMems.length > 0 ? bMems[0].expiry_date : null;
          return b;
       })
