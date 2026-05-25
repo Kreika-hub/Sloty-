@@ -449,11 +449,12 @@ const renderRegister = () => {
     try {
       const code = `${getCleanPrefix(data.buildingName)}-${Math.floor(1000 + Math.random() * 9000)}`
       
-      // 1. Create building in Supabase (Minimal fields to avoid schema errors)
       const { data: bld, error } = await supabase.from('buildings').insert([{
         name: data.buildingName,
         code: code,
-        admin_email: data.email
+        admin_email: data.email,
+        plan: 'TRIAL',
+        membership_status: 'ACTIVE'
       }]).select().single()
 
       if (error) throw error
@@ -463,6 +464,8 @@ const renderRegister = () => {
       state.buildingId = bld.id
       state.buildingName = bld.name
       state.buildingCode = bld.code
+      state.plan = 'TRIAL'
+      state.membership_status = 'ACTIVE'
       state.adminInfo = { name: data.adminName, email: data.email, registered: true }
       saveParkingState(state)
 
@@ -511,7 +514,7 @@ const renderRegister = () => {
       const newLevel = { name: floorName, slots: [], collapsed: false }
       
       for(let i=1; i<=count; i++) {
-        newLevel.slots.push({ label: `${i}`, status: 'VACANT', category: 'VISITANTE' })
+        newLevel.slots.push({ label: `${i}`, status: 'FREE', category: 'VISITANTE' })
       }
       
       state.levels = [newLevel]
@@ -522,7 +525,7 @@ const renderRegister = () => {
         building_id: building.id,
         level_name: floorName,
         slot_label: s.label,
-        status: 'VACANT',
+        status: 'FREE',
         category: 'VISITANTE'
       }))
 

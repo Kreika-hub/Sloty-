@@ -1,4 +1,4 @@
-import { getParkingState, updateParkingState, logMovement, logNotification, saveClosure, supabase, showToast as showSharedToast } from '../db.js'
+import { getParkingState, updateParkingState, logMovement, logNotification, saveClosure, supabase } from '../db.js'
 import { searchVisitorByPlate, saveVisitor, logAccess } from '../visitors.js'
 // Html5Qrcode is loaded via CDN in index.html, accessible globally
 

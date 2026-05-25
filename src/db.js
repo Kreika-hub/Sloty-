@@ -196,6 +196,9 @@ export const syncDown = async (buildingCode) => {
         state.buildingId = buildingId 
         state.buildingName = bData.name
         state.buildingCode = bData.code
+        state.plan = bData.plan || 'TRIAL'
+        state.membership_status = bData.membership_status || 'ACTIVE'
+        state.features_override = bData.features_override || {}
         
         if (pData) state.personnel = pData
 
@@ -423,22 +426,21 @@ export const resetState = () => {
   localStorage.removeItem(STORAGE_KEY)
 }
 
-export const showToast = (message, type = 'info') => {
-  const existing = document.getElementById('sloty-toast')
-  if (existing) existing.remove()
-  const toast = document.createElement('div')
-  toast.id = 'sloty-toast'
-  const colors = {
-    info:    { bg: '#1a1a2e', color: '#F5C518' },
-    success: { bg: '#22c55e', color: 'white'   },
-    error:   { bg: '#e63946', color: 'white'   }
+export const getBuildingPlan = () => {
+  try {
+    const s = JSON.parse(localStorage.getItem(STORAGE_KEY))
+    return s?.plan || 'TRIAL'
+  } catch(e) { return 'TRIAL' }
+}
+
+export const hasFeature = (featureKey) => {
+  const plan = getBuildingPlan()
+  const PLAN_FEATURES = {
+    TRIAL:  ['multi_level'],
+    BRONCE: ['multi_level', 'audit_log'],
+    PLATA:  ['multi_level', 'audit_log', 'finance_report', 'debt_tracking'],
+    ORO:    ['multi_level', 'audit_log', 'finance_report', 'debt_tracking', 
+             'frequent_visitors', 'whatsapp_alerts']
   }
-  const { bg, color } = colors[type] || colors.info
-  toast.style.cssText = `position:fixed; bottom:100px; left:50%; transform:translateX(-50%);
-    background:${bg}; color:${color}; padding:12px 24px; border-radius:20px;
-    font-weight:900; font-size:0.75rem; z-index:9999; box-shadow:0 8px 25px rgba(0,0,0,0.3);
-    animation:fadeIn 0.3s ease; pointer-events:none;`
-  toast.textContent = message
-  document.body.appendChild(toast)
-  setTimeout(() => toast.remove(), 3000)
+  return (PLAN_FEATURES[plan] || PLAN_FEATURES['TRIAL']).includes(featureKey)
 }
