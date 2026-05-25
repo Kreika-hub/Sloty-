@@ -10,6 +10,8 @@ export const initAdmin = (container) => {
   let editingResident = null // Resident ID being edited
   let openPaletteLevel = null // Level name with open palette
   let activeSettingsMenu = 'MAIN' // MAIN, TARIFFS, VISITORS, AUDIT
+  let cachedMetrics = null
+  let metricsLoading = false
 
   const ICONS = {
     HOME: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
@@ -608,10 +610,12 @@ export const initAdmin = (container) => {
       })
 
       logAudit(`Aprobó pago de $${amount} para ${sub.resident_name}`)
+      cachedMetrics = null
       render()
     },
     REJECT_PAYMENT: async (btn) => {
       await supabase.from('payments').update({ status: 'REJECTED' }).eq('id', btn.dataset.id)
+      cachedMetrics = null
       render()
     },
     RESIDENT_PAYMENTS: async (btn) => {
@@ -950,6 +954,28 @@ export const initAdmin = (container) => {
       </div>`
   }
 
+  const loadHomeMetrics = async () => {
+    if (metricsLoading) return
+    metricsLoading = true
+    const s = getParkingState()
+    const now = new Date()
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+    
+    const [subsRes, paysRes, pendRes] = await Promise.all([
+      supabase.from('subscriptions').select('id,custom_price,expiry_date,status').eq('building_id', s.buildingId),
+      supabase.from('payments').select('amount').eq('building_id', s.buildingId).eq('status', 'CONFIRMED').gte('payment_date', monthStart),
+      supabase.from('payments').select('id').eq('building_id', s.buildingId).eq('status', 'PENDING')
+    ])
+    
+    cachedMetrics = {
+      subs: subsRes.data || [],
+      pays: paysRes.data || [],
+      pends: pendRes.data || [],
+      loadedAt: Date.now()
+    }
+    metricsLoading = false
+  }
+
   const renderHome = async (state, ads = []) => {
     const movements = state.movements || []
     const stats = state.stats || { totalSpots: 0, occupied: 0 }
@@ -977,15 +1003,12 @@ export const initAdmin = (container) => {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
     const in7days = new Date(now.getTime() + 7 * 86400000).toISOString()
 
-    const [subsRes, paysRes, pendRes] = await Promise.all([
-      supabase.from('subscriptions').select('id,custom_price,expiry_date,status').eq('building_id', state.buildingId),
-      supabase.from('payments').select('amount').eq('building_id', state.buildingId).eq('status', 'CONFIRMED').gte('payment_date', monthStart),
-      supabase.from('payments').select('id').eq('building_id', state.buildingId).eq('status', 'PENDING')
-    ])
-
-    const subs = subsRes.data || []
-    const pays = paysRes.data || []
-    const pends = pendRes.data || []
+    if (!cachedMetrics) {
+      await loadHomeMetrics()
+    }
+    const subs = cachedMetrics?.subs || []
+    const pays = cachedMetrics?.pays || []
+    const pends = cachedMetrics?.pends || []
 
     const proyectado = subs.reduce((a, s) => a + (s.custom_price || 0), 0)
     const cobradoMes = pays.reduce((a, p) => a + (p.amount || 0), 0)
@@ -2148,6 +2171,7 @@ export const initAdmin = (container) => {
 
       logAudit(`Registró abono de $${amount} para residente ID ${id}`);
       pendingAction = null;
+      cachedMetrics = null;
       render();
     }
   });
@@ -2207,5 +2231,5 @@ export const initAdmin = (container) => {
 
   container._cleanup = () => realtimeChannel.unsubscribe()
 
-  render()
+  loadHomeMetrics().then(() => render())
 }
