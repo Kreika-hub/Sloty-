@@ -248,20 +248,32 @@ const renderLogin = () => {
         .eq('admin_email', email)
         .maybeSingle()
 
-      if (!building) {
-        errorEl.textContent = 'No hay un edificio asociado a este correo'
-        $('btn-login').disabled = false
-        return
+      // DEV BYPASS: si el email no coincide, toma el primer edificio disponible
+      // ⚠️ Remover este bloque en producción
+      let resolvedBuilding = building
+      if (!resolvedBuilding) {
+        const { data: fallback } = await supabase
+          .from('buildings')
+          .select('*')
+          .limit(1)
+          .maybeSingle()
+        if (!fallback) {
+          errorEl.textContent = 'No hay edificios registrados en la base de datos'
+          $('btn-login').disabled = false
+          return
+        }
+        resolvedBuilding = fallback
+        console.warn('DEV MODE: usando edificio fallback →', fallback.name)
       }
 
       // Guardar estado mínimo
       const newState = {
-        buildingId: building.id,
-        buildingName: building.name,
-        buildingCode: building.code,
-        plan: building.plan || 'TRIAL',
-        membership_status: building.membership_status || 'ACTIVE',
-        adminInfo: { email: building.admin_email, registered: true },
+        buildingId: resolvedBuilding.id,
+        buildingName: resolvedBuilding.name,
+        buildingCode: resolvedBuilding.code,
+        plan: resolvedBuilding.plan || 'TRIAL',
+        membership_status: resolvedBuilding.membership_status || 'ACTIVE',
+        adminInfo: { email: resolvedBuilding.admin_email, registered: true },
         levels: [], personnel: [], movements: []
       }
       localStorage.setItem('sloty_state', JSON.stringify(newState))
@@ -271,7 +283,7 @@ const renderLogin = () => {
       const mainScreen = $('main-screen')
 
       // Verificar suspensión antes de iniciar
-      if (building.membership_status === 'SUSPENDED') {
+      if (resolvedBuilding.membership_status === 'SUSPENDED') {
         mainScreen.innerHTML = `
           <div style="min-height:100vh;background:#1a1a2e;display:flex;
             flex-direction:column;align-items:center;justify-content:center;
@@ -292,7 +304,7 @@ const renderLogin = () => {
       initAdmin(mainScreen)
 
       // syncDown en background — no bloquea la UI
-      syncDown(building.code).catch(e => console.warn('syncDown error:', e))
+      syncDown(resolvedBuilding.code).catch(e => console.warn('syncDown error:', e))
 
     } catch (err) {
       errorEl.textContent = 'Error de conexión'
