@@ -9,11 +9,12 @@ const SVG = {
   CLOCK: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
 }
 
-export function initResident(container, subscription) {
+export async function initResident(container, subscription) {
   let subData = subscription
   let activeTab = 'PANEL'
   let payments = []
   let reportMode = false
+  let dataLoaded = false
 
   const fetchData = async () => {
     const { data: latest } = await supabase.from('subscriptions').select('*').eq('id', subData.id).single()
@@ -22,6 +23,7 @@ export function initResident(container, subscription) {
       .select('*').eq('subscription_id', subData.id)
       .order('payment_date', { ascending: false })
     payments = pays || []
+    dataLoaded = true
   }
 
   const showInlineAlert = (msg, ok = true) => {
@@ -97,7 +99,7 @@ export function initResident(container, subscription) {
   }
 
   const render = async () => {
-    await fetchData()
+    if (!dataLoaded) { await fetchData(); dataLoaded = true }
     const isPaid = new Date(subData.expiry_date) > new Date()
 
     let contentHtml = ''
@@ -242,6 +244,7 @@ export function initResident(container, subscription) {
             btnComing.disabled = true
             await supabase.from('subscriptions').update({ is_coming: newState }).eq('id', subData.id)
             subData.is_coming = newState
+            dataLoaded = false
             render()
           }
         }
@@ -250,6 +253,7 @@ export function initResident(container, subscription) {
           btnCancelComing.onclick = async () => {
             await supabase.from('subscriptions').update({ is_coming: false }).eq('id', subData.id)
             subData.is_coming = false
+            dataLoaded = false
             render()
           }
         }
@@ -309,6 +313,7 @@ export function initResident(container, subscription) {
             btnSubmit.disabled = false
           } else {
             reportMode = false
+            dataLoaded = false
             render()
           }
         }
@@ -319,6 +324,29 @@ export function initResident(container, subscription) {
     container.querySelectorAll('.res-nav-btn').forEach(btn => {
       btn.onclick = () => { reportMode = false; activeTab = btn.dataset.tab; render() }
     })
+  }
+
+  const { data: bldCheck } = await supabase
+    .from('buildings')
+    .select('membership_status')
+    .eq('id', subData.building_id)
+    .single()
+  
+  if (bldCheck?.membership_status === 'SUSPENDED') {
+    container.innerHTML = `
+      <div style="min-height:100vh;background:#1a1a2e;display:flex;
+        flex-direction:column;align-items:center;justify-content:center;
+        padding:40px;text-align:center;">
+        <div style="font-size:3rem;margin-bottom:20px;">🔒</div>
+        <div style="font-size:1.2rem;font-weight:900;color:white;
+          margin-bottom:12px;">Servicio Suspendido</div>
+        <div style="font-size:0.75rem;color:rgba(255,255,255,0.4);
+          line-height:1.6;max-width:280px;">
+          La membresía de este edificio no está activa.
+          Contacta al administrador de tu edificio.
+        </div>
+      </div>`
+    return
   }
 
   render()
