@@ -1,4 +1,4 @@
-import { getParkingState, updateParkingState, logMovement, logNotification, saveClosure, supabase, hasFeature } from '../db.js'
+import { getParkingState, updateParkingState, logMovement, logNotification, saveClosure, supabase, hasFeature, showToast } from '../db.js'
 import { searchVisitorByPlate, saveVisitor, logAccess } from '../visitors.js'
 // Html5Qrcode is loaded via CDN in index.html, accessible globally
 
@@ -1216,5 +1216,21 @@ export const initGuard = (container, guardName = 'Guardia') => {
   }, 1000)
 
   if (state.levels.length) activeLevel = state.levels[0].name
+
+  // Realtime: detectar cuando un residente avisa que va en camino
+  const guardRealtimeChannel = supabase
+    .channel('guard-is-coming-live')
+    .on('postgres_changes', {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'subscriptions',
+      filter: `building_id=eq.${state.buildingId}`
+    }, (payload) => {
+      if (payload.new.is_coming === true && payload.old.is_coming === false) {
+        showToast(`🚗 ${payload.new.resident_name} viene en camino`, 'info')
+      }
+    })
+    .subscribe()
+
   render()
 }
