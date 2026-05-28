@@ -238,72 +238,65 @@ const renderLogin = () => {
     }
 
     errorEl.textContent = 'Verificando...'
-    
-    try {
-      let bDataEmail
-      const { data: found } = await supabase.from('buildings').select('*').eq('admin_email', email).maybeSingle()
+    $('btn-login').disabled = true
 
-      if (!found) {
-        const { data: all } = await supabase.from('buildings').select('*').limit(1)
-        if (all?.length) {
-          bDataEmail = all[0]
-        } else {
-          // AUTO-CREATE DEMO BUILDING if DB is empty
-          const { data: created, error: createErr } = await supabase.from('buildings').insert([{
-            name: 'Edificio Demo',
-            code: 'DEMO-001',
-            admin_email: email || 'admin@sloty.app',
-            floors_count: 1,
-            slots_per_floor: 10
-          }]).select().single()
-          
-          if (createErr) { errorEl.textContent = 'Error al crear demo'; return }
-          bDataEmail = created
-        }
-      } else {
-        bDataEmail = found
+    try {
+      // DEV: buscar edificio por email (sin Auth de Supabase por ahora)
+      const { data: building } = await supabase
+        .from('buildings')
+        .select('*')
+        .eq('admin_email', email)
+        .maybeSingle()
+
+      if (!building) {
+        errorEl.textContent = 'No hay un edificio asociado a este correo'
+        $('btn-login').disabled = false
+        return
       }
 
-      // Sync state from this building
+      // Guardar estado mínimo
       const newState = {
-         buildingId: bDataEmail.id,
-         buildingName: bDataEmail.name,
-         buildingCode: bDataEmail.code,
-         adminInfo: { email: bDataEmail.admin_email || '', registered: true },
-         levels: [], personnel: [], movements: []
+        buildingId: building.id,
+        buildingName: building.name,
+        buildingCode: building.code,
+        plan: building.plan || 'TRIAL',
+        membership_status: building.membership_status || 'ACTIVE',
+        adminInfo: { email: building.admin_email, registered: true },
+        levels: [], personnel: [], movements: []
       }
       localStorage.setItem('sloty_state', JSON.stringify(newState))
-      await syncDown(bDataEmail.code)
 
+      // Mostrar panel inmediatamente
       showOnly('main')
-      $('main-screen').innerHTML = `
-        <div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#1a1a2e;padding:40px;">
-          <img src="/sloty-logo-v2.png.png" style="width:120px;margin-bottom:30px;opacity:0.8;">
-          <div style="width:100%;max-width:240px;height:6px;background:rgba(255,255,255,0.1);border-radius:10px;overflow:hidden;position:relative;">
-            <div id="loading-bar" style="position:absolute;top:0;left:0;height:100%;width:30%;background:#F5C518;border-radius:10px;transition:width 0.5s ease;box-shadow:0 0 15px rgba(245,197,24,0.4);"></div>
-          </div>
-          <p style="color:rgba(255,255,255,0.4);font-size:0.7rem;font-weight:800;margin-top:15px;letter-spacing:2px;text-transform:uppercase;">Iniciando sistema...</p>
-        </div>
-      `
-      
-      const lBar = $('loading-bar')
-      if(lBar) setTimeout(() => lBar.style.width = '60%', 100)
+      const mainScreen = $('main-screen')
 
-      const roleData = await getUserRole()
-      const role = roleData?.role || 'ADMIN'
-      
-      if(lBar) lBar.style.width = '100%'
-      
-      try {
-        if (role === 'MASTER') initMaster($('main-screen'))
-        else if (role === 'ADMIN') initAdmin($('main-screen'))
-      } catch (e) {
-        console.error('Error init role:', e)
-        $('main-screen').innerHTML = '<div style="color:white;padding:20px;">Error al cargar el panel. Recarga la página.</div>'
+      // Verificar suspensión antes de iniciar
+      if (building.membership_status === 'SUSPENDED') {
+        mainScreen.innerHTML = `
+          <div style="min-height:100vh;background:#1a1a2e;display:flex;
+            flex-direction:column;align-items:center;justify-content:center;
+            padding:40px;text-align:center;">
+            <div style="font-size:3rem;margin-bottom:20px;">🔒</div>
+            <div style="font-size:1.2rem;font-weight:900;color:white;
+              margin-bottom:12px;">Servicio Suspendido</div>
+            <div style="font-size:0.75rem;color:rgba(255,255,255,0.4);
+              line-height:1.6;max-width:280px;">
+              La membresía de este edificio no está activa.
+              Contacta al administrador de Sloty.
+            </div>
+          </div>`
+        return
       }
+
+      // Iniciar panel sin esperar syncDown
+      initAdmin(mainScreen)
+
+      // syncDown en background — no bloquea la UI
+      syncDown(building.code).catch(e => console.warn('syncDown error:', e))
 
     } catch (err) {
       errorEl.textContent = 'Error de conexión'
+      $('btn-login').disabled = false
       console.error(err)
     }
   }
