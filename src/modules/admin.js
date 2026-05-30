@@ -263,10 +263,14 @@ export const initAdmin = (container) => {
       });
     },
     CANCEL_MODAL: () => { pendingAction = null; render() },
-    TAB: (btn) => { 
-       activeTab = btn.dataset.tab; 
-       if (activeTab === 'SETTINGS') activeSettingsMenu = 'MAIN';
-       render() 
+    TAB: (btn) => {
+      activeTab = btn.dataset.tab
+      if (activeTab === 'SETTINGS') activeSettingsMenu = 'MAIN'
+      // Colorear inmediatamente sin esperar render
+      container.querySelectorAll('.admin-tab-btn').forEach(v => {
+        v.style.color = v.dataset.tab === activeTab ? '#F5C518' : 'rgba(255,255,255,0.4)'
+      })
+      render()
     },
     SUBMENU: (btn) => {
        activeSettingsMenu = btn.dataset.menu;
@@ -283,34 +287,35 @@ export const initAdmin = (container) => {
        render();
     },
     SAVE_TARIFFS: () => {
-       const state = getParkingState();
-       if (!state.settings.tariffs) {
-           state.settings.tariffs = [ { id: 'T1', name: 'Tarifa Excedente', freeHours: state.settings.freeHours || 8, baseRate: state.settings.baseRate || 1, active: true } ]
-       }
-       
-       const inputs = Array.from(document.querySelectorAll('.tariff-input'));
-       inputs.forEach(inp => {
-          const idx = parseInt(inp.dataset.idx);
-          const field = inp.dataset.field;
-          const val = parseFloat(inp.value) || 0;
-          if (state.settings.tariffs[idx]) {
-             state.settings.tariffs[idx][field] = val;
-          }
-       });
-       
-       if (state.settings.tariffs.length > 0) {
-           state.settings.freeHours = state.settings.tariffs[0].freeHours;
-           state.settings.baseRate = state.settings.tariffs[0].baseRate;
-       }
-       
-       saveParkingState(state);
-       logAudit('Configuró las tarifas del estacionamiento');
-       pendingAction = {
-           type: 'CUSTOM_MODAL',
-           title: '✅ TARIFAS GUARDADAS',
-           content: `<p style="color:#666; font-weight:700;">Las reglas de cobro han sido actualizadas exitosamente y se aplicarán de inmediato.</p>`
-       };
-       render();
+      const state = getParkingState()
+      if (!state.settings) state.settings = {}
+      if (!state.settings.tariffs) {
+        state.settings.tariffs = [{ id:'T1', name:'Tarifa Excedente', 
+          freeHours: state.settings.freeHours || 8, 
+          baseRate: state.settings.baseRate || 1, active: true }]
+      }
+      // Leer inputs AHORA antes de cualquier render
+      const inputs = Array.from(document.querySelectorAll('.tariff-input'))
+      inputs.forEach(inp => {
+        const idx = parseInt(inp.dataset.idx)
+        const field = inp.dataset.field
+        const val = field === 'name' ? inp.value : parseFloat(inp.value) || 0
+        if (state.settings.tariffs[idx]) {
+          state.settings.tariffs[idx][field] = val
+        }
+      })
+      if (state.settings.tariffs.length > 0) {
+        state.settings.freeHours = state.settings.tariffs[0].freeHours
+        state.settings.baseRate = state.settings.tariffs[0].baseRate
+      }
+      saveParkingState(state)
+      logAudit('Configuró las tarifas del estacionamiento')
+      pendingAction = {
+        type: 'SUCCESS_MODAL',
+        title: '✅ TARIFAS GUARDADAS',
+        message: `Tarifa base: $${state.settings.baseRate}/h · ${state.settings.freeHours}h libres`
+      }
+      render()
     },
 
     SYNC: async () => {
@@ -363,14 +368,18 @@ export const initAdmin = (container) => {
       saveParkingState(state); logAudit(`Actualizó tarifas: $${baseRate}, ${freeHours}h libres`); render()
     },
     ADD_CUSTOM_FIELD: () => {
-      const label = document.getElementById('new-field-label')?.value.trim()
+      const input = document.getElementById('new-field-label')
+      const label = input?.value?.trim()
       if (!label) return
-      const id = label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'_')
+      const id = label.toLowerCase().normalize('NFD')
+        .replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'_')
       const state = getParkingState()
+      if (!state.settings) state.settings = {}
       if (!state.settings.customFields) state.settings.customFields = []
       if (state.settings.customFields.find(f => f.id === id)) return
       state.settings.customFields.push({ id, label, required: true })
-      saveParkingState(state); render()
+      saveParkingState(state)
+      render()
     },
     DELETE_CUSTOM_FIELD: (btn) => {
       const id = btn.dataset.id
@@ -379,15 +388,24 @@ export const initAdmin = (container) => {
       saveParkingState(state); render()
     },
     ADD_CATEGORY: () => {
-      const label = document.getElementById('new-cat-label')?.value.trim()
-      const color = document.getElementById('new-cat-color')?.value || '#3b82f6'
+      const inputLabel = document.getElementById('new-cat-label')
+      const inputColor = document.getElementById('new-cat-color')
+      const label = inputLabel?.value?.trim()
+      const color = inputColor?.value || '#3b82f6'
       if (!label) return
-      const id = label.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'_')
+      const id = label.toUpperCase().normalize('NFD')
+        .replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'_')
       const state = getParkingState()
+      if (!state.settings) state.settings = {}
       if (!state.settings.categories) state.settings.categories = []
       if (state.settings.categories.find(c => c.id === id)) return
-      state.settings.categories.push({ id, label, color, tag: label.charAt(0).toUpperCase(), txt: '#ffffff' })
-      saveParkingState(state); render()
+      state.settings.categories.push({ 
+        id, label, color, 
+        tag: label.charAt(0).toUpperCase(), 
+        txt: '#ffffff' 
+      })
+      saveParkingState(state)
+      render()
     },
     DELETE_CATEGORY: (btn) => {
       const id = btn.dataset.id
@@ -1211,7 +1229,7 @@ export const initAdmin = (container) => {
       </div>
     </div>`
 
-  const renderFinanceSummary = (state) => {
+  const renderFinanceSummary = async (state) => {
     if (!hasFeature('finance_report')) {
       return `<div style="padding:40px; text-align:center; color:#999;">
         <div style="font-size:2rem; margin-bottom:12px;">🔒</div>
@@ -1221,7 +1239,29 @@ export const initAdmin = (container) => {
         </div>
       </div>`
     }
-    const now = new Date()
+
+  const now = new Date()
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+  const todayStr = new Date().toISOString().split('T')[0]
+
+  const [subsPayRes, todayPayRes] = await Promise.all([
+    supabase.from('payments')
+      .select('amount, method, payment_date, status')
+      .eq('building_id', state.buildingId)
+      .eq('status', 'CONFIRMED')
+      .gte('payment_date', monthStart),
+    supabase.from('payments')
+      .select('amount, method')
+      .eq('building_id', state.buildingId)
+      .eq('status', 'CONFIRMED')
+      .gte('payment_date', todayStr)
+  ])
+
+  const subsPays = subsPayRes.data || []
+  const todayPays = todayPayRes.data || []
+  const subsRevMonth = subsPays.reduce((a, p) => a + (p.amount || 0), 0)
+  const subsRevToday = todayPays.reduce((a, p) => a + (p.amount || 0), 0)
+
     const todayStart = new Date().setHours(0,0,0,0)
     const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000)
 
@@ -1256,12 +1296,21 @@ export const initAdmin = (container) => {
         <!-- REVENUE CARDS -->
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:15px;">
            <div style="background:#1a1a2e; color:white; padding:25px 15px; border-radius:28px; text-align:center; box-shadow:0 10px 25px rgba(26,26,46,0.2);">
-              <div style="font-size:1.8rem; font-weight:900;">$${revToday.toFixed(2)}</div>
+              <div style="font-size:1.8rem; font-weight:900;">$${(revToday + subsRevToday).toFixed(2)}</div>
               <div style="font-size:0.6rem; font-weight:700; color:var(--accent); text-transform:uppercase; margin-top:5px; opacity:0.8;">INGRESOS DE HOY</div>
            </div>
            <div style="background:#F5C518; color:var(--primary); padding:25px 15px; border-radius:28px; text-align:center; box-shadow:0 10px 25px rgba(245,197,24,0.2);">
               <div style="font-size:1.8rem; font-weight:900;">$${revWeek.toFixed(2)}</div>
               <div style="font-size:0.6rem; font-weight:700; text-transform:uppercase; margin-top:5px; opacity:0.8;">ESTA SEMANA</div>
+           </div>
+           <div style="background:#22c55e; color:white; padding:20px 15px; 
+             border-radius:28px; text-align:center; grid-column:1/-1;
+             box-shadow:0 10px 25px rgba(34,197,94,0.2);">
+             <div style="font-size:1.8rem; font-weight:900;">
+               $${subsRevMonth.toFixed(2)}
+             </div>
+             <div style="font-size:0.6rem; font-weight:700; text-transform:uppercase; 
+               margin-top:5px; opacity:0.9;">MENSUALIDADES DEL MES</div>
            </div>
         </div>
 
@@ -1616,7 +1665,7 @@ export const initAdmin = (container) => {
         </div>
       </div>
 
-      <div style="display:grid; gap:12px;">
+      <div style="display:grid; gap:12px; max-width: 480px; margin-left:auto; margin-right:auto;">
         ${(state.personnel || []).map(p => {
           const gMovs = (state.movements || []).filter(m => m.guardName === p.name);
           const todayCount = gMovs.filter(m => new Date(m.timestamp) >= todayStart).length;
@@ -1624,7 +1673,7 @@ export const initAdmin = (container) => {
           const activeNow = lastActive && (now - lastActive) < 12 * 60 * 60 * 1000;
 
           return `
-            <div style="background:white; padding:15px 20px; border-radius:24px; display:flex; justify-content:space-between; align-items:center; border:1.5px solid #f8f8f8; box-shadow:0 10px 30px rgba(0,0,0,0.02);">
+            <div style="background:white; padding:15px 20px; border-radius:24px; display:flex; justify-content:space-between; align-items:center; border:1.5px solid #f8f8f8; box-shadow:0 10px 30px rgba(0,0,0,0.02); box-sizing:border-box; width:100%;">
               <div style="display:flex; align-items:center; gap:15px;">
                 <div style="width:60px; height:60px; border-radius:50%; background:#f0f0f0; overflow:hidden; border:2px solid #fff; box-shadow:0 5px 15px rgba(0,0,0,0.05); position:relative;">
                   ${p.photo ? `<img src="${p.photo}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#ccc; font-weight:900; background:#eee;">${p.name.charAt(0)}</div>`}
@@ -1665,7 +1714,7 @@ export const initAdmin = (container) => {
       case 'PERSONAL': html = renderPersonnel(state); break
       case 'STRUCTURE': html = renderLevels(state); break
       case 'REPORTES': html = renderReports(state); break
-      case 'FINANCE': html = renderFinanceSummary(state); break
+      case 'FINANCE': html = await renderFinanceSummary(state); break
       case 'SETTINGS': html = renderSettings(state); break
       case 'NOTIFICATIONS': html = renderNotifications(state); break
       case 'PROFILE': html = renderProfile(state); break
