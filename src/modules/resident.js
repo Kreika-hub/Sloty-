@@ -72,6 +72,22 @@ export async function initResident(container, subscription) {
             style="width:100%;padding:14px;border-radius:14px;border:1.5px solid #e5e7eb;font-family:'Montserrat',sans-serif;font-size:0.85rem;font-weight:700;color:#1a1a2e;outline:none;text-transform:uppercase;">
         </div>
 
+        <div>
+          <label style="font-size:0.6rem;font-weight:800;color:#999;
+            text-transform:uppercase;display:block;margin-bottom:6px;">
+            COMPROBANTE (FOTO OPCIONAL)
+          </label>
+          <label for="pay-proof" style="display:flex;align-items:center;
+            gap:12px;padding:14px;border-radius:14px;border:1.5px dashed #e5e7eb;
+            cursor:pointer;background:#fafafa;">
+            <span style="font-size:1.5rem;">📎</span>
+            <span id="proof-label" style="font-size:0.75rem;font-weight:700;
+              color:#999;">Adjuntar comprobante...</span>
+          </label>
+          <input type="file" id="pay-proof" accept="image/*" 
+            style="display:none;">
+        </div>
+
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:5px;">
           <button id="btn-cancel-report" style="padding:16px;border-radius:16px;border:none;background:#f4f4f4;color:#666;font-weight:900;font-size:0.75rem;cursor:pointer;">CANCELAR</button>
           <button id="btn-submit-payment" style="padding:16px;border-radius:16px;border:none;background:#1a1a2e;color:#F5C518;font-weight:900;font-size:0.75rem;cursor:pointer;letter-spacing:0.5px;">ENVIAR REPORTE</button>
@@ -84,14 +100,26 @@ export async function initResident(container, subscription) {
     if (!payments.length) return `<div style="text-align:center;padding:30px;color:#bbb;font-size:0.8rem;font-weight:700;">Sin pagos registrados aún</div>`
     return payments.map(p => {
       const method = p.method === 'EFECTIVO' ? '💵 Efectivo' : p.method === 'PAGO_MOVIL' ? '📱 Pago Móvil' : '🏦 Transferencia'
-      const status = p.status === 'CONFIRMED' ? `<span style="background:#dcfce7;color:#15803d;padding:3px 10px;border-radius:20px;font-size:0.6rem;font-weight:900;display:flex;align-items:center;gap:4px;">${SVG.CHECK} CONFIRMADO</span>`
-        : `<span style="background:#fef9c3;color:#a16207;padding:3px 10px;border-radius:20px;font-size:0.6rem;font-weight:900;display:flex;align-items:center;gap:4px;">${SVG.CLOCK} PENDIENTE</span>`
+      const status = p.status === 'CONFIRMED'
+        ? `<span style="background:#dcfce7;color:#15803d;padding:3px 10px;
+            border-radius:20px;font-size:0.6rem;font-weight:900;">✓ CONFIRMADO</span>`
+        : p.status === 'REJECTED'
+        ? `<span style="background:#fee2e2;color:#dc2626;padding:3px 10px;
+            border-radius:20px;font-size:0.6rem;font-weight:900;">✕ RECHAZADO</span>`
+        : `<span style="background:#fef9c3;color:#a16207;padding:3px 10px;
+            border-radius:20px;font-size:0.6rem;font-weight:900;">⏳ PENDIENTE</span>`
       return `
         <div style="background:white;padding:18px 20px;border-radius:20px;border:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center;">
           <div>
             <div style="font-weight:900;color:#1a1a2e;font-size:0.9rem;">$${p.amount}</div>
             <div style="font-size:0.6rem;color:#999;font-weight:700;margin-top:3px;">${method} · ${new Date(p.payment_date).toLocaleDateString()}</div>
             ${p.reference ? `<div style="font-size:0.6rem;color:#bbb;font-weight:700;">Ref: ${p.reference}</div>` : ''}
+            ${p.proof_url ? `
+              <a href="${p.proof_url}" target="_blank" 
+                style="display:inline-flex;align-items:center;gap:4px;margin-top:6px;
+                font-size:0.6rem;font-weight:800;color:#3b82f6;text-decoration:none;">
+                📎 Ver comprobante
+              </a>` : ''}
           </div>
           ${status}
         </div>`
@@ -282,6 +310,17 @@ export async function initResident(container, subscription) {
         toggleRef()
       }
 
+      const proofInput = document.getElementById('pay-proof')
+      if (proofInput) {
+        proofInput.onchange = () => {
+          const label = document.getElementById('proof-label')
+          if (label && proofInput.files[0]) {
+            label.textContent = proofInput.files[0].name
+            label.style.color = '#1a1a2e'
+          }
+        }
+      }
+
       const btnSubmit = document.getElementById('btn-submit-payment')
       if (btnSubmit) {
         btnSubmit.onclick = async () => {
@@ -289,22 +328,37 @@ export async function initResident(container, subscription) {
           const date = document.getElementById('pay-date').value
           const amount = parseFloat(document.getElementById('pay-amount').value)
           const ref = document.getElementById('pay-ref')?.value?.trim() || null
+          const proofFile = document.getElementById('pay-proof')?.files?.[0] || null
 
           if (!date || !amount) return showInlineAlert('Completa fecha y monto', false)
-          if ((method !== 'EFECTIVO') && !ref) return showInlineAlert('Ingresa la referencia de pago', false)
+          if ((method !== 'EFECTIVO') && !ref) 
+            return showInlineAlert('Ingresa la referencia de pago', false)
 
           btnSubmit.textContent = 'Enviando...'
           btnSubmit.disabled = true
+
+          let proof_url = null
+          if (proofFile) {
+            const ext = proofFile.name.split('.').pop()
+            const path = `${subData.building_id}/${subData.id}/${Date.now()}.${ext}`
+            const { error: upErr } = await supabase.storage
+              .from('payment-proofs')
+              .upload(path, proofFile, { upsert: true })
+            if (!upErr) {
+              const { data: urlData } = supabase.storage
+                .from('payment-proofs')
+                .getPublicUrl(path)
+              proof_url = urlData?.publicUrl || null
+            }
+          }
 
           const { error } = await supabase.from('payments').insert({
             subscription_id: subData.id,
             building_id: subData.building_id,
             resident_name: subData.resident_name,
-            method,
-            payment_date: date,
-            amount,
-            reference: ref,
-            status: 'PENDING'
+            method, payment_date: date, amount,
+            reference: ref, status: 'PENDING',
+            proof_url
           })
 
           if (error) {
