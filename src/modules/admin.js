@@ -660,6 +660,13 @@ export const initAdmin = (container) => {
                     <div style="font-weight:900;color:#1a1a2e;font-size:1rem;">$${p.amount}</div>
                     <div style="font-size:0.65rem;color:#666;font-weight:700;margin-top:3px;">${ML[p.method]||p.method} · ${new Date(p.payment_date).toLocaleDateString()}</div>
                     ${p.reference ? `<div style="font-size:0.6rem;color:#999;font-weight:700;">Ref: ${p.reference}</div>` : ''}
+                    ${p.proof_url ? `
+                      <a href="${p.proof_url}" target="_blank"
+                        style="display:inline-flex;align-items:center;gap:6px;margin-top:8px;
+                        padding:8px 14px;background:#f0f7ff;border-radius:10px;
+                        font-size:0.65rem;font-weight:800;color:#3b82f6;text-decoration:none;">
+                        📎 Ver comprobante adjunto
+                      </a>` : ''}
                   </div>
                   <span style="background:${p.status==='CONFIRMED'?'#22c55e':p.status==='REJECTED'?'#e63946':'#f59e0b'};color:white;padding:4px 10px;border-radius:20px;font-size:0.55rem;font-weight:900;">${p.status==='CONFIRMED'?'CONFIRMADO':p.status==='REJECTED'?'RECHAZADO':'PENDIENTE'}</span>
                 </div>
