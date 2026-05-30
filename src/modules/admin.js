@@ -47,6 +47,12 @@ export const initAdmin = (container) => {
 
   // --- ACTIONS ---
   const actions = {
+    ACTIVATE_PUSH: async () => {
+      const { subscribeToPushNotifications } = await import('./push.js');
+      const s = getParkingState()
+      const email = s.adminInfo?.email || 'admin@sloty.com'
+      await subscribeToPushNotifications(s.buildingId, 'ADMIN', email)
+    },
     TOGGLE_COLLAPSE: (btn) => {
       const name = btn.dataset.name
       const state = getParkingState()
@@ -1427,6 +1433,41 @@ export const initAdmin = (container) => {
                 </div>
                 <div style="color:#bbb; font-size:1.2rem; font-weight:900;">›</div>
              </div>
+             
+             <div data-action="SUBMENU" data-menu="PUSH" style="background:white; padding:20px; border-radius:24px; border:1.5px solid #f0f0f0; display:flex; align-items:center; gap:15px; cursor:pointer; box-shadow:0 8px 20px rgba(0,0,0,0.02);">
+                <div style="width:50px; height:50px; border-radius:16px; background:rgba(245,197,24,0.1); color:#F5C518; display:flex; align-items:center; justify-content:center; font-size:1.5rem;">🔔</div>
+                <div style="flex:1;">
+                   <div style="font-size:1rem; font-weight:900; color:var(--primary);">Notificaciones Push</div>
+                   <div style="font-size:0.65rem; color:#999; font-weight:700; margin-top:2px;">Activa las alertas en este dispositivo</div>
+                </div>
+                <div style="color:#bbb; font-size:1.2rem; font-weight:900;">›</div>
+             </div>
+          </div>
+       </div>`
+    }
+    
+    if (activeSettingsMenu === 'PUSH') {
+       import('./push.js').then(m => {
+          const banner = document.getElementById('push-banner-container');
+          if (banner) banner.innerHTML = m.renderPushBanner();
+       });
+       return `
+       <div style="padding:20px; padding-bottom:120px;">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px;">
+             <button data-action="SUBMENU" data-menu="MAIN" style="background:#f4f4f4; border:none; width:40px; height:40px; border-radius:12px; font-size:1.2rem; cursor:pointer; display:flex; align-items:center; justify-content:center; font-weight:900;">‹</button>
+             <h2 style="font-weight:900; color:var(--primary); font-size:1.2rem; margin:0; text-transform:uppercase;">NOTIFICACIONES PUSH</h2>
+          </div>
+          
+          <div id="push-banner-container"></div>
+          
+          <div style="background:white; padding:25px; border-radius:32px; box-shadow:0 10px 30px rgba(0,0,0,0.04); border:1.5px solid #f0f0f0; text-align:center;">
+             <div style="font-size:3rem; margin-bottom:10px;">🔔</div>
+             <h3 style="font-weight:900; color:var(--primary); margin-bottom:10px;">Alertas en Tiempo Real</h3>
+             <p style="font-size:0.75rem; color:#666; font-weight:700; margin-bottom:25px; line-height:1.5;">Recibe una notificación nativa cuando un residente reporte un pago o cuando un guardia envíe el cierre de caja, sin importar si la app está cerrada.</p>
+             
+             <button data-action="ACTIVATE_PUSH" style="width:100%; padding:20px; background:#22c55e; color:white; border:none; border-radius:20px; font-weight:900; cursor:pointer; font-size:0.85rem; text-transform:uppercase; box-shadow:0 10px 25px rgba(34,197,94,0.3);">
+                ACTIVAR NOTIFICACIONES
+             </button>
           </div>
        </div>`
     }
