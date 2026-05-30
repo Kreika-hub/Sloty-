@@ -505,7 +505,27 @@ export const initGuard = (container, guardName = 'Guardia') => {
     const lvl = state.levels.find(l=>l.name===selectedSlot.levelName)
     const slotData = lvl.slots[selectedSlot.sIdx]
     lvl.slots[selectedSlot.sIdx] = { ...slotData, status:newStatus, plate: newStatus==='FREE'?null:slotData.plate, phone: newStatus==='FREE'?null:slotData.phone, entryTime: newStatus==='FREE'?null:slotData.entryTime }
-    updateParkingState(state); logMovement({ type:'SALIDA', plate:slotData.plate, slot:slotData.label, category:slotData.category, guardName, paymentStatus: newStatus==='FREE'?'PAGADO':'DEUDA', payMethod, amount:1 })
+    updateParkingState(state); 
+    logMovement({ type:'SALIDA', plate:slotData.plate, slot:slotData.label, category:slotData.category, guardName, paymentStatus: newStatus==='FREE'?'PAGADO':'DEUDA', payMethod, amount:1 })
+    
+    // Persistir visitante en Supabase
+    const vState = getParkingState()
+    const finalAmount = pendingPayment?.amount || 0
+    supabase.from('visitors').insert({
+      building_id: vState.buildingId,
+      plate: selectedSlot?.plate || '',
+      entry_time: selectedSlot?.entryTime || new Date().toISOString(),
+      exit_time: new Date().toISOString(),
+      guard_name: vState.guardName || '',
+      category: selectedSlot?.category || '',
+      slot_label: selectedSlot?.label || '',
+      amount: finalAmount || 0,
+      pay_method: payMethod || '',
+      status: 'EXITED'
+    }).then(({ error }) => {
+      if (error) console.warn('[Sloty] visitors insert error:', error)
+    })
+
     currentView='MAP'; render()
   }
 
