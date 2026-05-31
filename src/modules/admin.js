@@ -295,10 +295,14 @@ export const initAdmin = (container) => {
     SAVE_TARIFFS: () => {
       const state = getParkingState()
       if (!state.settings) state.settings = {}
-      if (!state.settings.tariffs) {
-        state.settings.tariffs = [{ id:'T1', name:'Tarifa Excedente', 
-          freeHours: state.settings.freeHours || 8, 
-          baseRate: state.settings.baseRate || 1, active: true }]
+      if (!state.settings.tariffs || !Array.isArray(state.settings.tariffs)) {
+        state.settings.tariffs = [{ 
+          id: 'T1', 
+          name: 'Tarifa Excedente',
+          freeHours: state.settings?.freeHours || 8,
+          baseRate: state.settings?.baseRate || 1, 
+          active: true 
+        }]
       }
       // Leer inputs AHORA antes de cualquier render
       const inputs = Array.from(document.querySelectorAll('.tariff-input'))
