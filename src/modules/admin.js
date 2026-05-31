@@ -1995,9 +1995,9 @@ export const initAdmin = (container) => {
         ${(subs || []).map(r => {
           const daysLeft = Math.ceil((new Date(r.expiry_date) - new Date()) / 86400000)
           const expiryBadge = daysLeft <= 5 && daysLeft >= 0
-            ? `<span style="background:#fff3cd; color:#856404; font-size:0.5rem; font-weight:900; padding:2px 6px; border-radius:6px; margin-left:6px;">⚠️ ${daysLeft}d</span>`
+            ? '<span style="background:#fff3cd; color:#856404; font-size:0.5rem; font-weight:900; padding:2px 6px; border-radius:6px; margin-left:6px;">⚠️ ' + daysLeft + 'd</span>'
             : daysLeft < 0
-            ? `<span style="background:#ffd6d6; color:#e63946; font-size:0.5rem; font-weight:900; padding:2px 6px; border-radius:6px; margin-left:6px;">VENCIDO</span>`
+            ? '<span style="background:#ffd6d6; color:#e63946; font-size:0.5rem; font-weight:900; padding:2px 6px; border-radius:6px; margin-left:6px;">VENCIDO</span>'
             : ''
           return `
           <div style="background:white; padding:20px; border-radius:28px; border:1.5px solid ${r.is_coming ? '#F5C518' : '#f0f0f0'}; box-shadow:0 10px 30px rgba(0,0,0,0.03); position:relative; overflow:hidden;">
