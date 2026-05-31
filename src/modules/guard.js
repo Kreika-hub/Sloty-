@@ -513,7 +513,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
     const finalAmount = pendingPayment?.amount || 0
     supabase.from('visitors').insert({
       building_id: vState.buildingId,
-      plate: selectedSlot?.plate || '',
+      vehicle_plate: selectedSlot?.plate || '',
       entry_time: selectedSlot?.entryTime || new Date().toISOString(),
       exit_time: new Date().toISOString(),
       guard_name: vState.guardName || '',
