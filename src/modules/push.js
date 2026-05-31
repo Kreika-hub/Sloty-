@@ -1,7 +1,7 @@
-import { supabase } from '../db.js'
+import { supabase, showToast } from '../db.js'
 
 // VAPID Public Key from generation
-const VAPID_PUBLIC_KEY = 'BNnGixLmvQfICWWjmGlFHic3PG8-QmjIDxL46Cs0B1ksTyXzIR4Acwqw33ZeJaBcRDkpP4R3gBV-UMILSkwzR6s'
+const VAPID_PUBLIC_KEY = 'BOjTI0MhZjWN43y0qQ50pu5P5SNbF26d7l7XdjgHxyYKHoz5u_8gghPX1vB4CjohCbEA1TYoPmJhMG87SDtzoh4'
 
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -20,27 +20,25 @@ function urlBase64ToUint8Array(base64String) {
 
 export async function subscribeToPushNotifications(buildingId, role, identifier) {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-    alert('Las notificaciones Push no están soportadas en tu dispositivo/navegador actual.');
+    showToast('Notificaciones no soportadas en este dispositivo', 'error');
     return false;
   }
 
   try {
-    // Check if permission is already granted or request it
     let permission = Notification.permission;
     if (permission === 'default') {
       permission = await Notification.requestPermission();
     }
-    
+
     if (permission !== 'granted') {
-      alert('Debes permitir las notificaciones en tu navegador o sistema para activar esta función.');
+      showToast('Permiso de notificaciones denegado', 'error');
       return false;
     }
 
     const registration = await navigator.serviceWorker.ready;
-    
-    // Check for existing subscription to avoid duplicate calls
+
     let subscription = await registration.pushManager.getSubscription();
-    
+
     if (!subscription) {
       const subscribeOptions = {
         userVisibleOnly: true,
@@ -48,30 +46,26 @@ export async function subscribeToPushNotifications(buildingId, role, identifier)
       };
       subscription = await registration.pushManager.subscribe(subscribeOptions);
     }
-    
-    // Upsert subscription to Supabase to update role or identifier if changed
-    const { error } = await supabase.from('push_subscriptions').insert({
+
+    // PASO 3: upsert para evitar duplicados (requiere UNIQUE en columna subscription)
+    const { error } = await supabase.from('push_subscriptions').upsert({
       building_id: buildingId,
       role: role,
       identifier: identifier,
       subscription: subscription.toJSON()
-    });
-
-    // Note: The above might fail if we don't have a unique constraint or if the user is inserting a duplicate.
-    // However, since it's just generating rows, it's fine for now, or we can use upsert if we add a unique constraint later.
+    }, { onConflict: 'subscription' });
 
     if (error) {
-      console.warn('Error saving push subscription, might be duplicate or RLS:', error.message);
-      // We still return true because locally they are subscribed
+      console.warn('[Sloty] Error saving push subscription:', error.message);
     } else {
-      console.log('Push subscription saved successfully');
+      console.log('[Sloty] Push subscription saved/updated successfully');
     }
 
-    alert('¡Notificaciones activadas con éxito! Ahora recibirás alertas.');
+    showToast('✅ Notificaciones activadas', 'success');
     return true;
   } catch (err) {
-    console.error('Push subscription error:', err);
-    alert('Ocurrió un error al intentar activar las notificaciones. Asegúrate de haber instalado la aplicación (Agregar a Inicio).');
+    console.error('[Sloty] Push subscription error:', err);
+    showToast('Error al activar notificaciones. Instala la app primero.', 'error');
     return false;
   }
 }
@@ -79,7 +73,7 @@ export async function subscribeToPushNotifications(buildingId, role, identifier)
 export function renderPushBanner() {
   const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-  
+
   if (isIos && !isStandalone) {
     return `
       <div style="background:#F5C518; color:#1a1a2e; padding:15px; border-radius:18px; margin-bottom:20px; font-weight:700; font-size:0.75rem; text-align:left; display:flex; align-items:start; gap:12px; box-shadow:0 5px 15px rgba(245,197,24,0.3);">
