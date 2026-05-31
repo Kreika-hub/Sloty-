@@ -362,8 +362,12 @@ export const initAdmin = (container) => {
       render();
     },
     LOGOUT: () => {
-      localStorage.removeItem('sloty_session');
-      location.reload();
+      localStorage.removeItem('sloty_session')
+      localStorage.removeItem('sloty_state')
+      localStorage.removeItem('sloty_selected_slot')
+      localStorage.removeItem('sloty_building_id')
+      localStorage.removeItem('sloty_active_building')
+      location.reload()
     },
     FILTER_REPORTS: (btn) => { reportFilter = btn.dataset.filter; render() },
     SAVE_SETTINGS: () => {
@@ -634,11 +638,30 @@ export const initAdmin = (container) => {
       })
 
       logAudit(`Aprobó pago de $${amount} para ${sub.resident_name}`)
+      // PASO 5: Notificar al residente que su pago fue aprobado
+      supabase.functions.invoke('send-push', {
+        body: {
+          building_id: s.buildingId,
+          role: 'RESIDENT',
+          title: '✅ Pago confirmado',
+          body: `Tu pago de $${amount} ha sido aprobado.`
+        }
+      }).catch(e => console.warn('[Sloty] push error:', e))
       cachedMetrics = null
       render()
     },
     REJECT_PAYMENT: async (btn) => {
+      const s = getParkingState()
       await supabase.from('payments').update({ status: 'REJECTED' }).eq('id', btn.dataset.id)
+      // PASO 5: Notificar al residente que su pago fue rechazado
+      supabase.functions.invoke('send-push', {
+        body: {
+          building_id: s.buildingId,
+          role: 'RESIDENT',
+          title: '❌ Pago rechazado',
+          body: 'Tu pago fue rechazado. Contacta a tu administrador.'
+        }
+      }).catch(e => console.warn('[Sloty] push error:', e))
       cachedMetrics = null
       render()
     },
@@ -951,10 +974,13 @@ export const initAdmin = (container) => {
             <button data-action="SYNC" style="background:none; border:none; cursor:pointer; color:rgba(255,255,255,0.4); width:28px; height:28px; display:flex; align-items:center; justify-content:center; padding:0; transition:transform 0.5s;">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:18px; height:18px;"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
             </button>
-            <div data-action="TAB" data-tab="NOTIFICATIONS" style="position:relative; cursor:pointer; color:white; width:22px; height:22px;">
+            <button data-action="TAB" data-tab="NOTIFICATIONS" 
+              style="position:relative; cursor:pointer; color:white; 
+              width:28px; height:28px; background:none; border:none; 
+              padding:0; display:flex; align-items:center; justify-content:center;">
               ${ICONS.BELL}
               ${unread ? `<div style="position:absolute; top:-3px; right:-3px; width:8px; height:8px; background:#e63946; border-radius:50%; border:2px solid #1a1a2e;"></div>` : ''}
-            </div>
+            </button>
             <button data-action="LOGOUT" style="background:none; border:none; cursor:pointer; color:rgba(255,255,255,0.4); width:28px; height:28px; display:flex; align-items:center; justify-content:center; padding:0;">
               ${ICONS.LOGOUT}
             </button>

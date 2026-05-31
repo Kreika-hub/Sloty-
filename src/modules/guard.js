@@ -442,7 +442,9 @@ export const initGuard = (container, guardName = 'Guardia') => {
         amountRec,
         reference: ref,
         paymentStatus: 'PAGADO',
-        payMethod: method
+        payMethod: method,
+        entryTime: selectedSlot?.entryTime || null,
+        exitTime: new Date().toISOString()
       }
       
       logMovement(mov)
@@ -506,7 +508,19 @@ export const initGuard = (container, guardName = 'Guardia') => {
     const slotData = lvl.slots[selectedSlot.sIdx]
     lvl.slots[selectedSlot.sIdx] = { ...slotData, status:newStatus, plate: newStatus==='FREE'?null:slotData.plate, phone: newStatus==='FREE'?null:slotData.phone, entryTime: newStatus==='FREE'?null:slotData.entryTime }
     updateParkingState(state); 
-    logMovement({ type:'SALIDA', plate:slotData.plate, slot:slotData.label, category:slotData.category, guardName, paymentStatus: newStatus==='FREE'?'PAGADO':'DEUDA', payMethod, amount:1 })
+    const realAmount = pendingPayment?.amount || 0
+    logMovement({ 
+      type: 'SALIDA', 
+      plate: slotData.plate, 
+      slot: slotData.label, 
+      category: slotData.category, 
+      guardName, 
+      paymentStatus: newStatus === 'FREE' ? 'PAGADO' : 'DEUDA', 
+      payMethod, 
+      amount: realAmount,
+      entryTime: slotData.entryTime,
+      exitTime: new Date().toISOString()
+    })
     
     // Persistir visitante en Supabase
     const vState = getParkingState()
