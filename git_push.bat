@@ -1,3 +1,4 @@
 @echo off
-git commit -m "feat: optimize guard onboarding and payment alerts"
+git add .
+git commit -m "UI: Mejora Splash Screen PWA y redisenio de Welcome"
 git push

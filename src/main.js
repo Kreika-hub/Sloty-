@@ -43,25 +43,35 @@ const showOnly = (name) => {
 // ─── WELCOME SCREEN ───────────────────────────────────────────
 const renderWelcome = () => {
   screens.welcome.innerHTML = `
-    <div style="min-height:100vh;min-height:100dvh;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:env(safe-area-inset-top, 40px) 24px env(safe-area-inset-bottom, 40px);">
-      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;gap:0;">
-        <img src="/sloty-logo-v2.png.png" alt="Sloty" style="width:75%;max-width:300px;height:auto;display:block;margin:0 auto;" />
-        <p aria-label="Gestión inteligente de estacionamientos" style="color:rgba(255,255,255,0.7);font-size:0.8rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;margin:40px 0 40px;text-align:center;">GESTIÓN INTELIGENTE DE<br>ESTACIONAMIENTOS</p>
+    <div style="min-height:100vh;min-height:100dvh;background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:env(safe-area-inset-top, 40px) 24px env(safe-area-inset-bottom, 40px); position: relative; overflow: hidden;">
+      <!-- Decorative background elements -->
+      <div style="position: absolute; top: -10%; left: -10%; width: 50vw; height: 50vw; background: radial-gradient(circle, rgba(245,197,24,0.1) 0%, rgba(0,0,0,0) 70%); border-radius: 50%; pointer-events: none;"></div>
+      <div style="position: absolute; bottom: -10%; right: -10%; width: 60vw; height: 60vw; background: radial-gradient(circle, rgba(15,52,96,0.5) 0%, rgba(0,0,0,0) 70%); border-radius: 50%; pointer-events: none;"></div>
+
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;gap:15px; z-index: 1;">
+        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-radius: 30px; padding: 40px 30px; display: flex; flex-direction: column; align-items: center; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);">
+          <h1 style="color: #F5C518; font-size: 3.5rem; font-weight: 900; margin: 0; letter-spacing: -2px; text-shadow: 0 4px 20px rgba(245,197,24,0.3);">SLOTY</h1>
+          <p aria-label="Gestión inteligente de estacionamientos" style="color:rgba(255,255,255,0.85);font-size:0.85rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin:10px 0 0;text-align:center;">GESTIÓN INTELIGENTE DE<br>ESTACIONAMIENTOS</p>
+        </div>
       </div>
-      <div style="width:100%;max-width:420px;display:flex;flex-direction:column;gap:14px;padding-bottom:20px;">
-        <button id="btn-goto-register" style="width:100%;padding:20px;background:#F5C518;color:#1a1a2e;border:none;border-radius:18px;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:900;cursor:pointer;letter-spacing:1px;">
+      
+      <div style="width:100%;max-width:420px;display:flex;flex-direction:column;gap:16px;padding-bottom:20px; z-index: 1;">
+        <button id="btn-goto-register" style="width:100%;padding:20px;background: linear-gradient(135deg, #F5C518 0%, #e3b000 100%);color:#1a1a2e;border:none;border-radius:20px;font-family:'Montserrat',sans-serif;font-size:1.05rem;font-weight:900;cursor:pointer;letter-spacing:1px;box-shadow: 0 10px 25px -5px rgba(245,197,24,0.4); transition: transform 0.2s ease, box-shadow 0.2s ease;">
           REGISTRAR MI EDIFICIO
         </button>
-        <button id="btn-goto-login" style="width:100%;padding:20px;background:transparent;color:white;border:2px solid rgba(255,255,255,0.2);border-radius:18px;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:700;cursor:pointer;">
+        <button id="btn-goto-login" style="width:100%;padding:20px;background: rgba(255,255,255,0.05); backdrop-filter: blur(5px); color:white;border:1px solid rgba(255,255,255,0.2);border-radius:20px;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:700;cursor:pointer; transition: background 0.2s ease;">
           INICIAR SESIÓN
         </button>
-        <button id="btn-goto-guard-code" style="width:100%;padding:14px;background:transparent;color:rgba(255,255,255,0.75);border:1px solid rgba(255,255,255,0.15);font-family:'Montserrat',sans-serif;font-size:0.85rem;font-weight:700;cursor:pointer;letter-spacing:1px;border-radius:14px;">
-          SOY GUARDIA →
-        </button>
-        <button id="btn-goto-resident-login" style="width:100%;padding:14px;background:rgba(255,255,255,0.05);color:var(--accent);border:1px solid var(--accent);font-family:'Montserrat',sans-serif;font-size:0.85rem;font-weight:900;cursor:pointer;letter-spacing:1px;border-radius:14px;">
-          SOY RESIDENTE 🏠
-        </button>
-        <p aria-hidden="true" tabindex="-1" style="color:rgba(255,255,255,0.35);font-size:0.65rem;font-weight:600;text-align:center;letter-spacing:2px;margin-top:4px;">POWERED BY KREIKA</p>
+        
+        <div style="display: flex; gap: 12px; margin-top: 8px;">
+          <button id="btn-goto-guard-code" style="flex:1;padding:16px;background:rgba(255,255,255,0.03);color:rgba(255,255,255,0.8);border:1px solid rgba(255,255,255,0.1);font-family:'Montserrat',sans-serif;font-size:0.85rem;font-weight:700;cursor:pointer;letter-spacing:0.5px;border-radius:16px; transition: background 0.2s ease;">
+            SOY GUARDIA
+          </button>
+          <button id="btn-goto-resident-login" style="flex:1;padding:16px;background:rgba(255,255,255,0.03);color:var(--accent);border:1px solid var(--accent);font-family:'Montserrat',sans-serif;font-size:0.85rem;font-weight:700;cursor:pointer;letter-spacing:0.5px;border-radius:16px; transition: background 0.2s ease;">
+            SOY RESIDENTE 🏠
+          </button>
+        </div>
+        <p aria-hidden="true" tabindex="-1" style="color:rgba(255,255,255,0.3);font-size:0.65rem;font-weight:600;text-align:center;letter-spacing:2px;margin-top:12px;">POWERED BY KREIKA</p>
       </div>
     </div>
   `
