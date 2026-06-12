@@ -246,22 +246,23 @@ export const initAdmin = (container) => {
            .order('payment_date', { ascending: false })
            .limit(20)
          
+         const historyHtml = history.map(h => {
+           const bdg = h.status === 'CONFIRMED' ? {c:'#22c55e', bg:'rgba(34,197,94,0.1)', t:'PAGADO'} : h.status === 'PENDING' ? {c:'#f59e0b', bg:'rgba(245,158,11,0.1)', t:'PENDIENTE'} : {c:'#e63946', bg:'rgba(230,57,70,0.1)', t:'RECHAZADO'};
+           return '<div style="padding:15px; border-bottom:1px solid #f8f8f8; display:flex; justify-content:space-between; align-items:center;">' +
+                  '<div>' +
+                  '<div style="font-size:0.8rem; font-weight:900;">$' + h.amount.toFixed(2) + '</div>' +
+                  '<div style="font-size:0.55rem; color:#bbb;">' + new Date(h.payment_date).toLocaleDateString() + ' · ' + h.method + '</div>' +
+                  '</div>' +
+                  '<div style="font-size:0.6rem; color:' + bdg.c + '; font-weight:900; background:' + bdg.bg + '; padding:4px 8px; border-radius:6px;">' + bdg.t + '</div>' +
+                  '</div>';
+         }).join('') || '<div style="padding:40px; text-align:center; color:#ccc;">No hay historial de pagos</div>';
+
          pendingAction = {
            type: 'CUSTOM_MODAL',
-           title: `Historial: ${name}`,
+           title: 'Historial: ' + name,
            content: `
              <div style="max-height:300px; overflow-y:auto; padding:10px; text-align:left;">
-                ${history.map(h => {
-                  const bdg = h.status === 'CONFIRMED' ? {c:'#22c55e', bg:'rgba(34,197,94,0.1)', t:'PAGADO'} : h.status === 'PENDING' ? {c:'#f59e0b', bg:'rgba(245,158,11,0.1)', t:'PENDIENTE'} : {c:'#e63946', bg:'rgba(230,57,70,0.1)', t:'RECHAZADO'};
-                  return \`
-                  <div style="padding:15px; border-bottom:1px solid #f8f8f8; display:flex; justify-content:space-between; align-items:center;">
-                     <div>
-                        <div style="font-size:0.8rem; font-weight:900;">$\${h.amount.toFixed(2)}</div>
-                        <div style="font-size:0.55rem; color:#bbb;">\${new Date(h.payment_date).toLocaleDateString()} · \${h.method}</div>
-                     </div>
-                     <div style="font-size:0.6rem; color:\${bdg.c}; font-weight:900; background:\${bdg.bg}; padding:4px 8px; border-radius:6px;">\${bdg.t}</div>
-                  </div>
-                \`}).join('') || '<div style="padding:40px; text-align:center; color:#ccc;">No hay historial de pagos</div>'}
+                ${historyHtml}
              </div>
            `
          };
@@ -1208,6 +1209,17 @@ export const initAdmin = (container) => {
           const isEditing = editingLevel === l.name;
           const cardColor = l.color || '#1a1a2e';
           
+          let headerHtml = '';
+          if (isEditing) {
+            headerHtml = '<div style="display:flex; align-items:center; gap:10px;"><input type="text" id="rename-input-' + l.name + '" value="' + l.name + '" style="flex:1; padding:8px 12px; border-radius:10px; border:1.5px solid var(--accent); font-weight:900; outline:none;"><button data-action="CONFIRM_RENAME" data-oldname="' + l.name + '" style="background:var(--primary); color:white; border:none; border-radius:8px; padding:0 12px;">OK</button></div>';
+          } else {
+            headerHtml = '<div style="display:flex; align-items:center; gap:10px;"><div style="font-size:1.1rem; font-weight:900; color:var(--primary);">' + l.name + '</div><button data-action="START_RENAME" data-name="' + l.name + '" style="background:none; border:none; color:#bbb; cursor:pointer; width:16px; height:20px;">' + ICONS.EDIT + '</button></div><div style="font-size:0.6rem; font-weight:700; color:#999; margin-top:2px;">' + l.slots.length + ' Puestos · <span style="color:' + cardColor + '; text-transform:uppercase;">' + (l.color ? 'Personalizado' : 'Básico') + '</span></div>';
+          }
+          
+          const paletteHtml = ['#1a1a2e','#e63946','#22c55e','#3b82f6','#a855f7'].map(c => '<div data-action="SET_LEVEL_COLOR" data-name="' + l.name + '" data-color="' + c + '" style="width:16px; height:16px; border-radius:50%; background:' + c + '; cursor:pointer; border:' + (l.color===c?'2.5px solid white':'none') + '; box-shadow:0 2px 5px rgba(0,0,0,0.1);"></div>').join('');
+          
+          const slotsHtml = l.slots.map(s => '<div style="padding:10px 14px; background:#f8f9fa; border-radius:12px; font-size:0.7rem; font-weight:900; color:var(--primary); display:flex; align-items:center; gap:8px; border:1px solid #f0f0f0;">' + s.label + '<button data-action="DELETE_SLOT" data-levelname="' + l.name + '" data-label="' + s.label + '" style="border:none; background:none; color:#ddd; font-size:1.1rem; cursor:pointer; line-height:1; font-weight:400;">×</button></div>').join('');
+
           return `
           <div style="background:white; border-radius:28px; overflow:hidden; border:1.5px solid #f0f0f0; box-shadow:0 10px 30px rgba(0,0,0,0.02); position:relative;">
             <div style="height:6px; background:${cardColor}; width:100%;"></div>
@@ -1215,27 +1227,14 @@ export const initAdmin = (container) => {
             <!-- HEADER -->
             <div style="padding:20px; display:flex; justify-content:space-between; align-items:center;">
               <div style="flex:1;">
-                ${isEditing ? `
-                  <div style="display:flex; gap:8px;">
-                    <input type="text" id="rename-input-${l.name}" value="${l.name}" style="flex:1; padding:8px 12px; border-radius:10px; border:1.5px solid var(--accent); font-weight:900; outline:none;">
-                    <button data-action="CONFIRM_RENAME" data-oldname="${l.name}" style="background:var(--primary); color:white; border:none; border-radius:8px; padding:0 12px;">OK</button>
-                  </div>
-                ` : `
-                  <div style="display:flex; align-items:center; gap:10px;">
-                    <div style="font-size:1.1rem; font-weight:900; color:var(--primary);">${l.name}</div>
-                    <button data-action="START_RENAME" data-name="${l.name}" style="background:none; border:none; color:#bbb; cursor:pointer; width:16px; height:20px;">${ICONS.EDIT}</button>
-                  </div>
-                  <div style="font-size:0.6rem; font-weight:700; color:#999; margin-top:2px;">${l.slots.length} Puestos · <span style="color:${cardColor}; text-transform:uppercase;">${l.color ? 'Personalizado' : 'Básico'}</span></div>
-                `}
+                ${headerHtml}
               </div>
               
               <div style="display:flex; align-items:center; gap:8px;">
                  <!-- PALETTE WRAPPER -->
                  <div style="display:flex; align-items:center; position:relative;">
                     <div style="display:${openPaletteLevel === l.name ? 'flex' : 'none'}; gap:4px; padding:6px; background:#f4f4f4; border-radius:12px; margin-right:8px; border:1px solid #eee; position:absolute; right:100%; top:50%; transform:translateY(-50%); z-index:10;">
-                       ${['#1a1a2e','#e63946','#22c55e','#3b82f6','#a855f7'].map(c => `
-                         <div data-action="SET_LEVEL_COLOR" data-name="${l.name}" data-color="${c}" style="width:16px; height:16px; border-radius:50%; background:${c}; cursor:pointer; border:${l.color===c?'2.5px solid white':'none'}; box-shadow:0 2px 5px rgba(0,0,0,0.1);"></div>
-                       `).join('')}
+                       ${paletteHtml}
                     </div>
                     <button data-action="TOGGLE_PALETTE" data-name="${l.name}" style="background:none; border:none; color:${openPaletteLevel===l.name?'var(--primary)':'#bbb'}; width:22px; height:22px; cursor:pointer; transition:all 0.2s;">
                        ${ICONS.PALETTE}
@@ -1257,12 +1256,7 @@ export const initAdmin = (container) => {
             <!-- SLOTS AREA -->
             <div style="display:${l.collapsed ? 'none' : 'block'}; padding:0 20px 20px 20px;">
               <div style="display:flex; flex-wrap:wrap; gap:8px;">
-                ${l.slots.map(s => `
-                  <div style="padding:10px 14px; background:#f8f9fa; border-radius:12px; font-size:0.7rem; font-weight:900; color:var(--primary); display:flex; align-items:center; gap:8px; border:1px solid #f0f0f0;">
-                    ${s.label}
-                    <button data-action="DELETE_SLOT" data-levelname="${l.name}" data-label="${s.label}" style="border:none; background:none; color:#ddd; font-size:1.1rem; cursor:pointer; line-height:1; font-weight:400;">×</button>
-                  </div>
-                `).join('')}
+                ${slotsHtml}
                 ${!l.slots.length ? '<div style="font-size:0.7rem; color:#bbb; font-weight:700; width:100%; text-align:center; padding:20px;">No hay puestos asignados</div>' : ''}
               </div>
             </div>
@@ -1749,13 +1743,19 @@ export const initAdmin = (container) => {
           const todayCount = gMovs.filter(m => new Date(m.timestamp) >= todayStart).length;
           const lastActive = gMovs.length > 0 ? new Date(gMovs[0].timestamp) : null;
           const activeNow = lastActive && (now - lastActive) < 12 * 60 * 60 * 1000;
+          
+          const photoHtml = p.photo ? '<img src="' + p.photo + '" style="width:100%; height:100%; object-fit:cover;">' : '<div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#ccc; font-weight:900; background:#eee;">' + p.name.charAt(0) + '</div>';
+          
+          const dotHtml = activeNow ? '<div style="position:absolute; bottom:4px; right:4px; width:12px; height:12px; background:#22c55e; border:2px solid white; border-radius:50%; box-shadow:0 0 10px rgba(34,197,94,0.5);"></div>' : '';
+          
+          const pinHtml = p.pin ? 'PIN: <span style="color:var(--primary);">' + p.pin + '</span>' : '<span style="color:#e63946;">PENDIENTE ACTIVACIÓN</span>';
 
           return `
             <div style="background:white; padding:15px 20px; border-radius:24px; display:flex; justify-content:space-between; align-items:center; border:1.5px solid #f8f8f8; box-shadow:0 10px 30px rgba(0,0,0,0.02); box-sizing:border-box; width:100%;">
               <div style="display:flex; align-items:center; gap:15px;">
                 <div style="width:60px; height:60px; border-radius:50%; background:#f0f0f0; overflow:hidden; border:2px solid #fff; box-shadow:0 5px 15px rgba(0,0,0,0.05); position:relative;">
-                  ${p.photo ? `<img src="${p.photo}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#ccc; font-weight:900; background:#eee;">${p.name.charAt(0)}</div>`}
-                  ${activeNow ? `<div style="position:absolute; bottom:4px; right:4px; width:12px; height:12px; background:#22c55e; border:2px solid white; border-radius:50%; box-shadow:0 0 10px rgba(34,197,94,0.5);"></div>` : ''}
+                  ${photoHtml}
+                  ${dotHtml}
                 </div>
                 <div>
                   <div style="display:flex; align-items:center; gap:8px;">
@@ -1763,7 +1763,7 @@ export const initAdmin = (container) => {
                      <div style="font-size:0.5rem; background:#f0f0f0; padding:2px 8px; border-radius:10px; font-weight:800; color:#999; text-transform:uppercase;">${p.shift}</div>
                   </div>
                   <div style="font-size:0.7rem; color:#bbb; font-weight:700; margin-top:2px;">
-                     ${p.pin ? `PIN: <span style="color:var(--primary);">${p.pin}</span>` : '<span style="color:#e63946;">PENDIENTE ACTIVACIÓN</span>'} · 
+                     ${pinHtml} · 
                      <span style="color:#22c55e; font-weight:800;">${todayCount} movs hoy</span>
                   </div>
                 </div>
@@ -1993,15 +1993,20 @@ export const initAdmin = (container) => {
 
       <div style="display:grid; gap:12px;">
         ${(subs || []).map(r => {
-          const daysLeft = Math.ceil((new Date(r.expiry_date) - new Date()) / 86400000)
+          const daysLeft = Math.ceil((new Date(r.expiry_date) - new Date()) / 86400000);
           const expiryBadge = daysLeft <= 5 && daysLeft >= 0
             ? '<span style="background:#fff3cd; color:#856404; font-size:0.5rem; font-weight:900; padding:2px 6px; border-radius:6px; margin-left:6px;">⚠️ ' + daysLeft + 'd</span>'
             : daysLeft < 0
             ? '<span style="background:#ffd6d6; color:#e63946; font-size:0.5rem; font-weight:900; padding:2px 6px; border-radius:6px; margin-left:6px;">VENCIDO</span>'
-            : ''
+            : '';
+            
+          const isComingHtml = r.is_coming ? '<div style="position:absolute; top:0; left:0; background:#F5C518; color:#1a1a2e; padding:4px 12px; font-size:0.55rem; font-weight:900; border-bottom-right-radius:12px; animation: pulse 2s infinite;">EN CAMINO 🚗</div>' : '';
+          const platesHtml = r.plate.split(',').map(p => '<span style="background:#1a1a2e; color:var(--accent); font-size:0.7rem; font-weight:900; padding:4px 10px; border-radius:8px;">' + p.trim() + '</span>').join('');
+          const dateColor = new Date(r.expiry_date) > new Date() ? '#22c55e' : '#e63946';
+
           return `
           <div style="background:white; padding:20px; border-radius:28px; border:1.5px solid ${r.is_coming ? '#F5C518' : '#f0f0f0'}; box-shadow:0 10px 30px rgba(0,0,0,0.03); position:relative; overflow:hidden;">
-             ${r.is_coming ? `<div style="position:absolute; top:0; left:0; background:#F5C518; color:#1a1a2e; padding:4px 12px; font-size:0.55rem; font-weight:900; border-bottom-right-radius:12px; animation: pulse 2s infinite;">EN CAMINO 🚗</div>` : ''}
+             ${isComingHtml}
              
              <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:15px;">
                 <div style="flex:1;">
@@ -2020,13 +2025,13 @@ export const initAdmin = (container) => {
              <div style="background:#fafafa; border-radius:16px; padding:12px; margin-bottom:15px; border:1px solid #f0f0f0;">
                 <div style="font-size:0.5rem; color:#999; font-weight:800; text-transform:uppercase; margin-bottom:4px;">Vehículos Registrados</div>
                 <div style="display:flex; flex-wrap:wrap; gap:6px;">
-                   ${r.plate.split(',').map(p => `<span style="background:#1a1a2e; color:var(--accent); font-size:0.7rem; font-weight:900; padding:4px 10px; border-radius:8px;">${p.trim()}</span>`).join('')}
+                   ${platesHtml}
                 </div>
              </div>
 
              <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid #f0f0f0; pt:15px; margin-top:5px; padding-top:15px;">
                 <div style="font-size:0.65rem; color:#999; font-weight:700;">
-                   Vence: <span style="color:${new Date(r.expiry_date) > new Date() ? '#22c55e' : '#e63946'}; font-weight:900;">${new Date(r.expiry_date).toLocaleDateString()}</span>
+                   Vence: <span style="color:${dateColor}; font-weight:900;">${new Date(r.expiry_date).toLocaleDateString()}</span>
                 </div>
                 <div style="display:flex; gap:10px;">
                    <button data-action="RESIDENT_PAYMENTS" data-id="${r.id}" data-name="${r.resident_name}" style="background:#f4f4f4; border:none; width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#3b82f6;">
@@ -2047,7 +2052,8 @@ export const initAdmin = (container) => {
                 </div>
              </div>
           </div>
-        `).join('')}
+          `;
+        }).join('')}
         ${!subs?.length ? '<div style="text-align:center; padding:100px 20px; color:#ccc; font-weight:900; font-size:0.8rem;">NO HAY RESIDENTES REGISTRADOS</div>' : ''}
       </div>
     </div>`
