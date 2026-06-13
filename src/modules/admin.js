@@ -253,15 +253,15 @@ export const initAdmin = (container) => {
              <div style="max-height:300px; overflow-y:auto; padding:10px; text-align:left;">
                 ${history.map(h => {
                   const bdg = h.status === 'CONFIRMED' ? {c:'#22c55e', bg:'rgba(34,197,94,0.1)', t:'PAGADO'} : h.status === 'PENDING' ? {c:'#f59e0b', bg:'rgba(245,158,11,0.1)', t:'PENDIENTE'} : {c:'#e63946', bg:'rgba(230,57,70,0.1)', t:'RECHAZADO'};
-                  return \`
+                  return `
                   <div style="padding:15px; border-bottom:1px solid #f8f8f8; display:flex; justify-content:space-between; align-items:center;">
                      <div>
-                        <div style="font-size:0.8rem; font-weight:900;">$\${h.amount.toFixed(2)}</div>
-                        <div style="font-size:0.55rem; color:#bbb;">\${new Date(h.payment_date).toLocaleDateString()} · \${h.method}</div>
+                        <div style="font-size:0.8rem; font-weight:900;">$${h.amount.toFixed(2)}</div>
+                        <div style="font-size:0.55rem; color:#bbb;">${new Date(h.payment_date).toLocaleDateString()} · ${h.method}</div>
                      </div>
-                     <div style="font-size:0.6rem; color:\${bdg.c}; font-weight:900; background:\${bdg.bg}; padding:4px 8px; border-radius:6px;">\${bdg.t}</div>
+                     <div style="font-size:0.6rem; color:${bdg.c}; font-weight:900; background:${bdg.bg}; padding:4px 8px; border-radius:6px;">${bdg.t}</div>
                   </div>
-                \`}).join('') || '<div style="padding:40px; text-align:center; color:#ccc;">No hay historial de pagos</div>'}
+                `}).join('') || '<div style="padding:40px; text-align:center; color:#ccc;">No hay historial de pagos</div>'}
              </div>
            `
          };
@@ -1443,7 +1443,7 @@ export const initAdmin = (container) => {
            ${excedents.length ? excedents.map(m => `
              <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; border-bottom:1px solid #f9f9f9;">
                 <div>
-                   <div style="font-size:0.75rem; font-weight:900; color:var(--primary);">${m.category === 'RESIDENTE' ? '⭐ ' : ''}${m.plate || '---'} <span style="font-size:0.55rem; color:#999; font-weight:800;">${m.type === 'MENSUALIDAD' ? '(Mensualidad)' : '(Excedente)'}</span></div>
+                  <div style="font-size:0.75rem; font-weight:900; color:var(--primary);">${m.category === 'RESIDENTE' ? '⭐ ' : ''}${m.plate || '---'} <span style="font-size:0.55rem; color:#999; font-weight:800;">${m.type === 'MENSUALIDAD' ? '(Mensualidad)' : '(Excedente)'}</span></div>
                    <div style="font-size:0.55rem; color:#bbb; font-weight:700;">${new Date(m.timestamp).toLocaleTimeString()}</div>
                 </div>
                 <div style="font-size:0.9rem; font-weight:900; color:#22c55e;">+$${m.amount.toFixed(2)}</div>
@@ -1493,78 +1493,8 @@ export const initAdmin = (container) => {
                    <div style="font-size:1rem; font-weight:900; color:var(--primary);">Notificaciones Push</div>
                    <div style="font-size:0.65rem; color:#999; font-weight:700; margin-top:2px;">Activa las alertas en este dispositivo</div>
                 </div>
-<<<<<<< HEAD
-              </div>
-            </div>
-            <div style="display:flex;gap:10px;align-items:center;">
-              ${p.phone ? `
-                <a href="https://wa.me/${p.phone.replace(/\D/g,'')}?text=${encodeURIComponent('Hola ' + p.name + ', bienvenido a Sloty. Tu acceso para ' + state.buildingName + ' es:\n\nCódigo Edificio: ' + state.buildingCode + '\nTu PIN: ' + p.pin + '\n\nIngresa aquí: ' + window.location.origin + '/?building=' + state.buildingCode)}" 
-                   target="_blank" style="text-decoration:none;background:#25D366;color:white;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.2rem;font-weight:900;">
-                   W
-                </a>
-              ` : ''}
-              <button data-action="DELETE_GUARD" data-id="${p.id}" style="color:#e63946;background:none;border:none;font-weight:900;cursor:pointer;font-size:0.75rem;">Eliminar</button>
-            </div>
-          </div>`
-        }).join('<p style="text-align:center;color:#bbb;padding:20px;">No hay guardias registrados.</p>')}
-      </div>
-    </div>`
-
-
-  const renderAudit = (state) => `
-    <div style="padding:20px;">
-      <h3 style="font-weight:900;margin-bottom:20px;">BITÁCORA DE AUDITORÍA</h3>
-      <div style="background:white;border-radius:20px;overflow:hidden;border:1px solid #eee;">
-        <div style="padding:15px;background:#fcfcfc;font-size:0.75rem;font-weight:900;color:#999;border-bottom:1px solid #eee;">ACTIVIDADES RECIENTES</div>
-        <div style="max-height:500px;overflow-y:auto;">
-          ${(state.auditLog || []).map(a => `
-            <div style="padding:15px;border-bottom:1px solid #f9f9f9;">
-              <div style="font-size:0.85rem;font-weight:700;color:var(--primary);">${a.action}</div>
-              <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:0.7rem;color:#999;">
-                <span>👤 ${a.user}</span>
-                <span>📅 ${new Date(a.timestamp).toLocaleString()}</span>
-              </div>
-            </div>
-          `).join(state.auditLog?.length ? '' : '<p style="padding:20px;text-align:center;color:#bbb;">No hay registros de auditoría.</p>')}
-        </div>
-      </div>
-    </div>`
-
-  const renderFinance = (state) => {
-    const movs = state.movements || []
-    const paid = movs.filter(m => m.paymentStatus === 'PAGADO')
-    const debts = movs.filter(m => m.type === 'SALIDA' && m.paymentStatus === 'DEUDA')
-    
-    const usd = paid.filter(m => m.payMethod === 'EFECTIVO_USD').length
-    const bs = paid.filter(m => m.payMethod === 'EFECTIVO_BS').length
-    const pm = paid.filter(m => m.payMethod === 'PAGO_MOVIL').length
-
-    // Today metrics
-    const now = new Date()
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
-    const startOfWeek = new Date(startOfToday - now.getDay() * 86400000).getTime()
-
-    const dailyIncome = paid.filter(m => new Date(m.timestamp).getTime() >= startOfToday).reduce((a, b) => a + (b.amount || 0), 0)
-    const weeklyIncome = paid.filter(m => new Date(m.timestamp).getTime() >= startOfWeek).reduce((a, b) => a + (b.amount || 0), 0)
-
-    // Projected income (extrapolation)
-    const rawDaysElapsed = now.getDay() + (now.getHours() / 24)
-    const daysElapsed = rawDaysElapsed === 0 ? 0.1 : rawDaysElapsed
-    const projectedWeekly = Math.round((weeklyIncome / daysElapsed) * 7)
-
-    return `
-      <div style="padding:20px;">
-        <h3 style="font-weight:900;margin-bottom:20px;">RENDIMIENTO FINANCIERO</h3>
-        
-        <!-- MÉTRICAS EN TIEMPO REAL -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
-          <div style="background:var(--primary);color:white;padding:15px;border-radius:15px;text-align:center;box-shadow:0 4px 10px rgba(0,0,0,0.1);">
-            <div style="font-size:1.6rem;font-weight:900;">$${dailyIncome}.00</div>
-            <div style="font-size:0.6rem;font-weight:900;letter-spacing:1px;opacity:0.8;margin-top:2px;">INGRESOS DE HOY</div>
-=======
                 <div style="color:#bbb; font-size:1.2rem; font-weight:900;">›</div>
              </div>
->>>>>>> 616fa73df33275d807acb675646c5b13b1de6ce4
           </div>
        </div>`
     }
@@ -1666,7 +1596,7 @@ export const initAdmin = (container) => {
              <div style="display:grid; gap:10px; margin-bottom:15px;">
                ${(state.settings?.customFields || []).map(f => `
                  <div style="background:#f8f9fa; padding:14px 18px; border-radius:14px; display:flex; justify-content:space-between; align-items:center;">
-                   <div><div style="font-size:0.85rem; font-weight:900; color:#1a1a2e;">${f.label}</div><div style="font-size:0.55rem; color:#bbb; font-weight:700; margin-top:2px;">ID: ${f.id}</div></div>
+                   <div style="font-size:0.85rem; font-weight:900; color:#1a1a2e;">${f.label}</div>
                    <button data-action="DELETE_CUSTOM_FIELD" data-id="${f.id}" style="background:rgba(230,57,70,0.1); color:#e63946; border:none; width:32px; height:32px; border-radius:50%; font-weight:900; cursor:pointer;">×</button>
                  </div>
                `).join('') || '<div style="text-align:center; padding:15px; color:#ccc; font-size:0.75rem; border:2px dashed #eee; border-radius:14px;">No hay campos configurados</div>'}
@@ -2154,7 +2084,7 @@ export const initAdmin = (container) => {
                 </div>
              </div>
           </div>
-        `).join('')}
+        `}).join('')}
         ${!subs?.length ? '<div style="text-align:center; padding:100px 20px; color:#ccc; font-weight:900; font-size:0.8rem;">NO HAY RESIDENTES REGISTRADOS</div>' : ''}
       </div>
     </div>`
