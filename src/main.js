@@ -59,12 +59,14 @@ const renderWelcome = () => {
         <button id="btn-goto-login" style="width:100%;padding:20px;background:transparent;color:white;border:2px solid rgba(255,255,255,0.2);border-radius:18px;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:700;cursor:pointer;">
           INICIAR SESIÓN
         </button>
-        <button id="btn-goto-guard-code" style="width:100%;padding:14px;background:transparent;color:rgba(255,255,255,0.75);border:1px solid rgba(255,255,255,0.15);font-family:'Montserrat',sans-serif;font-size:0.85rem;font-weight:700;cursor:pointer;letter-spacing:1px;border-radius:14px;">
-          SOY GUARDIA →
-        </button>
-        <button id="btn-goto-resident-login" style="width:100%;padding:14px;background:rgba(255,255,255,0.05);color:var(--accent);border:1px solid var(--accent);font-family:'Montserrat',sans-serif;font-size:0.85rem;font-weight:900;cursor:pointer;letter-spacing:1px;border-radius:14px;">
-          SOY RESIDENTE 🏠
-        </button>
+        <div style="display:flex; gap:10px; width:100%;">
+          <button id="btn-goto-guard-code" style="flex:1;padding:14px;background:transparent;color:rgba(255,255,255,0.75);border:1px solid rgba(255,255,255,0.15);font-family:'Montserrat',sans-serif;font-size:0.75rem;font-weight:700;cursor:pointer;letter-spacing:1px;border-radius:14px;">
+            SOY GUARDIA →
+          </button>
+          <button id="btn-goto-resident-login" style="flex:1;padding:14px;background:rgba(255,255,255,0.05);color:var(--accent);border:1px solid var(--accent);font-family:'Montserrat',sans-serif;font-size:0.75rem;font-weight:900;cursor:pointer;letter-spacing:1px;border-radius:14px;">
+            SOY RESIDENTE 🏠
+          </button>
+        </div>
         <p aria-hidden="true" tabindex="-1" style="color:rgba(255,255,255,0.35);font-size:0.65rem;font-weight:600;text-align:center;letter-spacing:2px;margin-top:4px;">POWERED BY KREIKA</p>
       </div>
     </div>
