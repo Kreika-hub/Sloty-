@@ -1173,32 +1173,11 @@ export const initAdmin = (container) => {
           </div>
         </div>
 
-        <!-- QUICK FEATURES GRID -->
-        <div style="font-size:0.7rem; font-weight:900; color:var(--primary); margin-bottom:15px; text-transform:uppercase; letter-spacing:1px;">GESTIÓN RÁPIDA</div>
-        <div class="feature-grid-clean">
-            <div class="feature-item-clean" data-action="TAB" data-tab="STRUCTURE">
-              ${ICONS.STRUCTURE} <span>Pisos</span>
-            </div>
-            <div class="feature-item-clean" data-action="TAB" data-tab="PERSONAL">
-              ${ICONS.PERSONAL} <span>Personal</span>
-            </div>
-            <div class="feature-item-clean" data-action="TAB" data-tab="REPORTES">
-              ${ICONS.HISTORY} <span>Reportes</span>
-            </div>
-            <div class="feature-item-clean" data-action="TAB" data-tab="FINANCE">
-              ${ICONS.FINANCE} <span>Caja</span>
-            </div>
-            <div class="feature-item-clean" data-action="TAB" data-tab="SUBS">
-              ${ICONS.SUBS} <span>Mensual</span>
-            </div>
-            <div class="feature-item-clean" data-action="TAB" data-tab="SETTINGS">
-              ${ICONS.SETTINGS}
-              <span>Auditoría</span>
-            </div>
+        <!-- GESTIÓN RÁPIDA REMOVED POR SOLICITUD -->
 
-           <!-- ADS CAROUSEL INSIDE GRID FOR PERFECT WIDTH ALIGNMENT -->
+           <!-- ADS CAROUSEL ALIGNED AL FINAL -->
            ${activeAds.length ? `
-             <div style="grid-column: 1 / -1; margin-top: 10px;">
+             <div style="margin-top: 20px;">
                <div style="font-size:0.7rem; font-weight:900; color:var(--primary); margin-bottom:15px; text-transform:uppercase;">NOTICIAS & ANUNCIOS</div>
                <div class="carousel-container glass-card" style="border-radius:24px; padding:0; height:180px;">
                  <div class="carousel-track" id="main-carousel">
@@ -1207,7 +1186,6 @@ export const initAdmin = (container) => {
                </div>
              </div>
            ` : ''}
-        </div>
 
       </div>`
   }
@@ -1386,8 +1364,10 @@ export const initAdmin = (container) => {
            <div style="font-size:1.4rem; font-weight:900; color:#22c55e;">~$${projection.toFixed(2)}</div>
         </div>
 
-        <!-- GLOBAL INVENTORY -->
-        <div style="font-size:0.7rem; font-weight:900; color:var(--primary); margin-bottom:15px; text-transform:uppercase; letter-spacing:1px;">INVENTARIO GLOBAL</div>
+        <div style="font-size:0.7rem; font-weight:900; color:var(--primary); margin-bottom:15px; text-transform:uppercase; letter-spacing:1px; display:flex; justify-content:space-between;">
+           INVENTARIO GLOBAL
+           <button data-action="TAB" data-tab="REPORTES" style="background:#1a1a2e; color:var(--accent); border:none; padding:4px 12px; border-radius:10px; font-size:0.6rem; font-weight:900; cursor:pointer;">VER REPORTES DE GUARDIA</button>
+        </div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:30px;">
            <div style="background:white; padding:20px; border-radius:24px; border:1px solid #f0f0f0; text-align:center;">
               <div style="font-size:1.6rem; font-weight:900; color:var(--primary);">${successfulCollections}</div>
@@ -1820,6 +1800,13 @@ export const initAdmin = (container) => {
 
   const renderTabContent = async (state) => {
     if (!elMain) return; let html = ''
+    
+    // Non-blocking loading indicator if switching tabs
+    if (!elMain.innerHTML.includes('Cargando...') && elMain.dataset.lastTab !== activeTab) {
+       elMain.innerHTML = `<div style="display:flex; justify-content:center; align-items:center; height:50vh; color:#999; font-weight:900; font-size:0.8rem; letter-spacing:2px;">CARGANDO...</div>`;
+    }
+    elMain.dataset.lastTab = activeTab;
+
     switch(activeTab) {
       case 'HOME': 
         const { data: adsData } = await supabase.from('ads').select('*').order('timestamp', { ascending: false })
@@ -2361,8 +2348,8 @@ export const initAdmin = (container) => {
     const s = getParkingState()
     if (!elMain) renderShell(s)
     renderHeader(s)
+    renderModal() // Update modal immediately so it closes without waiting
     await renderTabContent(s); 
-    renderModal()
     initPlateAdder()
     container.querySelectorAll('.admin-tab-btn').forEach(v => {
       const active = v.dataset.tab === activeTab
