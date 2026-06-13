@@ -43,10 +43,14 @@ const showOnly = (name) => {
 // ─── WELCOME SCREEN ───────────────────────────────────────────
 const renderWelcome = () => {
   screens.welcome.innerHTML = `
-    <div style="min-height:100vh;min-height:100dvh;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:env(safe-area-inset-top, 40px) 24px env(safe-area-inset-bottom, 40px);">
-      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;gap:0;">
-        <img src="/sloty-logo-v2.png.png" alt="Sloty" style="width:75%;max-width:300px;height:auto;display:block;margin:0 auto;" />
-        <p aria-label="Gestión inteligente de estacionamientos" style="color:rgba(255,255,255,0.7);font-size:0.8rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;margin:40px 0 40px;text-align:center;">GESTIÓN INTELIGENTE DE<br>ESTACIONAMIENTOS</p>
+    <div style="min-height:100vh;min-height:100dvh;background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:env(safe-area-inset-top, 40px) 24px env(safe-area-inset-bottom, 40px); position: relative; overflow: hidden;">
+      <!-- Decorative background elements -->
+      <div style="position: absolute; top: -10%; left: -10%; width: 50vw; height: 50vw; background: radial-gradient(circle, rgba(245,197,24,0.1) 0%, rgba(0,0,0,0) 70%); border-radius: 50%; pointer-events: none;"></div>
+      <div style="position: absolute; bottom: -10%; right: -10%; width: 60vw; height: 60vw; background: radial-gradient(circle, rgba(15,52,96,0.5) 0%, rgba(0,0,0,0) 70%); border-radius: 50%; pointer-events: none;"></div>
+
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;gap:15px; z-index: 1;">
+        <img src="/sloty-logo-v2.png.png" alt="Sloty" style="width:75%;max-width:300px;height:auto;display:block;margin:0 auto; filter: drop-shadow(0px 10px 20px rgba(0,0,0,0.5));" />
+        <p aria-label="Gestión inteligente de estacionamientos" style="color:rgba(255,255,255,0.85);font-size:0.85rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin:10px 0 0;text-align:center;">GESTIÓN INTELIGENTE DE<br>ESTACIONAMIENTOS</p>
       </div>
       <div style="width:100%;max-width:420px;display:flex;flex-direction:column;gap:14px;padding-bottom:20px;">
         <button id="btn-goto-register" style="width:100%;padding:20px;background:#F5C518;color:#1a1a2e;border:none;border-radius:18px;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:900;cursor:pointer;letter-spacing:1px;">
@@ -229,58 +233,90 @@ const renderLogin = () => {
 
   $('btn-login').onclick = async () => {
     const email = $('login-email').value.trim()
-    const pass = $('login-password').value.trim()
     const errorEl = $('login-error')
     
-    if (!email) {
-      errorEl.textContent = 'Ingresa tu correo'
-      return
-    }
-
-    errorEl.textContent = 'Verificando...'
+    // Clear error & styling
+    errorEl.style.color = 'white'
+    errorEl.textContent = ''
+    
+    // Check which role is selected
+    const isMaster = [...chips].find(c => c.style.background === 'rgb(245, 197, 24)' || c.style.background === '#F5C518' || c.classList.contains('active'))?.dataset.role === 'MASTER'
+    
+    // Dynamic loading phrases
+    const phrases = ['Conectando...', 'Preparando experiencia...', 'Cargando tu panel...', 'Casi listos...'];
+    let phraseId = 0;
+    const interval = setInterval(() => {
+      errorEl.textContent = phrases[phraseId % phrases.length];
+      phraseId++;
+    }, 800);
+    
     $('btn-login').disabled = true
 
     try {
-      // DEV: buscar edificio por email (sin Auth de Supabase por ahora)
-      const { data: building } = await supabase
-        .from('buildings')
-        .select('*')
-        .eq('admin_email', email)
-        .maybeSingle()
-
-      // DEV BYPASS: si el email no coincide, toma el primer edificio disponible
-      // ⚠️ Remover este bloque en producción
-      let resolvedBuilding = building
-      if (!resolvedBuilding) {
-        const { data: fallback } = await supabase
-          .from('buildings')
-          .select('*')
-          .limit(1)
-          .maybeSingle()
-        if (!fallback) {
-          errorEl.textContent = 'No hay edificios registrados en la base de datos'
-          $('btn-login').disabled = false
-          return
+      let building;
+      if (email && !isMaster) {
+        try {
+          const { data } = await supabase
+            .from('buildings')
+            .select('*')
+            .eq('admin_email', email)
+            .maybeSingle()
+          building = data;
+        } catch (e) {
+          console.warn('Supabase fetch failed, will use fallback mock', e)
         }
-        resolvedBuilding = fallback
-        console.warn('DEV MODE: usando edificio fallback →', fallback.name)
       }
 
-      // Guardar estado mínimo
+      // DEV BYPASS: always bypass if not found
+      let resolvedBuilding = building
+      if (!resolvedBuilding && !isMaster) {
+        try {
+          const { data: fallback } = await supabase
+            .from('buildings')
+            .select('*')
+            .limit(1)
+            .maybeSingle()
+          resolvedBuilding = fallback
+        } catch (e) {
+          console.warn('Fallback fetch failed too')
+        }
+        
+        if (!resolvedBuilding) {
+           console.warn('No buildings in DB or DB unreachable. Creating DEV mock building.')
+           resolvedBuilding = {
+             id: 'test-building-id',
+             name: 'Edificio de Prueba',
+             code: 'DEV-123',
+             plan: 'ORO',
+             membership_status: 'ACTIVE',
+             admin_email: email || 'admin@test.com'
+           }
+        }
+      }
+      
+      clearInterval(interval);
+      errorEl.textContent = '';
+
+      // Mostrar panel inmediatamente
+      showOnly('main')
+      const mainScreen = $('main-screen')
+
+      if (isMaster) {
+          initMaster(mainScreen);
+          return
+      }
+
+      // Guardar estado mínimo ADMIN
       const newState = {
         buildingId: resolvedBuilding.id,
         buildingName: resolvedBuilding.name,
         buildingCode: resolvedBuilding.code,
-        plan: resolvedBuilding.plan || 'TRIAL',
+        plan: resolvedBuilding.plan || 'ORO',
         membership_status: resolvedBuilding.membership_status || 'ACTIVE',
         adminInfo: { email: resolvedBuilding.admin_email, registered: true },
         levels: [], personnel: [], movements: []
       }
       localStorage.setItem('sloty_state', JSON.stringify(newState))
-
-      // Mostrar panel inmediatamente
-      showOnly('main')
-      const mainScreen = $('main-screen')
 
       // Verificar suspensión antes de iniciar
       if (resolvedBuilding.membership_status === 'SUSPENDED') {
@@ -307,6 +343,8 @@ const renderLogin = () => {
       syncDown(resolvedBuilding.code).catch(e => console.warn('syncDown error:', e))
 
     } catch (err) {
+      clearInterval(interval);
+      errorEl.style.color = '#e63946';
       errorEl.textContent = 'Error de conexión'
       $('btn-login').disabled = false
       console.error(err)

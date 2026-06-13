@@ -732,7 +732,9 @@ export const initGuard = (container, guardName = 'Guardia') => {
           <div style="font-size:0.6rem;font-weight:900;color:#999;margin-bottom:10px;">¿CUÁNDO PAGARÁ?</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px; margin-bottom:12px;">
             <button class="timing-chip timing-active" data-timing="EXIT" style="padding:12px;border-radius:10px;border:none;font-weight:900;">AL SALIR</button>
-            <button class="timing-chip" data-timing="PRE" style="padding:12px;border-radius:10px;border:none;font-weight:900;">PRE-PAGO ($${state.settings?.baseRate || 1})</button>
+            <button class="timing-chip" data-timing="PRE" style="padding:12px;border-radius:10px;border:none;font-weight:900;">PRE-PAGO ($${
+               (state.settings?.tariffs?.filter(t => t.active).length > 0) ? state.settings.tariffs.filter(t => t.active)[0].baseRate : (state.settings?.baseRate || 1)
+            })</button>
           </div>
           
           <div id="prepay-selector" style="display:none; transition: all 0.3s;">
@@ -811,17 +813,36 @@ export const initGuard = (container, guardName = 'Guardia') => {
   const renderExitForm = () => {
     const entryTime = new Date(selectedSlot.entryTime)
     const hoursStayed = (new Date() - entryTime) / 3600000
-    const freeHours = state.settings?.freeHours || 8
     let totalOwed = 0
+    let appliedTariffName = 'CORTESÍA / PAGADO'
     
-    if (hoursStayed > freeHours) {
-       totalOwed = state.settings?.baseRate || 1
+    const activeTariffs = state.settings?.tariffs?.filter(t => t.active) || [];
+    
+    if (activeTariffs.length > 0) {
+       for (let t of activeTariffs) {
+           if (hoursStayed > t.freeHours || selectedSlot.status === 'DEBT') {
+               if (t.baseRate >= totalOwed) {
+                   totalOwed = t.baseRate;
+                   appliedTariffName = t.name;
+               }
+           }
+       }
+    } else {
+       const freeHours = state.settings?.freeHours || 8;
+       if (hoursStayed > freeHours || selectedSlot.status === 'DEBT') {
+           totalOwed = state.settings?.baseRate || 1;
+           appliedTariffName = 'TARIFA BASE';
+       }
     }
     
     if (selectedSlot.paymentStatus === 'PAGADO') {
-       totalOwed = Math.max(0, totalOwed - (state.settings?.baseRate || 1))
+       totalOwed = 0;
+       appliedTariffName = 'PAGADO EN PRE-PAGO';
     }
-    if (selectedSlot.status === 'DEBT') totalOwed = 1 // Already marked as debt
+    if (selectedSlot.status === 'DEBT' && totalOwed === 0 && selectedSlot.paymentStatus !== 'PAGADO') {
+       totalOwed = activeTariffs.length > 0 ? activeTariffs[0].baseRate : (state.settings?.baseRate || 1);
+       appliedTariffName = 'PAGO DE DEUDA';
+    }
     
     return `
     <div style="padding:20px;padding-bottom:100px;">
@@ -838,7 +859,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
         <div style="background:#f8f9fa; border-radius:16px; padding:15px; margin-bottom:24px; text-align:center; border:2px solid ${totalOwed > 0 ? '#e63946' : '#22c55e'};">
            <div style="font-size:0.6rem; font-weight:900; color:#999; text-transform:uppercase;">MONTO A COBRAR</div>
            <div style="font-size:2.2rem; font-weight:950; color:${totalOwed > 0 ? '#e63946' : '#22c55e'};">$${totalOwed.toFixed(2)}</div>
-           ${totalOwed > 0 ? `<div style="font-size:0.6rem; font-weight:700; color:#e63946; margin-top:4px;">EXCESO DE TIEMPO (+8H)</div>` : `<div style="font-size:0.6rem; font-weight:700; color:#22c55e; margin-top:4px;">CORTESÍA / PAGADO</div>`}
+           <div style="font-size:0.6rem; font-weight:700; color:${totalOwed > 0 ? '#e63946' : '#22c55e'}; margin-top:4px;">${appliedTariffName.toUpperCase()}</div>
         </div>
 
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:25px; ${totalOwed === 0 ? 'display:none;' : ''}">

@@ -67,26 +67,27 @@ if (!self.define) {
     });
   };
 }
-define(['./workbox-4874b91b'], (function (workbox) { 'use strict';
+define(['./workbox-98d2c6d7'], (function (workbox) { 'use strict';
 
-	self.skipWaiting();
-	workbox.clientsClaim();
-	workbox.registerRoute(({
-	  url
-	}) => url.hostname.includes("supabase.co"), new workbox.NetworkOnly(), 'GET');
-	workbox.registerRoute(/^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/i, new workbox.CacheFirst({
-	  "cacheName": "google-fonts",
-	  plugins: [new workbox.ExpirationPlugin({
-	    maxEntries: 10,
-	    maxAgeSeconds: 31536000
-	  })]
-	}), 'GET');
-	workbox.registerRoute(/^https:\/\/(cdnjs\.cloudflare\.com|unpkg\.com)\/.*/i, new workbox.StaleWhileRevalidate({
-	  "cacheName": "cdn-libs",
-	  plugins: [new workbox.ExpirationPlugin({
-	    maxEntries: 10,
-	    maxAgeSeconds: 2592000
-	  })]
-	}), 'GET');
+  importScripts("/push-sw.js");
+  self.skipWaiting();
+  workbox.clientsClaim();
+  workbox.registerRoute(({
+    url
+  }) => url.hostname.includes("supabase.co"), new workbox.NetworkOnly(), 'GET');
+  workbox.registerRoute(/^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/i, new workbox.CacheFirst({
+    "cacheName": "google-fonts",
+    plugins: [new workbox.ExpirationPlugin({
+      maxEntries: 10,
+      maxAgeSeconds: 31536000
+    })]
+  }), 'GET');
+  workbox.registerRoute(/^https:\/\/(cdnjs\.cloudflare\.com|unpkg\.com)\/.*/i, new workbox.StaleWhileRevalidate({
+    "cacheName": "cdn-libs",
+    plugins: [new workbox.ExpirationPlugin({
+      maxEntries: 10,
+      maxAgeSeconds: 2592000
+    })]
+  }), 'GET');
 
 }));

@@ -446,22 +446,50 @@ export const hasFeature = (featureKey) => {
 }
 
 export const showToast = (message, type = 'info') => {
+  // Intentar usar Notificaciones nativas OS (Push) si están permitidas
+  if ('Notification' in window && Notification.permission === 'granted' && navigator.serviceWorker) {
+    navigator.serviceWorker.ready.then(reg => {
+      reg.showNotification('Sloty', {
+        body: message,
+        icon: '/icons/pwa-192x192.png',
+        badge: '/icons/pwa-192x192.png',
+        vibrate: type === 'error' ? [200, 100, 200] : [100]
+      });
+    }).catch(e => renderFallbackToast(message, type));
+    return;
+  }
+  
+  renderFallbackToast(message, type);
+}
+
+const renderFallbackToast = (message, type) => {
   const existing = document.getElementById('sloty-toast')
   if (existing) existing.remove()
   const toast = document.createElement('div')
   toast.id = 'sloty-toast'
   const colors = {
-    info:    { bg: '#1a1a2e', color: '#F5C518' },
+    info:    { bg: '#333333', color: '#ffffff' },
     success: { bg: '#22c55e', color: 'white'   },
     error:   { bg: '#e63946', color: 'white'   }
   }
   const { bg, color } = colors[type] || colors.info
-  toast.style.cssText = `position:fixed; bottom:100px; left:50%; 
+  // Estilo más acorde a notificaciones Push de Android/iOS (burbuja flotante estándar)
+  toast.style.cssText = `position:fixed; top:20px; left:50%; width:90%; max-width:400px;
     transform:translateX(-50%); background:${bg}; color:${color}; 
-    padding:12px 24px; border-radius:20px; font-weight:900; 
-    font-size:0.75rem; z-index:9999; 
-    box-shadow:0 8px 25px rgba(0,0,0,0.3); pointer-events:none;`
-  toast.textContent = message
+    padding:16px; border-radius:12px; font-weight:600; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size:0.9rem; z-index:9999; display:flex; align-items:center; gap:12px;
+    box-shadow:0 4px 12px rgba(0,0,0,0.15); pointer-events:none; transition: opacity 0.3s ease;`
+  
+  toast.innerHTML = `
+    <img src="/icons/pwa-192x192.png" style="width:30px; height:30px; border-radius:6px; object-fit:contain; background:black;" />
+    <div style="flex:1;">
+      <div style="font-size:0.75rem; opacity:0.8; margin-bottom:2px;">Sloty</div>
+      <div>${message}</div>
+    </div>
+  `
   document.body.appendChild(toast)
-  setTimeout(() => toast.remove(), 3000)
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    setTimeout(() => toast.remove(), 300)
+  }, 4000)
 }
