@@ -815,6 +815,34 @@ export const initAdmin = (container) => {
       const sid = btn.dataset.id
       const name = btn.dataset.name
       const { data: pays } = await supabase.from('payments').select('*').eq('subscription_id', sid).order('payment_date', { ascending: false })
+      
+      const paysWithProofs = await Promise.all((pays || []).map(async p => {
+        let proofHtml = '';
+        const { data: proofs } = await supabase
+          .from('payment-proofs')
+          .select('file_path, file_name')
+          .eq('payment_id', p.id)
+          .limit(1);
+
+        if (proofs && proofs.length > 0) {
+          const { data: urlData } = await supabase.storage
+            .from('payment-proofs')
+            .createSignedUrl(proofs[0].file_path, 3600);
+
+          if (urlData?.signedUrl) {
+            proofHtml = `
+              <a href="${urlData.signedUrl}" target="_blank"
+                 style="display:inline-flex; align-items:center; gap:6px;
+                        background:#E6F1FB; color:#185FA5; border-radius:50px;
+                        padding:5px 12px; font-size:0.65rem; font-weight:900;
+                        text-decoration:none; margin-top:8px;">
+                📎 Ver comprobante
+              </a>`;
+          }
+        }
+        return { ...p, proofHtml };
+      }));
+
       const l = document.getElementById('modal-layer')
       l.style.pointerEvents = 'auto'
       const ML = { EFECTIVO: '💵 Efectivo', PAGO_MOVIL: '📱 Pago Móvil', TRANSFERENCIA: '🏦 Transferencia' }
@@ -828,35 +856,14 @@ export const initAdmin = (container) => {
               </div>
               <button data-action="CANCEL_MODAL" style="background:#f4f4f4;border:none;width:36px;height:36px;border-radius:50%;font-size:1.2rem;cursor:pointer;">×</button>
             </div>
-            ${!pays?.length ? '<div style="text-align:center;padding:40px;color:#bbb;font-size:0.85rem;font-weight:700;">Sin reportes de pago</div>' : pays.map(p => `
+            ${!paysWithProofs.length ? '<div style="text-align:center;padding:40px;color:#bbb;font-size:0.85rem;font-weight:700;">Sin reportes de pago</div>' : paysWithProofs.map(p => `
               <div style="background:${p.status==='CONFIRMED'?'#f0fdf4':p.status==='REJECTED'?'#fff1f2':'#fafafa'};border:1.5px solid ${p.status==='CONFIRMED'?'#86efac':p.status==='REJECTED'?'#fca5a5':'#e5e7eb'};border-radius:20px;padding:18px;margin-bottom:12px;">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
                   <div>
                     <div style="font-weight:900;color:#1a1a2e;font-size:1rem;">$${p.amount}</div>
                     <div style="font-size:0.65rem;color:#666;font-weight:700;margin-top:3px;">${ML[p.method]||p.method} · ${new Date(p.payment_date).toLocaleDateString()}</div>
                     ${p.reference ? `<div style="font-size:0.6rem;color:#999;font-weight:700;">Ref: ${p.reference}</div>` : ''}
-                    ${await (async () => {
-                      const { data: proofs } = await supabase
-                        .from('payment-proofs')
-                        .select('file_path, file_name')
-                        .eq('payment_id', p.id)
-                        .limit(1);
-
-                      if (!proofs || proofs.length === 0) return '';
-
-                      const { data: urlData } = await supabase.storage
-                        .from('payment-proofs')
-                        .createSignedUrl(proofs[0].file_path, 3600);
-
-                      return urlData?.signedUrl ? `
-                        <a href="${urlData.signedUrl}" target="_blank"
-                           style="display:inline-flex; align-items:center; gap:6px;
-                                  background:#E6F1FB; color:#185FA5; border-radius:50px;
-                                  padding:5px 12px; font-size:0.65rem; font-weight:900;
-                                  text-decoration:none; margin-top:8px;">
-                          📎 Ver comprobante
-                        </a>` : '';
-                    })()}
+                    ${p.proofHtml}
                   </div>
                   <span style="background:${p.status==='CONFIRMED'?'#22c55e':p.status==='REJECTED'?'#e63946':'#f59e0b'};color:white;padding:4px 10px;border-radius:20px;font-size:0.55rem;font-weight:900;">${p.status==='CONFIRMED'?'CONFIRMADO':p.status==='REJECTED'?'RECHAZADO':'PENDIENTE'}</span>
                 </div>
