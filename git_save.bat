@@ -1,3 +1,3 @@
 git add .
-git commit -m "Sistema de membresias completo, control de trial y expediente maestro"
+git commit -m "Mejoras de UI en anuncios y correccion de aspect ratio"
 git push origin main

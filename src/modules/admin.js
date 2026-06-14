@@ -2168,7 +2168,10 @@ export const initAdmin = (container) => {
 
     switch(activeTab) {
       case 'HOME': 
-        const { data: adsData } = await supabase.from('ads').select('*').order('timestamp', { ascending: false })
+        const { data: adsData } = await supabase.from('ads')
+          .select('*')
+          .or(`building_id.is.null,building_id.eq.${state.buildingId}`)
+          .order('timestamp', { ascending: false })
         html = await renderHome(state, adsData || []); 
         break
       case 'SUBS': html = await renderMonthlySystem(state); break

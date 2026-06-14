@@ -288,7 +288,14 @@ export const initMaster = (container) => {
     },
     ADD_AD: async (imgData) => {
       if(!imgData) return
-      await supabase.from('ads').insert({ image_url: imgData, active: true })
+      const target = document.getElementById('ad-target-bld')?.value
+      const bId = target === 'GLOBAL' ? null : target
+
+      await supabase.from('ads').insert({ 
+        image_url: imgData, 
+        active: true,
+        building_id: bId 
+      })
       render()
     },
     TOGGLE_AD: async (btn) => {
@@ -829,23 +836,30 @@ export const initMaster = (container) => {
       </div>`;
   }
 
-  const renderAds = (ads = []) => `
+  const renderAds = (ads = [], buildings = []) => `
     <div style="padding:20px; padding-bottom:100px;">
       <h3 style="color:white; font-weight:900; margin-bottom:8px;">GESTIÓN DE ANUNCIOS</h3>
       <p style="color:rgba(255,255,255,0.4); font-size:0.65rem; line-height:1.4; margin-bottom:20px;">
-        Los anuncios se mostrarán en el carrusel principal de todos los usuarios.
+        Los anuncios se mostrarán en el carrusel principal de los usuarios según la segmentación.
       </p>
 
       <!-- UPLOAD AREA -->
       <div style="background:rgba(255,255,255,0.06); padding:24px; border-radius:24px; border:1px dashed rgba(255,255,255,0.2); text-align:center; margin: 0 10px 30px 10px;">
         <div style="font-size:2rem; margin-bottom:10px;">📸</div>
-        <div style="color:white; font-weight:900; font-size:0.9rem; margin-bottom:4px;">Subir Nueva Imagen</div>
-        <div style="color:#F5C518; font-weight:700; font-size:0.6rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:15px;">Tamaño ideal: 800x350 px</div>
+        <div style="color:white; font-weight:900; font-size:0.9rem; margin-bottom:12px;">Nueva Imagen Publicitaria</div>
         
+        <div style="margin-bottom:15px; text-align:left;">
+           <label style="color:#999;font-size:0.55rem;font-weight:900;display:block;margin-bottom:6px;text-transform:uppercase;">Segmentación (Destino)</label>
+           <select id="ad-target-bld" style="width:100%; padding:12px; border-radius:10px; border:none; background:rgba(255,255,255,0.1); color:white; font-family:'Montserrat',sans-serif; font-size:0.8rem; font-weight:700;">
+              <option value="GLOBAL">🌎 Global (Todos los edificios)</option>
+              ${buildings.map(b => `<option value="${b.id}">🏢 ${b.name}</option>`).join('')}
+           </select>
+        </div>
+
         <input type="file" id="ad-file-input" accept="image/*" style="display:none;">
         <button onclick="document.getElementById('ad-file-input').click()" 
           style="background:#F5C518; color:#1a1a2e; border:none; padding:12px 24px; border-radius:12px; font-weight:900; font-size:0.8rem; cursor:pointer; width:100%;">
-          SELECCIONAR DESDE TELÉFONO
+          SUBIR Y PUBLICAR
         </button>
       </div>
 
@@ -906,8 +920,11 @@ export const initMaster = (container) => {
       html = renderMemberships(enrichedBld, { proofs: proofs || [] })
     }
     else if (activeTab === 'ADS') {
-      const { data: ads } = await supabase.from('ads').select('*').order('timestamp', { ascending: false })
-      html = renderAds(ads || [])
+      const [ { data: ads }, { data: bld } ] = await Promise.all([
+        supabase.from('ads').select('*').order('timestamp', { ascending: false }),
+        supabase.from('buildings').select('id, name').order('name')
+      ])
+      html = renderAds(ads || [], bld || [])
       
       // Attach file input listener
       setTimeout(() => {
