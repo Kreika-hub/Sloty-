@@ -1,3 +1,3 @@
 git add .
-git commit -m "Mejoras de UI en anuncios y correccion de aspect ratio"
+git commit -m "Correccion de flujo de login redundante y mejoras de UI"
 git push origin main

@@ -117,9 +117,18 @@ const renderGuardBuildingCode = () => {
       $('btn-submit-guard-code').textContent = 'CONTINUAR'
       return
     }
-    // Save minimal state for syncDown
-    const newState = { buildingId: data.id, buildingName: data.name, buildingCode: data.code, levels: [], personnel: [], movements: [] }
-    localStorage.setItem('sloty_state', JSON.stringify(newState))
+    // Save state for persistence and sync
+    localStorage.setItem('sloty_active_building', data.code)
+    localStorage.setItem('sloty_building_id', data.id)
+    localStorage.setItem('sloty_building_name', data.name)
+    
+    localStorage.setItem('sloty_state', JSON.stringify({ 
+      buildingId: data.id, 
+      buildingName: data.name, 
+      buildingCode: data.code, 
+      levels: [], personnel: [], movements: [] 
+    }))
+
     await syncDown(data.code)
     setDevRole('GUARD')
     renderGuardPin()
