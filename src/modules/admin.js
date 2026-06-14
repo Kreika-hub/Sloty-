@@ -375,33 +375,7 @@ export const initAdmin = (container) => {
        render();
     },
     SAVE_TARIFFS: () => {
-      const state = getParkingState()
-      if (!state.settings) state.settings = {}
-      if (!state.settings.tariffs || !Array.isArray(state.settings.tariffs)) {
-        state.settings.tariffs = []
-      }
-      // Leer inputs AHORA antes de cualquier render
-      const inputs = Array.from(document.querySelectorAll('.tariff-input'))
-      inputs.forEach(inp => {
-        const idx = parseInt(inp.dataset.idx)
-        const field = inp.dataset.field
-        const val = field === 'name' ? inp.value : parseFloat(inp.value) || 0
-        if (state.settings.tariffs[idx]) {
-          state.settings.tariffs[idx][field] = val
-        }
-      })
-      if (state.settings.tariffs.length > 0) {
-        state.settings.freeHours = state.settings.tariffs[0].freeHours
-        state.settings.baseRate = state.settings.tariffs[0].baseRate
-      }
-      saveParkingState(state)
-      logAudit('Configuró las tarifas del estacionamiento')
-      pendingAction = {
-        type: 'CUSTOM_MODAL',
-        title: '✅ TARIFAS GUARDADAS',
-        content: `<p style="font-weight:700; color:#666; font-size:0.9rem;">Cambios actualizados correctamente.</p>`
-      }
-      render()
+      // Función deprecada intencionalmente
     },
 
     SYNC: async () => {
@@ -1849,37 +1823,30 @@ export const initAdmin = (container) => {
              
              <hr style="border:0; border-top:1px solid #eee; margin:20px 0;">
              
-             <div style="font-size:0.7rem; font-weight:900; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">REGLAS DE COBRO ACTIVAS</div>
-             <div style="font-size:0.65rem; color:#bbb; font-weight:700; margin-bottom:20px;">Estas reglas se evaluarán automáticamente cuando el guardia registre la salida de un vehículo.</div>
+             <div style="font-size:0.7rem; font-weight:900; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">REGLAS DE COBRO GUARDADAS</div>
+             <div style="font-size:0.65rem; color:#bbb; font-weight:700; margin-bottom:20px;">Estas reglas aplican automáticamente. Para modificarlas, elimina la regla usando la ✕ roja y crea una nueva arriba.</div>
              
              <div style="display:grid; gap:12px; margin-bottom:20px;" id="tariffs-container">
                 ${tariffs.length === 0 ? '<div style="text-align:center; padding:15px; color:#ccc; font-size:0.75rem; border:2px dashed #eee; border-radius:14px;">No hay tarifas configuradas</div>' : ''}
                 ${tariffs.map((t, idx) => `
                   <div style="background:${t.active ? '#f0fdf4' : '#fafafa'}; border:1.5px solid ${t.active ? '#bbf7d0' : '#eee'}; padding:15px; border-radius:16px; position:relative;">
-                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-                        <input type="text" class="tariff-input" data-field="name" data-idx="${idx}" value="${t.name}" style="font-size:0.9rem; font-weight:900; color:${t.active ? '#166534' : '#999'}; background:transparent; border:none; outline:none; border-bottom:1px dashed #ccc; padding-bottom:2px;">
-                        <div style="display:flex; gap:10px; align-items:center;">
-                           <button data-action="TOGGLE_TARIFF" data-idx="${idx}" style="background:none; border:none; color:${t.active ? '#22c55e' : '#ccc'}; cursor:pointer; padding:0; display:flex; align-items:center;">
+                     <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div>
+                          <div style="font-size:0.95rem; font-weight:900; color:${t.active ? '#166534' : '#999'}; margin-bottom:4px; text-transform:uppercase;">${t.name}</div>
+                          <div style="font-size:0.75rem; color:${t.active ? '#15803d' : '#bbb'}; font-weight:900; letter-spacing:0.5px;">
+                             ${t.freeHours} hrs gratis &nbsp;•&nbsp; Tarifa: $${t.baseRate}
+                          </div>
+                        </div>
+                        <div style="display:flex; gap:12px; align-items:center;">
+                           <button data-action="TOGGLE_TARIFF" data-idx="${idx}" style="background:none; border:none; cursor:pointer; padding:0; display:flex; align-items:center;">
                               <svg width="40" height="24" viewBox="0 0 36 20" fill="${t.active ? '#22c55e' : '#e5e7eb'}" rx="10"><rect width="36" height="20" rx="10"/><circle cx="${t.active ? '26' : '10'}" cy="10" r="7" fill="white"/></svg>
                            </button>
-                           <button data-action="DELETE_TARIFF" data-idx="${idx}" style="background:rgba(230,57,70,0.1); color:#e63946; border:none; width:30px; height:30px; border-radius:10px; font-weight:900; cursor:pointer;" title="Eliminar tarifa">×</button>
-                        </div>
-                     </div>
-                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-                        <div>
-                           <label style="font-size:0.55rem; font-weight:800; color:#999; display:block; margin-bottom:4px;">GRATIS (Horas)</label>
-                           <input type="number" class="tariff-input" data-field="freeHours" data-idx="${idx}" value="${t.freeHours}" ${!t.active ? 'disabled' : ''} style="width:100%; padding:10px; border:1.5px solid rgba(0,0,0,0.05); border-radius:10px; font-weight:900; font-family:var(--font); background:${t.active ? 'white' : 'rgba(255,255,255,0.5)'}; outline:none;">
-                        </div>
-                        <div>
-                           <label style="font-size:0.55rem; font-weight:800; color:#999; display:block; margin-bottom:4px;">MONTO ($)</label>
-                           <input type="number" step="0.5" class="tariff-input" data-field="baseRate" data-idx="${idx}" value="${t.baseRate}" ${!t.active ? 'disabled' : ''} style="width:100%; padding:10px; border:1.5px solid rgba(0,0,0,0.05); border-radius:10px; font-weight:900; font-family:var(--font); background:${t.active ? 'white' : 'rgba(255,255,255,0.5)'}; outline:none;">
+                           <button data-action="DELETE_TARIFF" data-idx="${idx}" style="background:rgba(230,57,70,0.1); color:#e63946; border:none; width:34px; height:34px; border-radius:10px; font-weight:900; cursor:pointer;" title="Eliminar tarifa">✕</button>
                         </div>
                      </div>
                   </div>
                 `).join('')}
              </div>
-             
-             <button data-action="SAVE_TARIFFS" style="width:100%; padding:18px; background:var(--primary); color:white; border:none; border-radius:16px; font-weight:900; cursor:pointer; font-size:0.85rem; box-shadow:0 10px 20px rgba(0,0,0,0.1);">GUARDAR CAMBIOS EN TARIFAS</button>
           </div>
        </div>`
     }
