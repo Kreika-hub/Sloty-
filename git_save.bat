@@ -1,3 +1,3 @@
 git add .
-git commit -m "Update proof upload screen to include full Venezuelan bank list and BCV rate note"
+git commit -m "feat: Storage upload for proofs & ads, Realtime badge for pending proofs in Master, full Venezuelan bank list with BCV note"
 git push origin main

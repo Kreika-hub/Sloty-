@@ -6,6 +6,8 @@ export const initMaster = (container) => {
   let selectedBuildingData = null
   let buildingStats = null
   let recentMemberships = []
+  let masterChannel = null
+  let pendingProofsCount = 0
   
   // DOM Cache
   let elContent = null
@@ -325,17 +327,36 @@ export const initMaster = (container) => {
          overlay.remove(); render()
       }
     },
-    ADD_AD: async (imgData) => {
-      if(!imgData) return
-      const target = document.getElementById('ad-target-bld')?.value
-      const bId = target === 'GLOBAL' ? null : target
+    ADD_AD: async (file) => {
+      if (!file) return
+      try {
+        const ext      = file.name.split('.').pop()
+        const filePath = `ads/${Date.now()}.${ext}`
 
-      await supabase.from('ads').insert({ 
-        image_url: imgData, 
-        active: true,
-        building_id: bId 
-      })
-      render()
+        const { error: uploadErr } = await supabase.storage
+          .from('ads')
+          .upload(filePath, file, { upsert: true })
+
+        if (uploadErr) throw uploadErr
+
+        const { data: urlData } = supabase.storage
+          .from('ads')
+          .getPublicUrl(filePath)
+
+        const target = document.getElementById('ad-target-bld')?.value
+        const bId = target === 'GLOBAL' ? null : target
+
+        await supabase.from('ads').insert({
+          image_url: urlData.publicUrl,
+          active: true,
+          building_id: bId,
+          timestamp: new Date().toISOString()
+        })
+        render()
+      } catch(e) {
+        console.error('Error subiendo anuncio:', e)
+        alert('Error al subir el anuncio. Intenta de nuevo.')
+      }
     },
     TOGGLE_AD: async (btn) => {
       const id = btn.dataset.id;
@@ -448,9 +469,28 @@ export const initMaster = (container) => {
 
   const tabBar = () => `
     <div style="display:flex;border-bottom:1px solid rgba(255,255,255,0.1);overflow-x:auto;background:#1a1a2e;position:sticky;top:0;z-index:90;">
-      ${[{k:'BUILDINGS',l:'Edificios'},{k:'MEMBERSHIPS',l:'Membresías'},{k:'ADS',l:'Anuncios'},{k:'SYSTEM',l:'Sistema'}].map(t=>`
-        <div data-action="TAB" data-tab="${t.k}" style="padding:14px 20px;font-size:0.75rem;font-weight:900;cursor:pointer;white-space:nowrap;letter-spacing:1px;border-bottom:3px solid ${activeTab===t.k?'#F5C518':'transparent'};color:${activeTab===t.k?'#F5C518':'rgba(255,255,255,0.4)'};">
+      ${[
+        { k:'BUILDINGS',   l:'Edificios' },
+        { k:'MEMBERSHIPS', l:'Membres\u00edas' },
+        { k:'ADS',         l:'Anuncios' },
+        { k:'SYSTEM',      l:'Sistema' }
+      ].map(t => `
+        <div data-action="TAB" data-tab="${t.k}"
+             style="padding:14px 20px; font-size:0.75rem; font-weight:900;
+                    cursor:pointer; white-space:nowrap; letter-spacing:1px;
+                    border-bottom:3px solid ${activeTab === t.k ? '#F5C518' : 'transparent'};
+                    color:${activeTab === t.k ? '#F5C518' : 'rgba(255,255,255,0.4)'};
+                    position:relative;">
           ${t.l}
+          ${t.k === 'MEMBERSHIPS' && pendingProofsCount > 0 ? `
+            <span id="master-pending-badge"
+                  style="position:absolute; top:8px; right:4px;
+                         background:#e63946; color:white; font-size:9px;
+                         font-weight:900; width:16px; height:16px;
+                         border-radius:50%; display:inline-flex;
+                         align-items:center; justify-content:center;">
+              ${pendingProofsCount}
+            </span>` : ''}
         </div>`).join('')}
     </div>`
 
@@ -938,6 +978,30 @@ export const initMaster = (container) => {
   const render = async () => {
     if (!elShell) renderShell()
     elShell.innerHTML = tabBar()
+
+    // Suscribir Realtime si no está activo
+    if (!masterChannel) {
+      masterChannel = supabase
+        .channel('master-proofs')
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'building_payment_proofs'
+        }, (payload) => {
+          pendingProofsCount++
+          // Actualizar badge en el tab sin re-renderizar todo
+          const badge = document.getElementById('master-pending-badge')
+          if (badge) {
+            badge.textContent = pendingProofsCount
+            badge.style.display = 'inline-flex'
+          } else {
+            // Si el tab no está visible, forzar re-render del tabBar
+            const tabsArea = document.getElementById('master-tabs-area')
+            if (tabsArea) tabsArea.innerHTML = tabBar()
+          }
+        })
+        .subscribe()
+    }
     
     let html = ''
     if (activeTab === 'BUILDINGS') {
@@ -945,6 +1009,7 @@ export const initMaster = (container) => {
       html = renderBuildings(bld || [])
     }
     else if (activeTab === 'MEMBERSHIPS') {
+      pendingProofsCount = 0  // reset badge al abrir la pestaña
       const [
         { data: bld },
         { data: mems },
@@ -976,9 +1041,7 @@ export const initMaster = (container) => {
           input.onchange = (e) => {
             const file = e.target.files[0]
             if (!file) return
-            const reader = new FileReader()
-            reader.onload = (ev) => actions.ADD_AD(ev.target.result)
-            reader.readAsDataURL(file)
+            actions.ADD_AD(file)
           }
         }
       }, 100);

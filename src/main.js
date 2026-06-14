@@ -745,6 +745,7 @@ const renderRegister = () => {
   // ─── PROOF UPLOAD ─────────────────────────────────────────────
   const renderProofUpload = (building, plan) => {
     let proofBase64 = null
+    let proofFile = null
     screens.register.innerHTML = `
       <div style="min-height:100vh;background:#1a1a2e;display:flex;flex-direction:column;padding:40px 24px;">
         <div style="text-align:center;margin-bottom:24px;">
@@ -831,6 +832,7 @@ const renderRegister = () => {
     document.getElementById('proof-file').onchange = (e) => {
       const file = e.target.files[0]
       if (!file) return
+      proofFile = file
       const reader = new FileReader()
       reader.onload = (ev) => {
         proofBase64 = ev.target.result
@@ -842,33 +844,61 @@ const renderRegister = () => {
     }
 
     document.getElementById('btn-proof-send').onclick = async () => {
-      const bank = document.getElementById('proof-bank').value
+      const bank   = document.getElementById('proof-bank').value
       const amount = parseFloat(document.getElementById('proof-amount').value) || 0
-      const ref = document.getElementById('proof-ref').value.trim()
-      const date = document.getElementById('proof-date').value
-      const errEl = document.getElementById('proof-error')
-      
-      if (!bank) { errEl.textContent = 'Selecciona el banco de origen'; return }
-      if (amount <= 0) { errEl.textContent = 'Ingresa el monto pagado'; return }
-      if (!ref) { errEl.textContent = 'Ingresa el número de referencia'; return }
-      if (!proofBase64) { errEl.textContent = 'Adjunta la foto del comprobante'; return }
+      const ref    = document.getElementById('proof-ref').value.trim()
+      const date   = document.getElementById('proof-date').value
+      const errEl  = document.getElementById('proof-error')
 
-      // Combinamos el banco con la referencia para guardar en DB sin alterar el schema
-      const finalRef = `${bank} - Ref: ${ref}`
+      if (!bank)           { errEl.textContent = 'Selecciona el banco de origen'; return }
+      if (amount <= 0)     { errEl.textContent = 'Ingresa el monto pagado'; return }
+      if (!ref)            { errEl.textContent = 'Ingresa el número de referencia'; return }
+      if (!proofFile)      { errEl.textContent = 'Adjunta la foto del comprobante'; return }
 
-      document.getElementById('btn-proof-send').textContent = 'Enviando...'
-      document.getElementById('btn-proof-send').disabled = true
+      const btn = document.getElementById('btn-proof-send')
+      btn.textContent = 'Enviando...'
+      btn.disabled = true
 
-      await supabase.from('building_payment_proofs').insert({
-        building_id: building.id, plan_key: plan.key,
-        amount, reference: finalRef, payment_date: date,
-        proof_image: proofBase64, status: 'PENDING'
-      })
-      await supabase.from('buildings').update({
-        membership_status: 'PENDING_PROOF', plan: plan.key
-      }).eq('id', building.id)
+      try {
+        // Subir imagen a Storage
+        const ext      = proofFile.name.split('.').pop()
+        const filePath = `${building.id}/${Date.now()}.${ext}`
 
-      renderPendingScreen('PROOF', plan)
+        const { error: uploadErr } = await supabase.storage
+          .from('payment-proofs')
+          .upload(filePath, proofFile, { upsert: true })
+
+        if (uploadErr) throw uploadErr
+
+        const { data: urlData } = await supabase.storage
+          .from('payment-proofs')
+          .createSignedUrl(filePath, 60 * 60 * 24 * 365) // 1 año
+
+        const finalRef = `${bank} - Ref: ${ref}`
+
+        await supabase.from('building_payment_proofs').insert({
+          building_id:  building.id,
+          plan_key:     plan.key,
+          amount,
+          reference:    finalRef,
+          payment_date: date,
+          proof_image:  urlData?.signedUrl || filePath,
+          status:       'PENDING'
+        })
+
+        await supabase.from('buildings').update({
+          membership_status: 'PENDING_PROOF',
+          plan: plan.key
+        }).eq('id', building.id)
+
+        renderPendingScreen('PROOF', plan)
+
+      } catch(e) {
+        console.error('Error enviando comprobante:', e)
+        errEl.textContent = 'Error al enviar. Intenta de nuevo.'
+        btn.textContent = 'ENVIAR COMPROBANTE'
+        btn.disabled = false
+      }
     }
   }
 
