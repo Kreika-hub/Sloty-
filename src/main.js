@@ -222,6 +222,8 @@ const renderLogin = () => {
   $('goto-register').onclick = () => { renderRegister(); showOnly('register') }
   $('btn-back-login').onclick = () => { renderWelcome(); showOnly('welcome') }
 
+  let selectedRole = 'ADMIN';
+
   const chips = screens.login.querySelectorAll('.role-chip')
   chips.forEach(chip => {
     chip.addEventListener('click', () => {
@@ -229,12 +231,14 @@ const renderLogin = () => {
         c.style.background = 'transparent'
         c.style.borderColor = 'rgba(255,255,255,0.2)'
         c.style.color = 'rgba(255,255,255,0.5)'
+        c.style.fontWeight = '700'
       })
       chip.style.background = '#F5C518'
       chip.style.borderColor = '#F5C518'
       chip.style.color = '#1a1a2e'
       chip.style.fontWeight = '900'
-      setDevRole(chip.dataset.role)
+      selectedRole = chip.dataset.role
+      setDevRole(selectedRole)
     })
   })
 
@@ -250,7 +254,7 @@ const renderLogin = () => {
     errorEl.textContent = ''
     
     // Check which role is selected
-    const isMaster = [...chips].find(c => c.dataset.role === 'ADMIN' || c.classList.contains('active'))?.dataset.role === 'MASTER'
+    const isMaster = selectedRole === 'MASTER'
     
     // Dynamic loading phrases
     const phrases = ['Conectando...', 'Preparando experiencia...', 'Cargando tu panel...', 'Casi listos...'];
