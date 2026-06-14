@@ -37,18 +37,24 @@ export const initMaster = (container) => {
       const now = new Date();
       const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
       
-      const [ { count: slotsCount }, { count: resCount }, { data: pays }, { data: mems }, { data: bld } ] = await Promise.all([
-        supabase.from('parking_slots').select('*', { count: 'exact', head: true }).eq('building_id', selectedBuilding),
-        supabase.from('subscriptions').select('*', { count: 'exact', head: true }).eq('building_id', selectedBuilding),
-        supabase.from('payments').select('amount').eq('building_id', selectedBuilding).eq('status', 'CONFIRMED').gte('payment_date', firstDay),
-        supabase.from('sloty_memberships').select('*').eq('building_id', selectedBuilding).order('created_at', { ascending: false }).limit(5),
-        supabase.from('buildings').select('*').eq('id', selectedBuilding).single()
-      ]);
+      const [ { count: slotsCount }, { count: resCount }, { data: pays },
+              { data: mems }, { data: bld }, { data: personnel }, { data: shifts } ] =
+        await Promise.all([
+          supabase.from('parking_slots').select('*', { count: 'exact', head: true }).eq('building_id', selectedBuilding),
+          supabase.from('subscriptions').select('*', { count: 'exact', head: true }).eq('building_id', selectedBuilding),
+          supabase.from('payments').select('amount').eq('building_id', selectedBuilding).eq('status', 'CONFIRMED').gte('payment_date', firstDay),
+          supabase.from('sloty_memberships').select('*').eq('building_id', selectedBuilding).order('created_at', { ascending: false }).limit(5),
+          supabase.from('buildings').select('*').eq('id', selectedBuilding).single(),
+          supabase.from('personnel').select('name, role, pin').eq('building_id', selectedBuilding),
+          supabase.from('guard_shifts').select('guard_name, ended_at, total_cash, total_mobile, total_bs, entries, exits, absences').eq('building_id', selectedBuilding).order('ended_at', { ascending: false }).limit(10)
+        ]);
 
       const sumPays = pays ? pays.reduce((a,b) => a + (Number(b.amount) || 0), 0) : 0;
       buildingStats = { slotsCount: slotsCount || 0, resCount: resCount || 0, sumPays };
       recentMemberships = mems || [];
       selectedBuildingData = bld || {};
+      selectedBuildingData._personnel = personnel || [];
+      selectedBuildingData._shifts = shifts || [];
       render();
     },
     SET_PLAN: async (btn) => {
@@ -145,6 +151,72 @@ export const initMaster = (container) => {
       await supabase.from('ads').delete().eq('id', id)
       render()
     },
+    ADD_BUILDING: () => {
+      const overlay = document.createElement('div');
+      overlay.id = 'master-modal';
+      overlay.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,0.7);
+        z-index:999;display:flex;align-items:flex-end;justify-content:center;`;
+      overlay.innerHTML = `
+        <div style="background:#1a1a2e; border-radius:24px 24px 0 0; padding:28px;
+                    width:100%; max-width:500px; border:1px solid rgba(255,255,255,0.1);">
+          <div style="font-size:1rem; font-weight:900; color:white; margin-bottom:4px;">
+            Nuevo Edificio
+          </div>
+          <div style="font-size:0.7rem; color:#999; margin-bottom:20px;">
+            Se creará en Supabase con plan Trial
+          </div>
+          <input id="nb-name" placeholder="Nombre del edificio"
+            style="width:100%; padding:14px; border-radius:12px; border:none;
+                  background:rgba(255,255,255,0.08); color:white; font-size:0.85rem;
+                  font-weight:700; margin-bottom:10px; box-sizing:border-box;" />
+          <input id="nb-code" placeholder="Código único (ej: SLO-0042)"
+            style="width:100%; padding:14px; border-radius:12px; border:none;
+                  background:rgba(255,255,255,0.08); color:white; font-size:0.85rem;
+                  font-weight:700; margin-bottom:10px; box-sizing:border-box;" />
+          <input id="nb-city" placeholder="Ciudad"
+            style="width:100%; padding:14px; border-radius:12px; border:none;
+                  background:rgba(255,255,255,0.08); color:white; font-size:0.85rem;
+                  font-weight:700; margin-bottom:10px; box-sizing:border-box;" />
+          <input id="nb-phone" placeholder="Teléfono de contacto (opcional)"
+            style="width:100%; padding:14px; border-radius:12px; border:none;
+                  background:rgba(255,255,255,0.08); color:white; font-size:0.85rem;
+                  font-weight:700; margin-bottom:20px; box-sizing:border-box;" />
+          <div style="display:flex; gap:10px;">
+            <button id="nb-cancel"
+              style="flex:1; padding:14px; background:rgba(255,255,255,0.08);
+                    color:white; border:none; border-radius:12px;
+                    font-weight:900; cursor:pointer;">
+              CANCELAR
+            </button>
+            <button id="nb-confirm"
+              style="flex:2; padding:14px; background:#F5C518; color:#1a1a2e;
+                    border:none; border-radius:12px; font-weight:900; cursor:pointer;">
+              CREAR EDIFICIO
+            </button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+
+      document.getElementById('nb-cancel').onclick = () => overlay.remove();
+      document.getElementById('nb-confirm').onclick = async () => {
+        const name  = document.getElementById('nb-name').value.trim();
+        const code  = document.getElementById('nb-code').value.trim();
+        const city  = document.getElementById('nb-city').value.trim();
+        const phone = document.getElementById('nb-phone').value.trim();
+        if (!name || !code) {
+          document.getElementById('nb-name').style.border = '1px solid #e63946';
+          document.getElementById('nb-code').style.border = '1px solid #e63946';
+          return;
+        }
+        const { error } = await supabase.from('buildings').insert({
+          name, code, city, phone: phone || null,
+          plan: 'TRIAL', membership_status: 'ACTIVE',
+          created_at: new Date().toISOString()
+        });
+        if (error) { alert('Error al crear el edificio: ' + error.message); return; }
+        overlay.remove(); render();
+      };
+    },
     RESET_FULL: () => {
        if(confirm('⚠ ¿RESET FULL SYSTEM? Esto borrará el caché local por completo.')) { 
            if(confirm('¿Estás absolutamente seguro?')) {
@@ -223,9 +295,83 @@ export const initMaster = (container) => {
            `).join('')}
            ${!recentMemberships.length ? '<div style="color:#666; font-size:0.7rem;">No hay registros de pago.</div>' : ''}
         </div>
+
+        <!-- PERSONAL -->
+        <div style="margin-top:20px;">
+          <div style="font-size:0.7rem; font-weight:900; color:#999;
+                      letter-spacing:2px; text-transform:uppercase; margin-bottom:10px;">
+            Personal Registrado
+          </div>
+          ${(b._personnel || []).length === 0 ? `
+            <div style="color:rgba(255,255,255,0.3); font-size:0.7rem; padding:12px;">
+              Sin personal registrado
+            </div>` :
+            (b._personnel || []).map(p => `
+              <div style="background:rgba(255,255,255,0.06); padding:10px 14px;
+                          border-radius:10px; margin-bottom:6px;
+                          display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                  <div style="color:white; font-size:0.8rem; font-weight:900;">${p.name}</div>
+                  <div style="color:#999; font-size:0.6rem; font-weight:700;">${p.role || 'GUARDIA'}</div>
+                </div>
+                <span style="background:rgba(245,197,24,0.1); color:#F5C518;
+                            font-size:0.6rem; font-weight:900; padding:3px 8px;
+                            border-radius:6px;">
+                  PIN: ${p.pin}
+                </span>
+              </div>`).join('')}
+        </div>
+
+        <!-- ÚLTIMOS TURNOS -->
+        <div style="margin-top:20px; margin-bottom:30px;">
+          <div style="font-size:0.7rem; font-weight:900; color:#999;
+                      letter-spacing:2px; text-transform:uppercase; margin-bottom:10px;">
+            Últimos Turnos de Guardia
+          </div>
+          ${(b._shifts || []).length === 0 ? `
+            <div style="color:rgba(255,255,255,0.3); font-size:0.7rem; padding:12px;">
+              Sin turnos registrados aún
+            </div>` :
+            (b._shifts || []).map(s => {
+              const earned = (s.total_cash||0) + (s.total_mobile||0) + (s.total_bs||0);
+              const absMin = (s.absences||[]).reduce((a, ab) => a + (ab.duration_min||0), 0);
+              return `
+                <div style="background:rgba(255,255,255,0.06); padding:12px 14px;
+                            border-radius:10px; margin-bottom:6px;">
+                  <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                    <div style="color:white; font-size:0.8rem; font-weight:900;">
+                      ${s.guard_name}
+                    </div>
+                    <div style="color:#F5C518; font-size:0.8rem; font-weight:900;">
+                      $${earned.toFixed(2)}
+                    </div>
+                  </div>
+                  <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <span style="color:#999; font-size:0.6rem; font-weight:700;">
+                      ${new Date(s.ended_at).toLocaleString('es-VE', { dateStyle:'short', timeStyle:'short' })}
+                    </span>
+                    <span style="color:#999; font-size:0.6rem; font-weight:700;">
+                      🚗 ${s.entries||0} entradas
+                    </span>
+                    ${absMin > 0 ? `
+                      <span style="color:#e63946; font-size:0.6rem; font-weight:700;">
+                        ⏸ ${absMin}min ausente
+                      </span>` : ''}
+                  </div>
+                </div>`;
+            }).join('')}
+        </div>
       </div>`
     }
-    return `<div style="padding:20px;">
+    return `<div style="padding:20px 20px 0;">
+      <button data-action="ADD_BUILDING"
+        style="width:100%; background:#F5C518; color:#1a1a2e; border:none;
+               border-radius:14px; padding:14px; font-size:0.8rem;
+               font-weight:900; cursor:pointer; letter-spacing:1px;
+               text-transform:uppercase; margin-bottom:16px;">
+        + NUEVO EDIFICIO
+      </button>
+
       ${buildings.map(b => `
         <div data-action="SELECT_BUILDING" data-id="${b.id}" style="background:rgba(255,255,255,0.06);padding:20px;border-radius:16px;cursor:pointer;border:1px solid rgba(255,255,255,0.1);margin-bottom:12px;">
           <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -238,63 +384,196 @@ export const initMaster = (container) => {
     </div>`
   }
 
-  const renderMemberships = (buildings = []) => `
-    <div style="padding:20px;">
-       <h3 style="color:white; font-weight:900; margin-bottom:15px;">CONTROL DE MEMBRESÍAS</h3>
-       <div style="display:grid; gap:12px;">
-         ${buildings.map(b => `
-           <div style="background:rgba(255,255,255,0.06); padding:15px; border-radius:12px; display:flex; justify-content:space-between; align-items:center;">
-             <div>
-                <div style="font-weight:900; color:white; font-size:0.9rem;">${b.name}</div>
-                <div style="display:flex; gap:6px; margin-top:6px; align-items:center;">
-                   ${getBadge(b.plan || 'TRIAL', b.membership_status || 'ACTIVE')}
-                   <span style="color:#999; font-size:0.6rem; font-weight:700;">Exp: ${b.last_expiry ? new Date(b.last_expiry).toLocaleDateString() : 'N/A'}</span>
-                </div>
-             </div>
-             <button data-action="REGISTER_PAYMENT" data-id="${b.id}" data-name="${b.name}" data-plan="${b.plan||'TRIAL'}" style="background:#1a1a2e; color:#F5C518; border:1px solid #F5C518; padding:8px 12px; border-radius:8px; font-weight:900; font-size:0.65rem; cursor:pointer;">COBRAR</button>
-           </div>
-         `).join('')}
-       </div>
-    </div>
-  `
+  const renderMemberships = (buildings = []) => {
+    const today = new Date();
+    const in7days = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-  const renderSystem = (buildings = [], memberships = []) => {
-     const totalBld = buildings.length;
-     const activeBld = buildings.filter(b => b.membership_status !== 'SUSPENDED').length;
-     const suspendedBld = totalBld - activeBld;
-     
-     const now = new Date();
-     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-     const monthIncome = memberships.filter(m => m.paid_at >= firstDay).reduce((a, b) => a + (Number(b.amount) || 0), 0);
+    const getExpiryStatus = (expiryStr) => {
+      if (!expiryStr) return 'none';
+      const exp = new Date(expiryStr);
+      if (exp < today) return 'expired';
+      if (exp <= in7days) return 'soon';
+      return 'ok';
+    };
 
-     return `
-     <div style="padding:20px;">
-        <h3 style="color:white; font-weight:900; margin-bottom:15px;">ESTADÍSTICAS GLOBALES</h3>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:30px;">
-           <div style="background:rgba(255,255,255,0.06); padding:20px; border-radius:16px; text-align:center;">
-              <div style="font-size:2rem; font-weight:900; color:white;">${totalBld}</div>
-              <div style="font-size:0.6rem; color:#999; font-weight:900;">EDIFICIOS TOTALES</div>
-           </div>
-           <div style="background:rgba(255,255,255,0.06); padding:20px; border-radius:16px; text-align:center;">
-              <div style="font-size:2rem; font-weight:900; color:#22c55e;">${activeBld}</div>
-              <div style="font-size:0.6rem; color:#999; font-weight:900;">EDIFICIOS ACTIVOS</div>
-           </div>
-           <div style="background:rgba(255,255,255,0.06); padding:20px; border-radius:16px; text-align:center;">
-              <div style="font-size:2rem; font-weight:900; color:#e63946;">${suspendedBld}</div>
-              <div style="font-size:0.6rem; color:#999; font-weight:900;">SUSPENDIDOS</div>
-           </div>
-           <div style="background:rgba(255,255,255,0.06); padding:20px; border-radius:16px; text-align:center;">
-              <div style="font-size:2rem; font-weight:900; color:#F5C518;">$${monthIncome.toFixed(2)}</div>
-              <div style="font-size:0.6rem; color:#999; font-weight:900;">INGRESOS (MES)</div>
-           </div>
+    const expiredCount = buildings.filter(b => getExpiryStatus(b.last_expiry) === 'expired').length;
+    const soonCount    = buildings.filter(b => getExpiryStatus(b.last_expiry) === 'soon').length;
+
+    const sorted = [...buildings].sort((a, b) => {
+      const order = { expired: 0, soon: 1, none: 2, ok: 3 };
+      return order[getExpiryStatus(a.last_expiry)] - order[getExpiryStatus(b.last_expiry)];
+    });
+
+    return `
+      <div style="padding:20px; padding-bottom:100px;">
+        <div style="font-size:0.7rem; font-weight:900; color:#999;
+                    letter-spacing:2px; text-transform:uppercase; margin-bottom:12px;">
+          CONTROL DE MEMBRESÍAS
         </div>
 
-        <h3 style="color:white; font-weight:900; margin-bottom:15px; color:#e63946;">ZONA DE PELIGRO</h3>
-        <button data-action="RESET_FULL" style="width:100%;padding:15px;background:rgba(230,57,70,0.1);color:#e63946;border:1px solid #e63946;border-radius:12px;font-weight:900;cursor:pointer;">
-           RESET FULL SYSTEM (DESARROLLO)
+        ${expiredCount > 0 ? `
+          <div style="background:rgba(230,57,70,0.15); border:1px solid #e63946;
+                      border-radius:14px; padding:12px 16px; margin-bottom:12px;
+                      display:flex; align-items:center; gap:10px;">
+            <span style="font-size:1.2rem;">🚨</span>
+            <div>
+              <div style="font-size:0.75rem; font-weight:900; color:#e63946;">
+                ${expiredCount} membresía${expiredCount > 1 ? 's' : ''} vencida${expiredCount > 1 ? 's' : ''}
+              </div>
+              <div style="font-size:0.65rem; color:rgba(255,255,255,0.5);">
+                Requieren cobro inmediato
+              </div>
+            </div>
+          </div>` : ''}
+
+        ${soonCount > 0 ? `
+          <div style="background:rgba(245,197,24,0.1); border:1px solid #F5C518;
+                      border-radius:14px; padding:12px 16px; margin-bottom:16px;
+                      display:flex; align-items:center; gap:10px;">
+            <span style="font-size:1.2rem;">⚠️</span>
+            <div>
+              <div style="font-size:0.75rem; font-weight:900; color:#F5C518;">
+                ${soonCount} membresía${soonCount > 1 ? 's' : ''} vence${soonCount > 1 ? 'n' : ''} en menos de 7 días
+              </div>
+              <div style="font-size:0.65rem; color:rgba(255,255,255,0.5);">
+                Programa el cobro pronto
+              </div>
+            </div>
+          </div>` : ''}
+
+        <div style="display:grid; gap:10px;">
+          ${sorted.map(b => {
+            const status = getExpiryStatus(b.last_expiry);
+            const borderColor = status === 'expired' ? '#e63946' : status === 'soon' ? '#F5C518' : 'rgba(255,255,255,0.1)';
+            const expLabel = b.last_expiry
+              ? `Vence: ${new Date(b.last_expiry).toLocaleDateString('es-VE')}`
+              : 'Sin pago registrado';
+            return `
+              <div style="background:rgba(255,255,255,0.06); padding:16px;
+                          border-radius:14px; border:1.5px solid ${borderColor};
+                          display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                  <div style="font-weight:900; color:white; font-size:0.9rem;">
+                    ${b.name}
+                  </div>
+                  <div style="display:flex; gap:6px; margin-top:4px; align-items:center; flex-wrap:wrap;">
+                    ${getBadge(b.plan || 'TRIAL', b.membership_status || 'ACTIVE')}
+                    <span style="color:${status === 'expired' ? '#e63946' : status === 'soon' ? '#F5C518' : '#999'};
+                                font-size:0.6rem; font-weight:700;">
+                      ${status === 'expired' ? '🔴' : status === 'soon' ? '🟡' : '🟢'} ${expLabel}
+                    </span>
+                  </div>
+                </div>
+                <button data-action="REGISTER_PAYMENT"
+                        data-id="${b.id}" data-name="${b.name}" data-plan="${b.plan||'TRIAL'}"
+                        style="background:${status === 'expired' ? '#e63946' : '#1a1a2e'};
+                               color:${status === 'expired' ? 'white' : '#F5C518'};
+                               border:1px solid ${status === 'expired' ? '#e63946' : '#F5C518'};
+                               padding:8px 12px; border-radius:8px;
+                               font-weight:900; font-size:0.65rem; cursor:pointer;
+                               white-space:nowrap;">
+                  COBRAR
+                </button>
+              </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+  }
+
+  const renderSystem = (buildings = [], memberships = []) => {
+    const totalBld     = buildings.length;
+    const activeBld    = buildings.filter(b => b.membership_status !== 'SUSPENDED').length;
+    const suspendedBld = totalBld - activeBld;
+
+    // Agrupar ingresos por mes
+    const byMonth = {};
+    memberships.forEach(m => {
+      if (!m.paid_at) return;
+      const key = m.paid_at.slice(0, 7); // YYYY-MM
+      byMonth[key] = (byMonth[key] || 0) + (Number(m.amount) || 0);
+    });
+    const months = Object.keys(byMonth).sort().reverse().slice(0, 12);
+
+    const now = new Date();
+    const thisMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+    const thisMonthIncome = byMonth[thisMonth] || 0;
+    const totalIncome = Object.values(byMonth).reduce((a, b) => a + b, 0);
+
+    return `
+      <div style="padding:20px; padding-bottom:100px;">
+        <div style="font-size:0.7rem; font-weight:900; color:#999;
+                    letter-spacing:2px; text-transform:uppercase; margin-bottom:12px;">
+          Estadísticas Globales
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:20px;">
+          <div style="background:rgba(255,255,255,0.06); padding:16px;
+                      border-radius:14px; text-align:center;">
+            <div style="font-size:1.8rem; font-weight:900; color:white;">${totalBld}</div>
+            <div style="font-size:0.55rem; color:#999; font-weight:900; margin-top:2px;">EDIFICIOS TOTALES</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.06); padding:16px;
+                      border-radius:14px; text-align:center;">
+            <div style="font-size:1.8rem; font-weight:900; color:#22c55e;">${activeBld}</div>
+            <div style="font-size:0.55rem; color:#999; font-weight:900; margin-top:2px;">ACTIVOS</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.06); padding:16px;
+                      border-radius:14px; text-align:center;">
+            <div style="font-size:1.8rem; font-weight:900; color:#F5C518;">$${thisMonthIncome.toFixed(2)}</div>
+            <div style="font-size:0.55rem; color:#999; font-weight:900; margin-top:2px;">INGRESOS ESTE MES</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.06); padding:16px;
+                      border-radius:14px; text-align:center;">
+            <div style="font-size:1.8rem; font-weight:900; color:white;">$${totalIncome.toFixed(2)}</div>
+            <div style="font-size:0.55rem; color:#999; font-weight:900; margin-top:2px;">INGRESOS TOTALES</div>
+          </div>
+        </div>
+
+        <div style="font-size:0.7rem; font-weight:900; color:#999;
+                    letter-spacing:2px; text-transform:uppercase; margin-bottom:10px;">
+          Ingresos por Mes
+        </div>
+        <div style="display:grid; gap:8px; margin-bottom:24px;">
+          ${months.length === 0 ? `
+            <div style="color:rgba(255,255,255,0.3); font-size:0.75rem; padding:12px;">
+              Sin registros de pago aún
+            </div>` :
+            months.map(m => {
+              const amount = byMonth[m];
+              const max = Math.max(...Object.values(byMonth));
+              const pct = max > 0 ? (amount / max) * 100 : 0;
+              const [year, month] = m.split('-');
+              const label = new Date(year, month - 1).toLocaleString('es-VE', { month: 'long', year: 'numeric' });
+              return `
+                <div style="background:rgba(255,255,255,0.06); padding:12px 14px; border-radius:12px;">
+                  <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+                    <span style="color:white; font-size:0.75rem; font-weight:700; text-transform:capitalize;">
+                      ${label}
+                    </span>
+                    <span style="color:#F5C518; font-size:0.75rem; font-weight:900;">
+                      $${amount.toFixed(2)}
+                    </span>
+                  </div>
+                  <div style="background:rgba(255,255,255,0.08); border-radius:50px; height:4px;">
+                    <div style="background:#F5C518; border-radius:50px; height:4px;
+                                width:${pct.toFixed(1)}%; transition:width 0.3s;">
+                    </div>
+                  </div>
+                </div>`;
+            }).join('')}
+        </div>
+
+        <div style="font-size:0.7rem; font-weight:900; color:#e63946;
+                    letter-spacing:2px; text-transform:uppercase; margin-bottom:10px;">
+          Zona de Peligro
+        </div>
+        <button data-action="RESET_FULL"
+          style="width:100%; padding:14px; background:rgba(230,57,70,0.1);
+                 color:#e63946; border:1px solid #e63946; border-radius:12px;
+               font-weight:900; cursor:pointer; font-size:0.8rem;">
+          RESET FULL SYSTEM (DESARROLLO)
         </button>
-     </div>
-     `
+      </div>`;
   }
 
   const renderAds = (ads = []) => `

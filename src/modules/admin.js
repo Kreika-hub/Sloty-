@@ -551,6 +551,9 @@ export const initAdmin = (container) => {
         const floor = document.getElementById('new-sub-floor').value.trim();
         const apt = document.getElementById('new-sub-apt').value.trim();
         const phone = document.getElementById('new-sub-phone').value.trim();
+        const brand = document.getElementById('vehicle-brand').value.trim();
+        const model = document.getElementById('vehicle-model').value.trim();
+        const color = document.getElementById('vehicle-color').value.trim();
         
         if(!name || !plates.length) {
           pendingAction = {
@@ -579,9 +582,34 @@ export const initAdmin = (container) => {
             tower: tower,
             floor: floor,
             apt: apt,
-            phone: phone
+            phone: phone,
+            vehicle_brand: brand,
+            vehicle_model: model,
+            vehicle_color: color
           }).eq('id', editingResident);
           error = err;
+
+          // Sincronizar tabla vehicles
+          if (plateString) {
+            const { data: existing } = await supabase.from('vehicles').select('id').eq('subscription_id', editingResident).limit(1);
+            if (existing?.length > 0) {
+              await supabase.from('vehicles').update({
+                plate: plateString.toUpperCase(),
+                brand: brand || null,
+                model: model || null,
+                color: color || null
+              }).eq('subscription_id', editingResident);
+            } else {
+              await supabase.from('vehicles').insert({
+                building_id: state.buildingId,
+                subscription_id: editingResident,
+                plate: plateString.toUpperCase(),
+                brand: brand || null,
+                model: model || null,
+                color: color || null
+              });
+            }
+          }
         } else {
           const expiry = new Date(); expiry.setDate(expiry.getDate() + 30);
           const { error: err } = await supabase.from('subscriptions').insert({
@@ -596,12 +624,31 @@ export const initAdmin = (container) => {
             floor: floor,
             apt: apt,
             phone: phone,
-            pin: null
-          });
+            pin: null,
+            vehicle_brand: brand,
+            vehicle_model: model,
+            vehicle_color: color
+          }).select('id').single();
           error = err;
+
+          if (!error && data?.id) {
+            await supabase.from('vehicles').insert({
+              building_id: state.buildingId,
+              subscription_id: data.id,
+              plate: plateString.toUpperCase(),
+              brand: brand || null,
+              model: model || null,
+              color: color || null
+            });
+          }
         }
         
         if(!error) {
+          if (editingResident) {
+            await logAudit('EDIT_RESIDENT', { subscription_id: editingResident });
+          } else {
+            await logAudit('ADD_RESIDENT', { resident_name: name, plate: plateString });
+          }
           pendingAction = {
             type: 'CUSTOM_MODAL',
             title: '✅ ¡RESIDENTE REGISTRADO!',
@@ -625,6 +672,9 @@ export const initAdmin = (container) => {
           document.getElementById('new-sub-floor').value = '';
           document.getElementById('new-sub-apt').value = '';
           document.getElementById('new-sub-phone').value = '';
+          document.getElementById('vehicle-brand').value = '';
+          document.getElementById('vehicle-model').value = '';
+          document.getElementById('vehicle-color').value = '';
           
           cachedSubs = null;
           await render(); 
@@ -656,6 +706,7 @@ export const initAdmin = (container) => {
 
       editingResident = id;
       cachedSubs = null;
+      await logAudit('EDIT_RESIDENT', { subscription_id: id });
       await render(); // Re-render to update form button and inputs
 
       document.getElementById('new-sub-name').value = res.resident_name;
@@ -665,6 +716,9 @@ export const initAdmin = (container) => {
       document.getElementById('new-sub-floor').value = res.floor || '';
       document.getElementById('new-sub-apt').value = res.apt || '';
       document.getElementById('new-sub-phone').value = res.phone || '';
+      document.getElementById('vehicle-brand').value = res.vehicle_brand || '';
+      document.getElementById('vehicle-model').value = res.vehicle_model || '';
+      document.getElementById('vehicle-color').value = res.vehicle_color || '';
 
       const container = document.getElementById('new-sub-plates-container');
       container.innerHTML = '';
@@ -727,7 +781,7 @@ export const initAdmin = (container) => {
         paymentStatus: 'PAGADO'
       })
 
-      logAudit(`Aprobó pago de $${amount} para ${sub.resident_name}`)
+      await logAudit('CONFIRM_PAYMENT', { payment_id: pid, subscription_id: sid });
       // PASO 5: Notificar al residente que su pago fue aprobado
       supabase.functions.invoke('send-push', {
         body: {
@@ -753,6 +807,7 @@ export const initAdmin = (container) => {
           body: 'Tu pago fue rechazado. Contacta a tu administrador.'
         }
       }).catch(e => console.warn('[Sloty] push error:', e))
+      await logAudit('REJECT_PAYMENT', { payment_id: btn.dataset.id });
       cachedMetrics = null
       render()
     },
@@ -780,13 +835,28 @@ export const initAdmin = (container) => {
                     <div style="font-weight:900;color:#1a1a2e;font-size:1rem;">$${p.amount}</div>
                     <div style="font-size:0.65rem;color:#666;font-weight:700;margin-top:3px;">${ML[p.method]||p.method} · ${new Date(p.payment_date).toLocaleDateString()}</div>
                     ${p.reference ? `<div style="font-size:0.6rem;color:#999;font-weight:700;">Ref: ${p.reference}</div>` : ''}
-                    ${p.proof_url ? `
-                      <a href="${p.proof_url}" target="_blank"
-                        style="display:inline-flex;align-items:center;gap:6px;margin-top:8px;
-                        padding:8px 14px;background:#f0f7ff;border-radius:10px;
-                        font-size:0.65rem;font-weight:800;color:#3b82f6;text-decoration:none;">
-                        📎 Ver comprobante adjunto
-                      </a>` : ''}
+                    ${await (async () => {
+                      const { data: proofs } = await supabase
+                        .from('payment-proofs')
+                        .select('file_path, file_name')
+                        .eq('payment_id', p.id)
+                        .limit(1);
+
+                      if (!proofs || proofs.length === 0) return '';
+
+                      const { data: urlData } = await supabase.storage
+                        .from('payment-proofs')
+                        .createSignedUrl(proofs[0].file_path, 3600);
+
+                      return urlData?.signedUrl ? `
+                        <a href="${urlData.signedUrl}" target="_blank"
+                           style="display:inline-flex; align-items:center; gap:6px;
+                                  background:#E6F1FB; color:#185FA5; border-radius:50px;
+                                  padding:5px 12px; font-size:0.65rem; font-weight:900;
+                                  text-decoration:none; margin-top:8px;">
+                          📎 Ver comprobante
+                        </a>` : '';
+                    })()}
                   </div>
                   <span style="background:${p.status==='CONFIRMED'?'#22c55e':p.status==='REJECTED'?'#e63946':'#f59e0b'};color:white;padding:4px 10px;border-radius:20px;font-size:0.55rem;font-weight:900;">${p.status==='CONFIRMED'?'CONFIRMADO':p.status==='REJECTED'?'RECHAZADO':'PENDIENTE'}</span>
                 </div>
@@ -834,6 +904,7 @@ export const initAdmin = (container) => {
         confirmAction: async () => {
           const { error } = await supabase.from('subscriptions').delete().eq('id', id);
           if(!error) {
+             await logAudit('DELETE_RESIDENT', { subscription_id: id });
              pendingAction = null;
              cachedSubs = null;
              render();
@@ -1048,6 +1119,18 @@ export const initAdmin = (container) => {
     },
     BACK_TO_FINANCE: async () => {
       cachedFinance = null;
+      await render();
+    },
+    RESOLVE_INCIDENT: async (btn) => {
+      const id = btn.dataset.id;
+      const { error } = await supabase
+        .from('incidents')
+        .update({ resolved: true })
+        .eq('id', id);
+
+      if (error) { showToast('Error al resolver incidente', 'error'); return; }
+      await logAudit('RESOLVE_INCIDENT', { incident_id: id });
+      showToast('Incidente marcado como resuelto', 'success');
       await render();
     }
   }
@@ -1876,7 +1959,15 @@ export const initAdmin = (container) => {
     }
   }
 
-  const renderReports = (state) => {
+  const renderReports = async (state) => {
+    const { data: incidents } = await supabase
+      .from('incidents')
+      .select('*')
+      .eq('building_id', state.buildingId)
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    const incidentsList = incidents || [];
     const now = new Date()
     const movs = (state.movements || []).filter(m => {
       const d = new Date(m.timestamp)
@@ -1937,13 +2028,68 @@ export const initAdmin = (container) => {
                   <span style="background:rgba(245,197,24,0.1); color:#D97706; padding:4px 10px; border-radius:6px; font-size:0.6rem; font-weight:700;">${k.toUpperCase()}: ${v}</span>
                 `).join('')}
               </div>
-
               <div style="display:flex; justify-content:space-between; align-items:center; padding-top:12px; border-top:1px dashed #eee;">
                 <div style="font-size:0.65rem; font-weight:700; color:#999;">Guardia: <span style="color:#666;">${m.guardName || 'Admin'}</span></div>
                 <div style="font-size:0.65rem; font-weight:900; color:#1a1a2e;">${m.payMethod ? `PAGO: ${m.payMethod.replace('_', ' ')}` : '---'}</div>
               </div>
             </div>
           `).join('') : '<div style="text-align:center; padding:40px; color:#bbb; font-weight:700;">No hay movimientos en este periodo</div>'}
+        </div>
+
+        <!-- INCIDENTES -->
+        <div style="margin-top:24px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <div style="font-size:0.7rem; font-weight:900; color:#999;
+                        letter-spacing:2px; text-transform:uppercase;">
+              Incidentes Reportados
+            </div>
+            <span style="background:#FCEBEB; color:#A32D2D; font-size:0.65rem;
+                         font-weight:900; padding:3px 10px; border-radius:50px;">
+              ${incidentsList.filter(i => !i.resolved).length} sin resolver
+            </span>
+          </div>
+
+          ${incidentsList.length === 0 ? `
+            <div style="text-align:center; color:#999; font-size:0.75rem;
+                        padding:24px; background:#f8f9fa; border-radius:16px;">
+              Sin incidentes registrados
+            </div>
+          ` : incidentsList.map(inc => `
+            <div style="background:white; border-radius:16px; padding:16px;
+                        margin-bottom:10px; border:1.5px solid ${inc.resolved ? '#eee' : '#FCEBEB'};">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+                <div style="display:flex; gap:8px; align-items:center;">
+                  <span style="background:${inc.resolved ? '#EAF3DE' : '#FCEBEB'};
+                               color:${inc.resolved ? '#3B6D11' : '#A32D2D'};
+                               font-size:0.65rem; font-weight:900;
+                               padding:3px 10px; border-radius:50px;">
+                    ${inc.type}
+                  </span>
+                  ${!inc.resolved ? `
+                    <button data-action="RESOLVE_INCIDENT" data-id="${inc.id}"
+                      style="background:#EAF3DE; color:#3B6D11; border:none;
+                             border-radius:50px; padding:3px 10px; font-size:0.65rem;
+                             font-weight:900; cursor:pointer;">
+                      ✓ RESOLVER
+                    </button>` : `
+                    <span style="font-size:0.65rem; color:#999; font-weight:700;">✓ Resuelto</span>`}
+                </div>
+                <div style="font-size:0.65rem; color:#999; font-weight:700;">
+                  ${new Date(inc.created_at).toLocaleString('es-VE', { dateStyle:'short', timeStyle:'short' })}
+                </div>
+              </div>
+              <div style="font-size:0.8rem; font-weight:700; color:#1a1a2e; margin-bottom:4px;">
+                ${inc.description}
+              </div>
+              <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px;">
+                <span style="font-size:0.65rem; color:#999; font-weight:700;">
+                  👮 ${inc.guard_name || 'Guardia'}
+                </span>
+                ${inc.plate ? `<span style="font-size:0.65rem; color:#999; font-weight:700;">🚗 ${inc.plate}</span>` : ''}
+                ${inc.slot  ? `<span style="font-size:0.65rem; color:#999; font-weight:700;">📍 ${inc.slot}</span>`  : ''}
+              </div>
+            </div>
+          `).join('')}
         </div>
       </div>`
   }
@@ -2200,6 +2346,20 @@ export const initAdmin = (container) => {
                </div>
             </div>
             <button id="add-plate-field" type="button" style="background:none; border:1px dashed rgba(255,255,255,0.3); color:rgba(255,255,255,0.6); padding:10px; border-radius:12px; font-size:0.7rem; font-weight:700; cursor:pointer; margin-top:5px;">+ AÑADIR OTRO VEHÍCULO</button>
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
+               <div>
+                  <label style="font-size:0.5rem; color:rgba(255,255,255,0.4); display:block; margin-bottom:4px;">MARCA</label>
+                  <input type="text" id="vehicle-brand" placeholder="Toyota..." style="width:100%; padding:15px; border-radius:12px; border:none; background:rgba(255,255,255,0.1); color:white; font-weight:700;">
+               </div>
+               <div>
+                  <label style="font-size:0.5rem; color:rgba(255,255,255,0.4); display:block; margin-bottom:4px;">MODELO</label>
+                  <input type="text" id="vehicle-model" placeholder="Corolla..." style="width:100%; padding:15px; border-radius:12px; border:none; background:rgba(255,255,255,0.1); color:white; font-weight:700;">
+               </div>
+               <div>
+                  <label style="font-size:0.5rem; color:rgba(255,255,255,0.4); display:block; margin-bottom:4px;">COLOR</label>
+                  <input type="text" id="vehicle-color" placeholder="Rojo..." style="width:100%; padding:15px; border-radius:12px; border:none; background:rgba(255,255,255,0.1); color:white; font-weight:700;">
+               </div>
+            </div>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
                <div>
                   <label style="font-size:0.5rem; color:rgba(255,255,255,0.4); display:block; margin-bottom:4px;">PRECIO ACORDADO ($)</label>

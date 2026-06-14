@@ -415,17 +415,23 @@ export const saveClosure = async (closure) => {
   }
 }
 
-export const logAudit = (action, user = 'ADMIN') => {
-  const state = getParkingState()
-  state.auditLog = state.auditLog || []
-  state.auditLog.unshift({
-    action,
-    user,
-    id: `a-${Date.now()}`,
-    timestamp: new Date().toISOString()
-  })
-  saveParkingState(state)
-}
+export const logAudit = async (action, details = {}) => {
+  const state = getParkingState();
+  if (!state.buildingId) return;
+  if (!hasFeature('audit_log')) return; // solo planes que lo incluyen
+
+  try {
+    await supabase.from('audit_log').insert({
+      building_id: state.buildingId,
+      action,
+      details,
+      performed_by: state.currentUser?.name || 'Sistema',
+      performed_at: new Date().toISOString()
+    });
+  } catch(e) {
+    console.warn('[Sloty] audit_log error:', e);
+  }
+};
 
 export const logNotification = (type, guard, msg) => {
   const state = getParkingState()

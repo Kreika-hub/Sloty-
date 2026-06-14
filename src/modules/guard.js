@@ -1,4 +1,4 @@
-import { getParkingState, updateParkingState, logMovement, logNotification, saveClosure, supabase, hasFeature, showToast } from '../db.js'
+import { getParkingState, updateParkingState, logMovement, logNotification, saveClosure, supabase, hasFeature, showToast, logAudit } from '../db.js'
 import { searchVisitorByPlate, saveVisitor, logAccess } from '../visitors.js'
 // Html5Qrcode is loaded via CDN in index.html, accessible globally
 
@@ -486,6 +486,12 @@ export const initGuard = (container, guardName = 'Guardia') => {
       })
 
       logNotification('CIERRE_CAJA', guardName, `Cierre completado: $${total.toFixed(2)} acumulados.`)
+      await logAudit('FINALIZE_CLOSURE', {
+        guard_name: guardName,
+        total: total,
+        entries: openMovs.filter(m => m.type === 'ENTRY').length,
+        exits: openMovs.filter(m => m.type === 'EXIT').length
+      });
       showModal('Cierre Exitoso', 'El reporte ha sido enviado a administración. El contador ha vuelto a 0.', () => location.reload())
     },
     ACCEPT_RESERVATION: async (btn) => {
@@ -567,6 +573,129 @@ export const initGuard = (container, guardName = 'Guardia') => {
     },
     CONFIRM_HANDOVER: async () => {
       await render();
+    },
+    REPORT_INCIDENT: () => {
+      const types = ['RAYÓN', 'ACCIDENTE', 'SOSPECHOSO', 'OBJETO PERDIDO', 'OTRO'];
+      const typeButtons = types.map((t, i) => `
+        <button onclick="handleAction('SELECT_INCIDENT_TYPE','${t}')"
+          style="background:#f8f9fa; border:1.5px solid #eee; border-radius:12px;
+                 padding:10px 14px; font-size:0.75rem; font-weight:900;
+                 cursor:pointer; text-align:left; color:#1a1a2e;">
+          ${t}
+        </button>`).join('');
+
+      elModal.innerHTML = `
+        <div style="position:fixed; inset:0; background:rgba(0,0,0,0.6);
+                    z-index:9999; display:flex; align-items:flex-end;">
+          <div style="background:white; border-radius:24px 24px 0 0;
+                      padding:24px; width:100%; max-height:90vh; overflow-y:auto;">
+            <div style="font-size:0.7rem; font-weight:900; color:#999;
+                        letter-spacing:2px; text-transform:uppercase; margin-bottom:16px;">
+              Reportar Incidente
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:16px;">
+              ${typeButtons}
+            </div>
+            <div style="font-size:0.7rem; font-weight:900; color:#999;
+                        text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">
+              Placa involucrada (opcional)
+            </div>
+            <input id="incident-plate" placeholder="ABC-123"
+                   style="width:100%; padding:12px 16px; border:1.5px solid #eee;
+                          border-radius:12px; font-size:0.85rem; font-weight:700;
+                          margin-bottom:12px; box-sizing:border-box;" />
+            <div style="font-size:0.7rem; font-weight:900; color:#999;
+                        text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">
+              Puesto involucrado (opcional)
+            </div>
+            <input id="incident-slot" placeholder="A-01"
+                   style="width:100%; padding:12px 16px; border:1.5px solid #eee;
+                          border-radius:12px; font-size:0.85rem; font-weight:700;
+                          margin-bottom:12px; box-sizing:border-box;" />
+            <div style="font-size:0.7rem; font-weight:900; color:#999;
+                        text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">
+              Descripción
+            </div>
+            <textarea id="incident-desc" rows="3" placeholder="Describe lo que ocurrió..."
+                   style="width:100%; padding:12px 16px; border:1.5px solid #eee;
+                          border-radius:12px; font-size:0.85rem; font-weight:700;
+                          margin-bottom:16px; box-sizing:border-box; resize:none;"></textarea>
+            <div style="display:flex; gap:8px;">
+              <button onclick="handleAction('SUBMIT_INCIDENT')"
+                style="flex:1; background:#e63946; color:white; border:none;
+                       border-radius:50px; padding:14px; font-size:0.8rem;
+                       font-weight:900; cursor:pointer;">
+                REPORTAR
+              </button>
+              <button onclick="handleAction('CLOSE_MODAL')"
+                style="flex:1; background:#f8f9fa; color:#1a1a2e; border:none;
+                       border-radius:50px; padding:14px; font-size:0.8rem;
+                       font-weight:900; cursor:pointer;">
+                CANCELAR
+              </button>
+            </div>
+          </div>
+        </div>`;
+      elModal.style.display = 'block';
+    },
+    SELECT_INCIDENT_TYPE: (payload) => {
+      // Marcar el tipo seleccionado visualmente
+      document.querySelectorAll('[onclick*="SELECT_INCIDENT_TYPE"]').forEach(b => {
+        b.style.background = '#f8f9fa';
+        b.style.borderColor = '#eee';
+        b.style.color = '#1a1a2e';
+      });
+      const clicked = [...document.querySelectorAll('[onclick*="SELECT_INCIDENT_TYPE"]')]
+        .find(b => b.textContent.trim() === payload);
+      if (clicked) {
+        clicked.style.background = '#e63946';
+        clicked.style.borderColor = '#e63946';
+        clicked.style.color = 'white';
+      }
+    },
+    SUBMIT_INCIDENT: async () => {
+      const selectedType = [...document.querySelectorAll('[onclick*="SELECT_INCIDENT_TYPE"]')]
+        .find(b => b.style.background === 'rgb(230, 57, 70)')?.textContent.trim();
+
+      if (!selectedType) {
+        alert('Selecciona el tipo de incidente.');
+        return;
+      }
+
+      const desc = document.querySelector('#incident-desc')?.value?.trim();
+      if (!desc) {
+        alert('Agrega una descripción.');
+        return;
+      }
+
+      const plate = document.querySelector('#incident-plate')?.value?.trim() || null;
+      const slot  = document.querySelector('#incident-slot')?.value?.trim() || null;
+
+      const { error } = await supabase.from('incidents').insert({
+        building_id: state.buildingId,
+        guard_name:  shiftData.guardName || guardName,
+        type:        selectedType,
+        description: desc,
+        plate,
+        slot,
+        resolved:    false
+      });
+
+      if (error) {
+        alert('Error al reportar el incidente. Intenta de nuevo.');
+        console.error(error);
+        return;
+      }
+
+      await logAudit('REPORT_INCIDENT', { type: selectedType, plate, slot });
+
+      elModal.style.display = 'none';
+      elModal.innerHTML = '';
+      showToast('Incidente reportado', 'success');
+    },
+    CLOSE_MODAL: () => {
+      elModal.style.display = 'none';
+      elModal.innerHTML = '';
     }
   }
 
@@ -1301,6 +1430,13 @@ export const initGuard = (container, guardName = 'Guardia') => {
                  font-weight:900; letter-spacing:1px; cursor:pointer; box-shadow: 0 5px 15px rgba(0,0,0,0.3);">
           ⏸ PAUSAR TURNO
         </button>
+        <button onclick="handleAction('REPORT_INCIDENT')"
+          style="position:fixed; bottom:140px; right:16px; z-index:999;
+                 background:#e63946; color:white; border:none;
+                 border-radius:50px; padding:10px 20px; font-size:0.75rem;
+                 font-weight:900; letter-spacing:1px; cursor:pointer; box-shadow: 0 5px 15px rgba(0,0,0,0.3);">
+          ⚠️ INCIDENTE
+        </button>
       `
       if (scannerActive) initQRScanner()
       setupLocalInteractions()
@@ -1335,13 +1471,20 @@ export const initGuard = (container, guardName = 'Guardia') => {
         if (plate.length < 3) return
 
         const buildingId = localStorage.getItem('sloty_building_id')
-        const { data: subs } = await supabase.from('subscriptions').select('resident_name, apt').eq('building_id', buildingId).ilike('plate', `%${plate}%`)
+        const { data: subs } = await supabase.from('subscriptions').select('resident_name, apt, vehicle_brand, vehicle_model, vehicle_color').eq('building_id', buildingId).ilike('plate', `%${plate}%`)
         
         if (subs && subs.length > 0) {
            const infoDiv = document.createElement('div')
            infoDiv.id = 'visitor-suggestion'
            infoDiv.style = "background:#F5C518; color:#1a1a2e; padding:10px; border-radius:10px; margin-bottom:10px; font-weight:900; font-size:0.75rem; text-align:center;"
-           infoDiv.innerHTML = `🚗 RESIDENTE: ${subs[0].resident_name} (Apto ${subs[0].apt || '-'})`
+           const res = subs[0];
+           infoDiv.innerHTML = `
+             <div>🚗 RESIDENTE: ${res.resident_name} (Apto ${res.apt || '-'})</div>
+             ${res.vehicle_brand || res.vehicle_model || res.vehicle_color ? `
+               <div style="font-size:0.6rem; color:rgba(26,26,46,0.6); font-weight:700; margin-top:4px;">
+                 ${[res.vehicle_brand, res.vehicle_model, res.vehicle_color].filter(Boolean).join(' · ')}
+               </div>` : ''}
+           `;
            plateEl.parentNode.insertBefore(infoDiv, plateEl.nextSibling)
            
            const catBtn = document.querySelector('[data-cat="RESIDENTE"]')

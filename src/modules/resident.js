@@ -1,5 +1,35 @@
 import { supabase } from '../db.js'
 
+const uploadPaymentProof = async (file, paymentId, buildingId, residentName) => {
+  if (!file) return null;
+  try {
+    const ext = file.name.split('.').pop();
+    const filePath = `${buildingId}/${paymentId}-${Date.now()}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('payment-proofs')
+      .upload(filePath, file, { upsert: true });
+
+    if (uploadError) { console.error('Upload error:', uploadError); return null; }
+
+    const { error: dbError } = await supabase
+      .from('payment-proofs')
+      .insert({
+        building_id:   buildingId,
+        payment_id:    paymentId,
+        resident_name: residentName,
+        file_path:     filePath,
+        file_name:     file.name
+      });
+
+    if (dbError) { console.error('DB error:', dbError); return null; }
+    return filePath;
+  } catch(e) {
+    console.error('uploadPaymentProof:', e);
+    return null;
+  }
+};
+
 const SVG = {
   MONEY: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`,
   HOME:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
@@ -73,19 +103,22 @@ export async function initResident(container, subscription) {
         </div>
 
         <div>
-          <label style="font-size:0.6rem;font-weight:800;color:#999;
-            text-transform:uppercase;display:block;margin-bottom:6px;">
-            COMPROBANTE (FOTO OPCIONAL)
+          <div style="font-size:0.7rem; font-weight:900; color:#999;
+                      text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">
+            Comprobante (opcional)
+          </div>
+          <label style="display:flex; align-items:center; gap:10px;
+                        background:#f8f9fa; border:1.5px dashed #ddd;
+                        border-radius:14px; padding:12px 16px; cursor:pointer;">
+            <span style="font-size:1.2rem;">📎</span>
+            <span id="proof-label" style="font-size:0.75rem; color:#999; font-weight:700;">
+              Toca para adjuntar imagen o PDF
+            </span>
+            <input type="file" id="payment-proof-file" accept="image/*,.pdf"
+                   style="display:none;"
+                   onchange="document.getElementById('proof-label').textContent =
+                     this.files[0] ? this.files[0].name : 'Toca para adjuntar imagen o PDF'" />
           </label>
-          <label for="pay-proof" style="display:flex;align-items:center;
-            gap:12px;padding:14px;border-radius:14px;border:1.5px dashed #e5e7eb;
-            cursor:pointer;background:#fafafa;">
-            <span style="font-size:1.5rem;">📎</span>
-            <span id="proof-label" style="font-size:0.75rem;font-weight:700;
-              color:#999;">Adjuntar comprobante...</span>
-          </label>
-          <input type="file" id="pay-proof" accept="image/*" 
-            style="display:none;">
         </div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:5px;">
@@ -337,38 +370,32 @@ export async function initResident(container, subscription) {
           btnSubmit.textContent = 'Enviando...'
           btnSubmit.disabled = true
 
-          let proof_url = null
-          if (proofFile) {
-            const ext = proofFile.name.split('.').pop()
-            const path = `${subData.building_id}/${subData.id}/${Date.now()}.${ext}`
-            const { error: upErr } = await supabase.storage
-              .from('payment-proofs')
-              .upload(path, proofFile, { upsert: true })
-            if (!upErr) {
-              const { data: urlData } = supabase.storage
-                .from('payment-proofs')
-                .getPublicUrl(path)
-              proof_url = urlData?.publicUrl || null
-            }
-          }
-
-          const { error } = await supabase.from('payments').insert({
+          const { data, error } = await supabase.from('payments').insert({
             subscription_id: subData.id,
             building_id: subData.building_id,
             resident_name: subData.resident_name,
             method, payment_date: date, amount,
-            reference: ref, status: 'PENDING',
-            proof_url
-          })
+            reference: ref, status: 'PENDING'
+          }).select('id').single()
 
-          if (error) {
-            showInlineAlert('Error al enviar. Intenta de nuevo.', false)
-            btnSubmit.textContent = 'ENVIAR REPORTE'
-            btnSubmit.disabled = false
-          } else {
+          if (!error && data?.id) {
+            const proofFile = document.querySelector('#payment-proof-file')?.files?.[0];
+            if (proofFile) {
+              await uploadPaymentProof(
+                proofFile,
+                data.id,
+                subData.building_id,
+                subData.resident_name || 'Residente'
+              );
+            }
+            
             reportMode = false
             dataLoaded = false
             render()
+          } else {
+            showInlineAlert('Error al enviar. Intenta de nuevo.', false)
+            btnSubmit.textContent = 'ENVIAR REPORTE'
+            btnSubmit.disabled = false
           }
         }
       }
