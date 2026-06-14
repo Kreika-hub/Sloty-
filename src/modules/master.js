@@ -247,6 +247,45 @@ export const initMaster = (container) => {
          actions.EDIT_BUILDING_MASTER(bld)
       }
     },
+    EXPORT_PDF: async () => {
+      const { data: blds } = await supabase.from('buildings').select('*')
+      const { data: mems } = await supabase.from('sloty_memberships').select('amount')
+      const pendingCash = (blds||[]).filter(b => b.membership_status === 'PENDING_CASH').length
+      const activeBld = (blds||[]).filter(b => b.membership_status === 'ACTIVE').length
+      const totalIncome = (mems||[]).reduce((a,b)=>a+(Number(b.amount)||0), 0)
+      
+      const expiredList = (blds||[]).filter(b => b.membership_status === 'ACTIVE' && b.plan !== 'TRIAL')
+        .map(b => `<tr><td style="padding:8px; border-bottom:1px solid #eee;">${b.name}</td><td style="padding:8px; border-bottom:1px solid #eee;">${b.phone||'N/A'}</td><td style="padding:8px; border-bottom:1px solid #eee; color:red;">Sujeto a Cobro</td></tr>`).join('')
+      
+      const toExport = `
+      <html><head><title>Reporte de Recaudación - Sloty</title>
+      <style>body{ font-family:sans-serif; padding:40px; color:#333; } table{ width:100%; border-collapse:collapse; margin-top:10px; } th,td{ text-align:left; }</style>
+      </head><body>
+      <h1>Reporte Mensual Sloty Master</h1>
+      <p>Fecha de emisión: ${new Date().toLocaleString()}</p>
+      <hr>
+      <h3>Métricas Generales</h3>
+      <ul>
+        <li><b>Ingresos Totales (Histórico):</b> $${totalIncome.toFixed(2)}</li>
+        <li><b>Edificios Activos:</b> ${activeBld}</li>
+        <li><b>Total Edificios Registrados:</b> ${(blds||[]).length}</li>
+      </ul>
+      <h3>Pendientes por Aprobación</h3>
+      <ul>
+        <li>Pagos en Efectivo Pendientes: ${pendingCash}</li>
+      </ul>
+      <h3>Edificios Sujetos a Revisión (Morosos)</h3>
+      ${expiredList ? `<table><tr><th>Edificio</th><th>Teléfono</th><th>Estado</th></tr>${expiredList}</table>` : '<p>Ninguno actualmente.</p>'}
+      <br><br>
+      <p style="text-align:center; font-size:0.8rem; color:#666;">Generado automáticamente por Sloty Premium</p>
+      </body></html>
+      `
+      const w = window.open('', '_blank')
+      w.document.write(toExport)
+      w.document.close()
+      w.focus()
+      setTimeout(() => w.print(), 500)
+    },
     EDIT_BUILDING_MASTER: (bld) => {
       const overlay = document.createElement('div')
       overlay.id = 'master-modal'
@@ -822,6 +861,10 @@ export const initMaster = (container) => {
         <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05); border-radius:16px; padding:20px; margin-bottom:24px;">
           ${makeAreaChart(byMonth, months)}
         </div>
+
+        <button data-action="EXPORT_PDF" style="width:100%; margin-bottom: 24px; padding:16px; background:var(--primary); color:white; border:none; border-radius:14px; font-weight:900; cursor:pointer; font-size:0.8rem; display:flex; align-items:center; justify-content:center; gap:8px;">
+          📄 EXPORTAR RESUMEN MENSUAL A PDF
+        </button>
 
         <div style="font-size:0.7rem; font-weight:900; color:#e63946;
                     letter-spacing:2px; text-transform:uppercase; margin-bottom:10px;">

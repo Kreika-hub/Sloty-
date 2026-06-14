@@ -202,6 +202,8 @@ export const syncDown = async (buildingCode) => {
         state.plan = bData.plan || 'TRIAL'
         state.membership_status = bData.membership_status || 'ACTIVE'
         state.features_override = bData.features_override || {}
+        state.logo_url = bData.logo_url || null
+        if (bData.trial_started_at) state.trial_started_at = bData.trial_started_at
         
         if (pData) state.personnel = pData
 

@@ -365,7 +365,7 @@ const renderLogin = () => {
                   <p style="color:rgba(255,255,255,0.5);font-size:0.95rem;margin-bottom:30px;max-width:320px;">
                     Tus 3 días de prueba han terminado. Activa un plan para seguir gestionando tu edificio.
                   </p>
-                  <button onclick="location.reload()" style="padding:18px;background:#F5C518;color:#1a1a2e;border:none;border-radius:14px;font-weight:900;cursor:pointer;width:100%;max-width:300px;">
+                  <button onclick="window.slotyGlobalShowPlans('${resolvedBuilding.id}')" style="padding:18px;background:#F5C518;color:#1a1a2e;border:none;border-radius:14px;font-weight:900;cursor:pointer;width:100%;max-width:300px;">
                     VER PLANES DISPONIBLES
                   </button>
                 </div>
@@ -750,13 +750,64 @@ const renderRegister = () => {
         <div style="text-align:center;margin-bottom:24px;">
           <div style="font-size:2rem;margin-bottom:8px;">📄</div>
           <h1 style="color:white;font-size:1.3rem;font-weight:900;margin-bottom:4px;">Subir Comprobante</h1>
-          <p style="color:rgba(255,255,255,0.4);font-size:0.75rem;">Plan ${plan.label} · ${plan.price}</p>
+          <p style="color:rgba(255,255,255,0.4);font-size:0.75rem;">Adquiriendo: Plan ${plan.label} · ${plan.price}</p>
         </div>
+
+        <!-- NEW: Payment instructions & QR -->
+        <div style="max-width:400px;width:100%;margin:0 auto 24px;background:rgba(255,255,255,0.03);border:1px dashed rgba(255,255,255,0.1);border-radius:18px;padding:20px;text-align:center;">
+          <div style="color:#F5C518;font-size:0.7rem;font-weight:900;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">Datos para Pago Móvil</div>
+          <div style="background:white;padding:10px;border-radius:12px;display:inline-block;margin-bottom:12px;">
+            <!-- Placeholder QR -->
+            <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="#1a1a2e" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><rect x="7" y="7" width="3" height="3"></rect><rect x="14" y="7" width="3" height="3"></rect><rect x="7" y="14" width="3" height="3"></rect><rect x="14" y="14" width="3" height="3"></rect></svg>
+          </div>
+          <div style="color:white;font-size:0.85rem;font-weight:700;line-height:1.6;">
+            <strong>Banesco (0134)</strong><br>
+            Teléfono: 0414-1234567<br>
+            CI: V-12345678
+          </div>
+          <hr style="border:none;border-top:1px solid rgba(255,255,255,0.1);margin:16px 0;">
+          <div style="text-align:left;font-size:0.8rem;color:rgba(255,255,255,0.6);line-height:1.5;">
+            <strong style="color:white;">Edificio:</strong> ${building.name}<br>
+            <strong style="color:white;">Total a Pagar:</strong> ${plan.price}<br>
+            <div style="margin-top:10px; padding:10px; background:rgba(245,197,24,0.1); border-left:3px solid #F5C518; border-radius:0 8px 8px 0;">
+              <em style="color:#F5C518; font-size:0.75rem; font-weight:700; font-style:normal;">
+                ⚠️ NOTA: El pago en Bolívares (Bs.) debe realizarse a la tasa oficial del BCV correspondiente al día en que se ejecute la transferencia.
+              </em>
+            </div>
+          </div>
+        </div>
+
         <div style="display:flex;flex-direction:column;gap:12px;max-width:400px;width:100%;margin:0 auto;">
-          <input id="proof-amount" type="number" placeholder="Monto pagado ($)" step="0.01" min="0"
+          
+          <select id="proof-bank" style="width:100%;padding:16px;border-radius:12px;border:2px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:white;font-family:'Montserrat',sans-serif;font-size:0.95rem;font-weight:700;outline:none;box-sizing:border-box;-webkit-appearance:none;">
+            <option value="" disabled selected>Desde qué banco transfieres?</option>
+            <option value="0156-100%Banco" style="background:#1a1a2e;">100% Banco (0156)</option>
+            <option value="0172-Bancamiga" style="background:#1a1a2e;">Bancamiga (0172)</option>
+            <option value="0114-Bancaribe" style="background:#1a1a2e;">Bancaribe (0114)</option>
+            <option value="0171-BancoActivo" style="background:#1a1a2e;">Banco Activo (0171)</option>
+            <option value="0175-Bicentenario" style="background:#1a1a2e;">Banco Bicentenario (0175)</option>
+            <option value="0128-BancoCaroni" style="background:#1a1a2e;">Banco Caroní (0128)</option>
+            <option value="0102-BDV" style="background:#1a1a2e;">Banco de Venezuela (0102)</option>
+            <option value="0163-BancoTesoro" style="background:#1a1a2e;">Banco del Tesoro (0163)</option>
+            <option value="0115-Exterior" style="background:#1a1a2e;">Banco Exterior (0115)</option>
+            <option value="0105-Mercantil" style="background:#1a1a2e;">Banco Mercantil (0105)</option>
+            <option value="0191-BNC" style="background:#1a1a2e;">Banco Nacional de Crédito BNC (0191)</option>
+            <option value="0138-BancoPlaza" style="background:#1a1a2e;">Banco Plaza (0138)</option>
+            <option value="0104-VenezolanoCredito" style="background:#1a1a2e;">Banco Venezolano de Crédito (0104)</option>
+            <option value="0134-Banesco" style="background:#1a1a2e;">Banesco (0134)</option>
+            <option value="0146-Banplus" style="background:#1a1a2e;">Banplus (0146)</option>
+            <option value="0108-Provincial" style="background:#1a1a2e;">BBVA Provincial (0108)</option>
+            <option value="0169-MiBanco" style="background:#1a1a2e;">Mi Banco (0169)</option>
+            <option value="Zelle" style="background:#1a1a2e;">Zelle / Efectivo USD</option>
+            <option value="Otro" style="background:#1a1a2e;">Otro Banco / Método</option>
+          </select>
+
+          <input id="proof-amount" type="number" placeholder="Monto pagado (Bs o USD)" step="0.01" min="0"
             style="width:100%;padding:16px;border-radius:12px;border:2px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:white;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:700;outline:none;box-sizing:border-box;" />
-          <input id="proof-ref" type="text" placeholder="Número de referencia / confirmación"
+          
+          <input id="proof-ref" type="text" placeholder="Número de confirmación (Últimos 4 a 6 dígitos)"
             style="width:100%;padding:16px;border-radius:12px;border:2px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:white;font-family:'Montserrat',sans-serif;font-size:0.9rem;font-weight:600;outline:none;box-sizing:border-box;" />
+          
           <input id="proof-date" type="date" placeholder="Fecha del pago"
             style="width:100%;padding:16px;border-radius:12px;border:2px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:white;font-family:'Montserrat',sans-serif;font-size:0.9rem;outline:none;box-sizing:border-box;color-scheme:dark;" />
           
@@ -767,6 +818,7 @@ const renderRegister = () => {
           <button id="btn-proof-upload" style="width:100%;padding:16px;border-radius:12px;border:2px dashed rgba(255,255,255,0.2);background:transparent;color:rgba(255,255,255,0.6);font-family:'Montserrat',sans-serif;font-weight:700;cursor:pointer;font-size:0.85rem;">
             📸 Adjuntar foto del comprobante
           </button>
+          
           <button id="btn-proof-send" style="width:100%;padding:18px;background:#F5C518;color:#1a1a2e;border:none;border-radius:14px;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:900;cursor:pointer;margin-top:8px;">
             ENVIAR COMPROBANTE
           </button>
@@ -790,20 +842,26 @@ const renderRegister = () => {
     }
 
     document.getElementById('btn-proof-send').onclick = async () => {
+      const bank = document.getElementById('proof-bank').value
       const amount = parseFloat(document.getElementById('proof-amount').value) || 0
       const ref = document.getElementById('proof-ref').value.trim()
       const date = document.getElementById('proof-date').value
       const errEl = document.getElementById('proof-error')
+      
+      if (!bank) { errEl.textContent = 'Selecciona el banco de origen'; return }
       if (amount <= 0) { errEl.textContent = 'Ingresa el monto pagado'; return }
       if (!ref) { errEl.textContent = 'Ingresa el número de referencia'; return }
       if (!proofBase64) { errEl.textContent = 'Adjunta la foto del comprobante'; return }
+
+      // Combinamos el banco con la referencia para guardar en DB sin alterar el schema
+      const finalRef = `${bank} - Ref: ${ref}`
 
       document.getElementById('btn-proof-send').textContent = 'Enviando...'
       document.getElementById('btn-proof-send').disabled = true
 
       await supabase.from('building_payment_proofs').insert({
         building_id: building.id, plan_key: plan.key,
-        amount, reference: ref, payment_date: date,
+        amount, reference: finalRef, payment_date: date,
         proof_image: proofBase64, status: 'PENDING'
       })
       await supabase.from('buildings').update({
@@ -844,7 +902,15 @@ const renderRegister = () => {
     `
   }
 
+  window.slotyExposePlanAPI = renderPlanSelection;
+
   render()
+}
+
+window.slotyGlobalShowPlans = (bldId) => {
+  renderRegister();
+  window.slotyExposePlanAPI({ id: bldId });
+  showOnly('register');
 }
 
 // ─── GUARD BUILDING LOGIN ──────────────────────────────────────
@@ -1240,3 +1306,9 @@ async function init() {
 }
 
 init()
+
+window.addEventListener('sloty_show_plans', (e) => {
+  if (window.slotyGlobalShowPlans) {
+    window.slotyGlobalShowPlans(e.detail.id);
+  }
+});

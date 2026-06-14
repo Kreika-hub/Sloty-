@@ -1,3 +1,3 @@
 git add .
-git commit -m "Notificaciones nativas, boton dorado de upgrade y mejoras de flujo"
+git commit -m "Update proof upload screen to include full Venezuelan bank list and BCV rate note"
 git push origin main

@@ -408,6 +408,7 @@ export const initAdmin = (container) => {
       const newName = document.getElementById('edit-building-name').value.trim();
       const email = document.getElementById('edit-admin-email').value.trim();
       const phone = document.getElementById('edit-admin-phone').value.trim();
+      const logo = window._tempLogo || getParkingState().logo_url;
       if (!newName) return alert('El nombre del edificio es obligatorio');
       const state = getParkingState();
       
@@ -415,16 +416,17 @@ export const initAdmin = (container) => {
       const newCode = `${getCleanPrefix(newName)}-${Math.floor(1000 + Math.random() * 9000)}`
       state.buildingName = newName
       state.buildingCode = newCode
+      state.logo_url = logo
 
       await supabase
         .from('buildings')
-        .update({ name: newName, code: newCode })
+        .update({ name: newName, code: newCode, logo_url: logo })
         .eq('code', oldCode)
       
       state.adminInfo = { ...state.adminInfo, email, phone };
       saveParkingState(state);
       logAudit(`Actualizó perfil del edificio: ${newName}`);
-      alert('Perfil actualizado correctamente');
+      showToast('Perfil actualizado correctamente', 'success');
       activeTab = 'HOME';
       render();
     },
@@ -1228,7 +1230,10 @@ export const initAdmin = (container) => {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" style="width:20px; height:20px;"><path d="m15 18-6-6 6-6"/></svg>
             </div>` : ''}
             <div data-action="TAB" data-tab="HOME" style="cursor:pointer; display:flex; flex-direction:column;">
-              <img src="/icons/Sloty logo negro.png" style="height:60px; filter:brightness(0) invert(1); margin-bottom:-5px; object-fit:contain; object-position:left;" onerror="this.style.display='none'">
+              <div style="display:flex; align-items:center; gap:15px;">
+                <img src="/icons/Sloty logo negro.png" style="height:60px; filter:brightness(0) invert(1); margin-bottom:-5px; object-fit:contain; object-position:left;" onerror="this.style.display='none'">
+                ${sState.logo_url ? `<img src="${sState.logo_url}" style="height:40px; width:auto; max-width:80px; border-radius:8px; object-fit:contain;" title="Logo del Edificio">` : ''}
+              </div>
               <div style="display:flex; align-items:center; gap:8px; margin-left:2px;">
                 <div style="font-size:0.5rem; font-weight:800; color:rgba(255,255,255,0.4); letter-spacing:2px; text-transform:uppercase;">${isHome ? 'PANEL PRINCIPAL' : titles[activeTab].toUpperCase()}</div>
                 <div style="display:flex; align-items:center; gap:4px; background:rgba(34,197,94,0.1); padding:2px 6px; border-radius:6px; border:1px solid rgba(34,197,94,0.2);">
@@ -2254,6 +2259,19 @@ export const initAdmin = (container) => {
       <h2 style="font-weight:900; color:var(--primary); font-size:1.4rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:20px;">PERFIL DEL EDIFICIO</h2>
       
       <div style="background:white; padding:30px; border-radius:32px; box-shadow:0 15px 40px rgba(0,0,0,0.04); border:1.5px solid #f0f0f0;">
+        <div style="text-align:center; margin-bottom:20px;">
+           <img id="profile-logo-preview" src="${state.logo_url || '/icons/Sloty logo negro.png'}" style="height:80px; object-fit:contain; padding:10px; border-radius:16px; margin-bottom:10px; background:${state.logo_url ? 'transparent' : 'var(--primary)'};">
+           <div style="font-size:0.7rem; font-weight:700; color:#666; margin-bottom:10px;">Logo de tu Edificio</div>
+           <input type="file" id="edit-building-logo" accept="image/*" style="display:none;" onchange="
+             const f=this.files[0];
+             if(f){
+               const r=new FileReader();
+               r.onload=(e)=>{ document.getElementById('profile-logo-preview').src=e.target.result; document.getElementById('profile-logo-preview').style.background='transparent'; window._tempLogo=e.target.result; };
+               r.readAsDataURL(f);
+             }
+           ">
+           <button onclick="document.getElementById('edit-building-logo').click()" style="padding:10px 18px; border-radius:12px; border:1px dashed #ccc; background:transparent; font-weight:900; font-size:0.7rem; cursor:pointer;">CAMBIAR LOGO</button>
+        </div>
         <div style="display:grid; gap:20px; margin-bottom:30px;">
           <div>
             <label style="font-size:0.65rem; font-weight:800; color:#999; text-transform:uppercase; display:block; margin-bottom:8px;">Nombre del Edificio</label>
@@ -2780,5 +2798,11 @@ export const initAdmin = (container) => {
     unsubscribeFinanceRealtime();
   }
 
-  loadHomeMetrics().then(() => render())
+  loadHomeMetrics().then(() => {
+    render()
+    const st = getParkingState()
+    if (st.plan === 'TRIAL' && st.trialDaysLeft !== undefined && st.trialDaysLeft <= 1) {
+      setTimeout(() => showToast('⚠️ Tu prueba gratuita está por vencer. Evita la suspensión activando un plan hoy.', 'error'), 1500)
+    }
+  })
 }
