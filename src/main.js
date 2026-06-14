@@ -332,10 +332,40 @@ const renderLogin = () => {
       }
       localStorage.setItem('sloty_state', JSON.stringify(newState))
 
-      // Verificar suspensión antes de iniciar
-      if (resolvedBuilding.membership_status === 'SUSPENDED') {
-        mainScreen.innerHTML = renderSuspendedScreen()
-        return
+      // --- NUEVAS VALIDACIONES DE MEMBRESÍA ---
+      
+      // 1. Bloqueo por pago pendiente
+      if (resolvedBuilding.membership_status === 'PENDING_CASH' || resolvedBuilding.membership_status === 'PENDING_PROOF') {
+          const type = resolvedBuilding.membership_status === 'PENDING_CASH' ? 'CASH' : 'PROOF'
+          const planObj = { label: resolvedBuilding.plan || 'Plan Seleccionado', price: 'Pendiente de cobro' }
+          renderPendingScreen(type, planObj)
+          return
+      }
+
+      // 2. Validación de Trial (3 días)
+      if (resolvedBuilding.plan === 'TRIAL') {
+          const start = new Date(resolvedBuilding.trial_started_at || resolvedBuilding.created_at)
+          const now = new Date()
+          const diffDays = Math.ceil((now - start) / (1000 * 60 * 60 * 24))
+          
+          if (diffDays > 3) {
+              mainScreen.innerHTML = `
+                <div style="min-height:100vh;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;text-align:center;">
+                  <div style="font-size:4rem;margin-bottom:20px;">⌛</div>
+                  <h1 style="color:white;font-size:1.6rem;font-weight:900;margin-bottom:10px;">¡Trial Expirado!</h1>
+                  <p style="color:rgba(255,255,255,0.5);font-size:0.95rem;margin-bottom:30px;max-width:320px;">
+                    Tus 3 días de prueba han terminado. Activa un plan para seguir gestionando tu edificio.
+                  </p>
+                  <button onclick="location.reload()" style="padding:18px;background:#F5C518;color:#1a1a2e;border:none;border-radius:14px;font-weight:900;cursor:pointer;width:100%;max-width:300px;">
+                    VER PLANES DISPONIBLES
+                  </button>
+                </div>
+              `
+              return
+          }
+          // Guardar días restantes para el banner en el panel admin
+          newState.trialDaysLeft = 3 - (diffDays - 1)
+          localStorage.setItem('sloty_state', JSON.stringify(newState))
       }
 
       // Iniciar panel sin esperar syncDown
@@ -576,9 +606,233 @@ const renderRegister = () => {
 
       await supabase.from('parking_slots').insert(payload)
 
-      showOnly('main')
-      initAdmin(screens.main)
+      renderPlanSelection(building)
     }
+  }
+
+  // ─── PLAN SELECTION ──────────────────────────────────────────
+  const renderPlanSelection = (building) => {
+    const PLANS = [
+      { key: 'TRIAL',  label: 'Prueba Gratis',  price: 'GRATIS', days: '3 días', desc: 'Hasta 10 puestos', color: '#888',    highlight: false },
+      { key: 'BRONCE', label: 'Bronce',          price: '$15/mes',  days: null,    desc: 'Hasta 50 puestos', color: '#cd7f32', highlight: false },
+      { key: 'PLATA',  label: 'Plata',           price: '$30/mes',  days: null,    desc: 'Hasta 150 puestos + Caja', color: '#aaa', highlight: false },
+      { key: 'ORO',    label: 'Oro',             price: '$55/mes',  days: null,    desc: 'Ilimitado + todos los módulos', color: '#F5C518', highlight: true },
+    ]
+    let selectedPlan = null
+
+    screens.register.innerHTML = `
+      <div style="min-height:100vh;background:#1a1a2e;display:flex;flex-direction:column;padding:40px 24px;">
+        <div style="text-align:center;margin-bottom:28px;">
+          <div style="font-size:2.5rem;margin-bottom:10px;">✨</div>
+          <h1 style="color:white;font-size:1.6rem;font-weight:900;margin-bottom:6px;">Elige tu Plan</h1>
+          <p style="color:rgba(255,255,255,0.5);font-size:0.85rem;">Puedes cambiar de plan en cualquier momento</p>
+        </div>
+        <div style="display:grid;gap:12px;max-width:400px;width:100%;margin:0 auto 28px;">
+          ${PLANS.map(p => `
+            <div class="plan-card" data-key="${p.key}" style="
+              background:${p.highlight ? 'rgba(245,197,24,0.1)' : 'rgba(255,255,255,0.05)'};
+              border:2px solid ${p.highlight ? '#F5C518' : 'rgba(255,255,255,0.1)'};
+              border-radius:18px;padding:18px 20px;cursor:pointer;
+              display:flex;justify-content:space-between;align-items:center;
+              transition:all 0.2s;">
+              <div>
+                <div style="font-size:1rem;font-weight:900;color:${p.color};">${p.label}</div>
+                <div style="font-size:0.7rem;color:rgba(255,255,255,0.5);margin-top:4px;">${p.desc}</div>
+                ${p.days ? '<div style="font-size:0.65rem;color:#22c55e;font-weight:700;margin-top:2px;">' + p.days + ' gratis</div>' : ''}
+              </div>
+              <div style="text-align:right;">
+                <div style="font-size:1rem;font-weight:900;color:white;">${p.price}</div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+        <div style="max-width:400px;width:100%;margin:0 auto;">
+          <button id="btn-select-plan" style="width:100%;padding:18px;background:#F5C518;color:#1a1a2e;border:none;border-radius:14px;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:900;cursor:pointer;opacity:0.4;pointer-events:none;">
+            CONTINUAR CON ESTE PLAN
+          </button>
+        </div>
+      </div>
+    `
+
+    screens.register.querySelectorAll('.plan-card').forEach(card => {
+      card.onclick = () => {
+        screens.register.querySelectorAll('.plan-card').forEach(c => {
+          c.style.background = 'rgba(255,255,255,0.05)'
+          c.style.borderColor = 'rgba(255,255,255,0.1)'
+        })
+        card.style.background = 'rgba(245,197,24,0.15)'
+        card.style.borderColor = '#F5C518'
+        selectedPlan = PLANS.find(p => p.key === card.dataset.key)
+        const btn = document.getElementById('btn-select-plan')
+        btn.style.opacity = '1'
+        btn.style.pointerEvents = 'auto'
+      }
+    })
+
+    document.getElementById('btn-select-plan').onclick = async () => {
+      if (!selectedPlan) return
+      if (selectedPlan.key === 'TRIAL') {
+        // Activar trial directo
+        await supabase.from('buildings').update({
+          plan: 'TRIAL',
+          membership_status: 'ACTIVE',
+          trial_started_at: new Date().toISOString()
+        }).eq('id', building.id)
+        const state = getParkingState()
+        state.plan = 'TRIAL'
+        state.membership_status = 'ACTIVE'
+        saveParkingState(state)
+        showOnly('main')
+        initAdmin(screens.main)
+      } else {
+        renderPaymentMethod(building, selectedPlan)
+      }
+    }
+  }
+
+  // ─── PAYMENT METHOD SELECTION ─────────────────────────────────
+  const renderPaymentMethod = (building, plan) => {
+    screens.register.innerHTML = `
+      <div style="min-height:100vh;background:#1a1a2e;display:flex;flex-direction:column;padding:40px 24px;justify-content:center;align-items:center;">
+        <div style="text-align:center;margin-bottom:32px;">
+          <div style="font-size:2.5rem;margin-bottom:10px;">💳</div>
+          <h1 style="color:white;font-size:1.4rem;font-weight:900;margin-bottom:6px;">Método de Pago</h1>
+          <p style="color:rgba(255,255,255,0.4);font-size:0.8rem;">Plan <strong style="color:#F5C518;">${plan.label}</strong> · ${plan.price}</p>
+        </div>
+        <div style="display:grid;gap:14px;width:100%;max-width:380px;">
+          <button id="pay-cash" style="
+            padding:24px;border-radius:18px;border:2px solid rgba(255,255,255,0.15);
+            background:rgba(255,255,255,0.05);color:white;cursor:pointer;
+            font-family:'Montserrat',sans-serif;font-weight:900;font-size:0.95rem;text-align:left;">
+            <div style="font-size:1.5rem;margin-bottom:8px;">💵</div>
+            <div>Efectivo</div>
+            <div style="font-size:0.7rem;font-weight:500;color:rgba(255,255,255,0.4);margin-top:4px;">El equipo de Sloty te contactará para coordinar el pago</div>
+          </button>
+          <button id="pay-transfer" style="
+            padding:24px;border-radius:18px;border:2px solid #F5C518;
+            background:rgba(245,197,24,0.08);color:white;cursor:pointer;
+            font-family:'Montserrat',sans-serif;font-weight:900;font-size:0.95rem;text-align:left;">
+            <div style="font-size:1.5rem;margin-bottom:8px;">📱</div>
+            <div>Pago Móvil / Transferencia</div>
+            <div style="font-size:0.7rem;font-weight:500;color:#F5C518;margin-top:4px;">Sube tu comprobante para revisión inmediata</div>
+          </button>
+        </div>
+      </div>
+    `
+
+    document.getElementById('pay-cash').onclick = async () => {
+      await supabase.from('buildings').update({
+        plan: plan.key, membership_status: 'PENDING_CASH',
+        pending_plan: plan.key
+      }).eq('id', building.id)
+      renderPendingScreen('CASH', plan)
+    }
+
+    document.getElementById('pay-transfer').onclick = () => {
+      renderProofUpload(building, plan)
+    }
+  }
+
+  // ─── PROOF UPLOAD ─────────────────────────────────────────────
+  const renderProofUpload = (building, plan) => {
+    let proofBase64 = null
+    screens.register.innerHTML = `
+      <div style="min-height:100vh;background:#1a1a2e;display:flex;flex-direction:column;padding:40px 24px;">
+        <div style="text-align:center;margin-bottom:24px;">
+          <div style="font-size:2rem;margin-bottom:8px;">📄</div>
+          <h1 style="color:white;font-size:1.3rem;font-weight:900;margin-bottom:4px;">Subir Comprobante</h1>
+          <p style="color:rgba(255,255,255,0.4);font-size:0.75rem;">Plan ${plan.label} · ${plan.price}</p>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px;max-width:400px;width:100%;margin:0 auto;">
+          <input id="proof-amount" type="number" placeholder="Monto pagado ($)" step="0.01" min="0"
+            style="width:100%;padding:16px;border-radius:12px;border:2px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:white;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:700;outline:none;box-sizing:border-box;" />
+          <input id="proof-ref" type="text" placeholder="Número de referencia / confirmación"
+            style="width:100%;padding:16px;border-radius:12px;border:2px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:white;font-family:'Montserrat',sans-serif;font-size:0.9rem;font-weight:600;outline:none;box-sizing:border-box;" />
+          <input id="proof-date" type="date" placeholder="Fecha del pago"
+            style="width:100%;padding:16px;border-radius:12px;border:2px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:white;font-family:'Montserrat',sans-serif;font-size:0.9rem;outline:none;box-sizing:border-box;color-scheme:dark;" />
+          
+          <input type="file" id="proof-file" accept="image/*" style="display:none;" />
+          <div id="proof-thumb" style="display:none;width:100%;border-radius:12px;overflow:hidden;margin-top:4px;">
+            <img id="proof-img" style="width:100%;max-height:200px;object-fit:contain;background:rgba(255,255,255,0.05);" />
+          </div>
+          <button id="btn-proof-upload" style="width:100%;padding:16px;border-radius:12px;border:2px dashed rgba(255,255,255,0.2);background:transparent;color:rgba(255,255,255,0.6);font-family:'Montserrat',sans-serif;font-weight:700;cursor:pointer;font-size:0.85rem;">
+            📸 Adjuntar foto del comprobante
+          </button>
+          <button id="btn-proof-send" style="width:100%;padding:18px;background:#F5C518;color:#1a1a2e;border:none;border-radius:14px;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:900;cursor:pointer;margin-top:8px;">
+            ENVIAR COMPROBANTE
+          </button>
+          <p id="proof-error" style="color:#e63946;font-size:0.8rem;font-weight:700;text-align:center;min-height:18px;"></p>
+        </div>
+      </div>
+    `
+
+    document.getElementById('btn-proof-upload').onclick = () => document.getElementById('proof-file').click()
+    document.getElementById('proof-file').onchange = (e) => {
+      const file = e.target.files[0]
+      if (!file) return
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        proofBase64 = ev.target.result
+        document.getElementById('proof-img').src = proofBase64
+        document.getElementById('proof-thumb').style.display = 'block'
+        document.getElementById('btn-proof-upload').textContent = '✅ Foto adjuntada'
+      }
+      reader.readAsDataURL(file)
+    }
+
+    document.getElementById('btn-proof-send').onclick = async () => {
+      const amount = parseFloat(document.getElementById('proof-amount').value) || 0
+      const ref = document.getElementById('proof-ref').value.trim()
+      const date = document.getElementById('proof-date').value
+      const errEl = document.getElementById('proof-error')
+      if (amount <= 0) { errEl.textContent = 'Ingresa el monto pagado'; return }
+      if (!ref) { errEl.textContent = 'Ingresa el número de referencia'; return }
+      if (!proofBase64) { errEl.textContent = 'Adjunta la foto del comprobante'; return }
+
+      document.getElementById('btn-proof-send').textContent = 'Enviando...'
+      document.getElementById('btn-proof-send').disabled = true
+
+      await supabase.from('building_payment_proofs').insert({
+        building_id: building.id, plan_key: plan.key,
+        amount, reference: ref, payment_date: date,
+        proof_image: proofBase64, status: 'PENDING'
+      })
+      await supabase.from('buildings').update({
+        membership_status: 'PENDING_PROOF', plan: plan.key
+      }).eq('id', building.id)
+
+      renderPendingScreen('PROOF', plan)
+    }
+  }
+
+  // ─── PENDING SCREEN ────────────────────────────────────────────
+  const renderPendingScreen = (type, plan) => {
+    const WA_NUMBER = '584120770776'
+    const waMsg = encodeURIComponent('Hola, acabo de registrar mi edificio en Sloty y seleccioné el plan ' + plan.label + '. Quedo pendiente de la activación. Gracias.')
+    screens.register.innerHTML = `
+      <div style="min-height:100vh;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;text-align:center;">
+        <div style="font-size:3rem;margin-bottom:20px;">${type === 'CASH' ? '⏳' : '📨'}</div>
+        <h1 style="color:white;font-size:1.4rem;font-weight:900;margin-bottom:10px;">
+          ${type === 'CASH' ? 'Solicitud Recibida' : 'Comprobante Enviado'}
+        </h1>
+        <p style="color:rgba(255,255,255,0.5);font-size:0.85rem;line-height:1.6;margin-bottom:28px;max-width:320px;">
+          ${type === 'CASH'
+            ? 'El equipo de Sloty confirmar\u00e1 tu pago y activar\u00e1 tu cuenta. Por ahora tu acceso est\u00e1 pendiente.'
+            : 'Tu comprobante est\u00e1 siendo revisado. Reciber\u00e1s acceso en cuanto sea aprobado.'}
+        </p>
+        ${type === 'CASH' ? `
+          <a href="https://wa.me/${WA_NUMBER}?text=${waMsg}"
+            style="display:block;width:100%;max-width:320px;padding:18px;background:#25D366;color:white;border:none;
+            border-radius:14px;font-family:'Montserrat',sans-serif;font-size:0.95rem;font-weight:900;
+            cursor:pointer;text-decoration:none;margin-bottom:16px;">
+            📲 CONTACTAR AL EQUIPO DE SLOTY
+          </a>` : ''}
+        <div style="background:rgba(245,197,24,0.1);border:1px solid #F5C518;border-radius:14px;padding:16px 24px;max-width:320px;width:100%;">
+          <div style="color:#F5C518;font-size:0.7rem;font-weight:900;text-transform:uppercase;letter-spacing:1px;">Plan Seleccionado</div>
+          <div style="color:white;font-size:1.1rem;font-weight:900;margin-top:4px;">${plan.label} · ${plan.price}</div>
+        </div>
+      </div>
+    `
   }
 
   render()

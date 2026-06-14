@@ -1199,7 +1199,14 @@ export const initAdmin = (container) => {
     const titles = { STRUCTURE:'Pisos', SUBS:'Mensuales', FINANCE:'Caja', PERSONAL:'Personal', REPORTES:'Reportes', SETTINGS:'Auditoría', NOTIFICATIONS:'Notificaciones', PROFILE:'Perfil' }
     const isHome = activeTab === 'HOME'
 
+    const sState = getParkingState()
+    const trialBanner = (sState.plan === 'TRIAL' && sState.trialDaysLeft !== undefined) ? `
+      <div style="background:linear-gradient(90deg, #F5C518, #f39c12); color:#1a1a2e; padding:10px 20px; text-align:center; font-size:0.75rem; font-weight:900; letter-spacing:0.5px; display:flex; align-items:center; justify-content:center; gap:8px; border-bottom:1px solid rgba(0,0,0,0.1);">
+        <span>🎁 ESTÁS EN PRUEBA GRATUITA: Quedan ${sState.trialDaysLeft} días</span>
+      </div>` : ''
+
     header.innerHTML = `
+      ${trialBanner}
       <div style="background:#1a1a2e; padding:calc(env(safe-area-inset-top, 0px) + 15px) 20px 20px; color:white; position:sticky; top:0; z-index:1100; box-shadow:0 10px 30px rgba(0,0,0,0.2);">
         <!-- HEADER TOP: Logo & Context -->
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:${isHome ? '15px' : '0'};">
