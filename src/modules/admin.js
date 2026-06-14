@@ -13,6 +13,55 @@ export const initAdmin = (container) => {
   let cachedMetrics = null
   let metricsLoading = false
 
+  let cachedSubs = null;
+  let cachedSubsAt = 0;
+  const SUBS_TTL = 30_000;
+
+  let cachedFinance = null;
+  let cachedFinanceAt = 0;
+  const FINANCE_TTL = 60_000;
+
+  let financeChannel = null;
+
+  const subscribeFinanceRealtime = (buildingId) => {
+    if (financeChannel) return; // ya suscrito
+    financeChannel = supabase
+      .channel('finance-payments')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'payments',
+        filter: `building_id=eq.${buildingId}`
+      }, () => {
+        cachedFinance = null; // invalida cache
+        cachedSubsAt = 0;     // invalida subs también
+      })
+      .subscribe();
+  };
+
+  const unsubscribeFinanceRealtime = () => {
+    if (financeChannel) {
+      supabase.removeChannel(financeChannel);
+      financeChannel = null;
+    }
+  };
+
+  const getSubsCached = async (buildingId) => {
+    if (cachedSubs && Date.now() - cachedSubsAt < SUBS_TTL) return cachedSubs;
+    const [subsRes, bldRes] = await Promise.all([
+      supabase.from('subscriptions')
+        .select('id,resident_name,plate,expiry_date,custom_price,tower,apt,phone,is_coming,slots_count,status')
+        .eq('building_id', buildingId)
+        .order('created_at', { ascending: false }),
+      supabase.from('buildings')
+        .select('monthly_rate,monthly_slots_limit')
+        .eq('id', buildingId).single()
+    ]);
+    cachedSubs = { subs: subsRes.data || [], bld: bldRes.data };
+    cachedSubsAt = Date.now();
+    return cachedSubs;
+  };
+
   const ICONS = {
     HOME: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
     HISTORY: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
@@ -573,6 +622,7 @@ export const initAdmin = (container) => {
           document.getElementById('new-sub-apt').value = '';
           document.getElementById('new-sub-phone').value = '';
           
+          cachedSubs = null;
           await render(); 
         } else {
           console.error('Supabase Error:', error);
@@ -601,6 +651,7 @@ export const initAdmin = (container) => {
       if (!res) return;
 
       editingResident = id;
+      cachedSubs = null;
       await render(); // Re-render to update form button and inputs
 
       document.getElementById('new-sub-name').value = res.resident_name;
@@ -648,8 +699,16 @@ export const initAdmin = (container) => {
       const daysToAdd = Math.round((amount / price) * 30)
       startBase.setDate(startBase.getDate() + daysToAdd)
 
-      await supabase.from('payments').update({ status: 'CONFIRMED' }).eq('id', pid)
-      await supabase.from('subscriptions').update({ expiry_date: startBase.toISOString() }).eq('id', sid)
+      const [{ error: e1 }, { error: e2 }] = await Promise.all([
+        supabase.from('payments').update({ status: 'CONFIRMED' }).eq('id', pid),
+        supabase.from('subscriptions').update({ expiry_date: startBase.toISOString() }).eq('id', sid)
+      ]);
+
+      if (e1 || e2) {
+        console.error('Error al confirmar pago:', e1 || e2);
+        alert('Error al confirmar el pago. Intenta de nuevo.');
+        return;
+      }
 
       // Log movement so it reflects in the global cash total
       logMovement({
@@ -675,6 +734,7 @@ export const initAdmin = (container) => {
         }
       }).catch(e => console.warn('[Sloty] push error:', e))
       cachedMetrics = null
+      cachedFinance = null
       render()
     },
     REJECT_PAYMENT: async (btn) => {
@@ -771,6 +831,7 @@ export const initAdmin = (container) => {
           const { error } = await supabase.from('subscriptions').delete().eq('id', id);
           if(!error) {
              pendingAction = null;
+             cachedSubs = null;
              render();
           } else {
              pendingAction = {
@@ -799,7 +860,7 @@ export const initAdmin = (container) => {
                 <div style="position:absolute; top:-20px; right:-20px; width:100px; height:100px; background:var(--accent); border-radius:50%; opacity:0.05;"></div>
                 
                 <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:30px;">
-                   <img src="/sloty-logo-v2.png.png" style="height:35px; filter:brightness(0) invert(1);">
+                   <img src="/sloty-logo-v2.png" style="height:35px; filter:brightness(0) invert(1);">
                    <div style="background:var(--accent); color:var(--primary); font-size:0.5rem; font-weight:900; padding:4px 10px; border-radius:30px; text-transform:uppercase;">RESIDENTE</div>
                 </div>
 
@@ -1288,21 +1349,29 @@ export const initAdmin = (container) => {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
   const todayStr = new Date().toISOString().split('T')[0]
 
-  const [subsPayRes, todayPayRes] = await Promise.all([
-    supabase.from('payments')
-      .select('amount, method, payment_date, status')
-      .eq('building_id', state.buildingId)
-      .eq('status', 'CONFIRMED')
-      .gte('payment_date', monthStart),
-    supabase.from('payments')
-      .select('amount, method')
-      .eq('building_id', state.buildingId)
-      .eq('status', 'CONFIRMED')
-      .gte('payment_date', todayStr)
-  ])
+  let subsPays, todayPays;
 
-  const subsPays = subsPayRes.data || []
-  const todayPays = todayPayRes.data || []
+  if (cachedFinance && Date.now() - cachedFinanceAt < FINANCE_TTL) {
+    subsPays  = cachedFinance.subsPays;
+    todayPays = cachedFinance.todayPays;
+  } else {
+    const [subsPayRes, todayPayRes] = await Promise.all([
+      supabase.from('payments')
+        .select('amount, method, payment_date, status')
+        .eq('building_id', state.buildingId)
+        .eq('status', 'CONFIRMED')
+        .gte('payment_date', monthStart),
+      supabase.from('payments')
+        .select('amount, method')
+        .eq('building_id', state.buildingId)
+        .eq('status', 'CONFIRMED')
+        .gte('payment_date', todayStr)
+    ]);
+    subsPays  = subsPayRes.data || [];
+    todayPays = todayPayRes.data || [];
+    cachedFinance   = { subsPays, todayPays };
+    cachedFinanceAt = Date.now();
+  }
   const subsRevMonth = subsPays.reduce((a, p) => a + (p.amount || 0), 0)
   const subsRevToday = todayPays.reduce((a, p) => a + (p.amount || 0), 0)
 
@@ -1318,7 +1387,7 @@ export const initAdmin = (container) => {
 
     // Inventory
     const successfulCollections = movs.filter(m => (m.amount || 0) > 0).length
-    const vehiclesInDebt = state.stats?.dead || 0
+    const vehiclesInDebt = state.stats?.debt || 0
 
     // Methods breakdown
     const methods = movs.reduce((acc, m) => {
@@ -1333,6 +1402,7 @@ export const initAdmin = (container) => {
     const baseRate = state.settings?.baseRate || 1
     const excedents = movs.filter(m => (m.amount || 0) > baseRate).slice(0, 3)
 
+    subscribeFinanceRealtime(state.buildingId);
     return `
       <div style="padding:20px; padding-bottom:120px; background:#f8f9fa;">
         <h2 style="font-weight:900; color:var(--primary); font-size:1.4rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:20px;">RENDIMIENTO FINANCIERO</h2>
@@ -1945,12 +2015,8 @@ export const initAdmin = (container) => {
 
   const renderMonthlySystem = async (state) => {
     // Force a fresh fetch from Supabase
-    const { data: subs, error: fetchErr } = await supabase.from('subscriptions')
-      .select('*')
-      .eq('building_id', state.buildingId)
-      .order('created_at', { ascending: false });
-      
-    const { data: bld } = await supabase.from('buildings').select('monthly_rate, monthly_slots_limit').eq('id', state.buildingId).single()
+    const { subs, bld } = await getSubsCached(state.buildingId);
+    const fetchErr = null;
     
     if (fetchErr) console.error("Error fetching residents:", fetchErr);
     
@@ -2380,7 +2446,10 @@ export const initAdmin = (container) => {
     })
     .subscribe()
 
-  container._cleanup = () => realtimeChannel.unsubscribe()
+  container._cleanup = () => {
+    realtimeChannel.unsubscribe();
+    unsubscribeFinanceRealtime();
+  }
 
   loadHomeMetrics().then(() => render())
 }

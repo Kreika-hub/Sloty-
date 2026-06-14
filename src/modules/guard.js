@@ -24,6 +24,16 @@ export const initGuard = (container, guardName = 'Guardia') => {
   let elShell = null
   let elContent = null
 
+  let shiftData = {
+    startedAt: new Date().toISOString(),
+    absences: [],
+    pausedAt: null
+  }
+
+  window.handleAction = (type, payload) => {
+    if (actions[type]) actions[type](payload)
+  }
+
   const showNativePush = (title, msg, icon = '🛡️') => {
     const push = document.createElement('div')
     push.style = `position:fixed; top:20px; left:20px; right:20px; background:rgba(255,255,255,0.95); backdrop-filter:blur(20px); padding:15px; border-radius:22px; display:flex; gap:12px; align-items:center; z-index:10001; box-shadow:0 15px 40px rgba(0,0,0,0.15); border:1px solid #eee; transform:translateY(-150%); transition:transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);`
@@ -458,7 +468,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
       pendingPayment = null
       showToast('Pago registrado correctamente', 'success')
     },
-    FINALIZE_CLOSURE: () => {
+    FINALIZE_CLOSURE: async () => {
       const openMovs = state.movements.filter(m => !m.closed && m.guardName === guardName)
       const total = openMovs.reduce((a,m) => a + (m.amount || 0), 0)
       const breakdown = openMovs.reduce((acc, m) => {
@@ -466,11 +476,13 @@ export const initGuard = (container, guardName = 'Guardia') => {
         return acc
       }, {})
 
-      saveClosure({
+      await saveClosure({
         guard: guardName,
         total,
         methods: breakdown,
-        movements: openMovs
+        movements: openMovs,
+        absences: shiftData.absences,
+        startedAt: shiftData.startedAt
       })
 
       logNotification('CIERRE_CAJA', guardName, `Cierre completado: $${total.toFixed(2)} acumulados.`)
@@ -499,6 +511,59 @@ export const initGuard = (container, guardName = 'Guardia') => {
       updateParkingState(state);
       render();
       showToast(`Puesto ${lvl.slots[freeIdx].label} reservado para ${plate}`, "success");
+    },
+    PAUSE_SHIFT: () => {
+      const pin = prompt('Ingresa tu PIN para pausar el turno:');
+      if (!pin) return;
+      const guard = state.personnel?.find(p => p.pin === pin);
+      if (!guard) { alert('PIN incorrecto.'); return; }
+
+      // Registrar inicio de ausencia
+      if (shiftData) shiftData.pausedAt = new Date().toISOString();
+
+      // Bloquear pantalla
+      document.body.innerHTML = `
+        <div style="display:flex; flex-direction:column; align-items:center;
+                    justify-content:center; height:100vh; background:#1a1a2e;
+                    color:white; text-align:center; padding:40px;">
+          <div style="font-size:3rem; margin-bottom:16px;">🔒</div>
+          <div style="font-size:1rem; font-weight:900; color:#F5C518;
+                      text-transform:uppercase; letter-spacing:2px;">
+            Turno Pausado
+          </div>
+          <div style="font-size:0.75rem; color:rgba(255,255,255,0.5);
+                      margin-top:8px;">
+            Ingresa tu PIN para continuar
+          </div>
+          <input id="resume-pin" type="password" inputmode="numeric"
+                 maxlength="6" placeholder="••••••"
+                 style="margin-top:24px; padding:12px 20px; border-radius:50px;
+                        border:2px solid #F5C518; background:transparent;
+                        color:white; font-size:1.2rem; text-align:center;
+                        width:160px; outline:none;"
+                 oninput="if(this.value.length>=4) handleAction('RESUME_SHIFT', this.value)" />
+        </div>`;
+    },
+    RESUME_SHIFT: async (pin) => {
+      const guard = state.personnel?.find(p => p.pin === pin);
+      if (!guard) {
+        document.querySelector('#resume-pin').value = '';
+        document.querySelector('#resume-pin').placeholder = 'PIN incorrecto';
+        return;
+      }
+
+      // Registrar fin de ausencia
+      if (shiftData?.pausedAt) {
+        const from = shiftData.pausedAt;
+        const to = new Date().toISOString();
+        const duration_min = Math.round((new Date(to) - new Date(from)) / 60000);
+        shiftData.absences = shiftData.absences || [];
+        shiftData.absences.push({ from, to, duration_min });
+        shiftData.pausedAt = null;
+      }
+
+      // Volver al panel normal (restaurar shell si fue borrado por innerHTML global)
+      location.reload();
     }
   }
 
@@ -599,7 +664,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
           <button id="btn-back-guard" style="background:none;border:none;color:rgba(255,255,255,0.5);font-size:1.5rem;cursor:pointer;">←</button>
           <button id="btn-change-build" style="background:rgba(255,255,255,0.1);border:none;color:white;padding:6px 12px;border-radius:8px;font-size:0.6rem;font-weight:900;cursor:pointer;">CAMBIAR EDIFICIO</button>
         </div>
-        <img src="/sloty-logo-v2.png.png" alt="Sloty" style="width:120px;height:auto;display:block;margin-bottom:8px;" />
+        <img src="/sloty-logo-v2.png" alt="Sloty" style="width:120px;height:auto;display:block;margin-bottom:8px;" />
         <p style="color:rgba(255,255,255,0.4);font-size:0.65rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 32px;">SELECCIONA TU PERFIL</p>
         
         <div style="width:100%;max-width:320px;display:grid;grid-template-columns:1fr 1fr;gap:16px;">
@@ -1145,7 +1210,15 @@ export const initGuard = (container, guardName = 'Guardia') => {
     else if (currentView === 'SUB_PAYMENT_LOADING') html = `<div style="text-align:center; padding:100px 20px; font-weight:900; color:#999;">CARGANDO RESIDENTES...</div>`
     
     if (elContent.innerHTML !== html) {
-      elContent.innerHTML = html
+      elContent.innerHTML = html + `
+        <button id="btn-pause-shift" data-action="PAUSE_SHIFT"
+          style="position:fixed; bottom:80px; right:16px; z-index:999;
+                 background:#1a1a2e; color:#F5C518; border:2px solid #F5C518;
+                 border-radius:50px; padding:10px 20px; font-size:0.75rem;
+                 font-weight:900; letter-spacing:1px; cursor:pointer; box-shadow: 0 5px 15px rgba(0,0,0,0.3);">
+          ⏸ PAUSAR TURNO
+        </button>
+      `
       if (scannerActive) initQRScanner()
       setupLocalInteractions()
     }

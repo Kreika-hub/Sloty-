@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icons/pwa-sloty.png', 'sloty-logo-v2.png.png'],
+      includeAssets: ['icons/pwa-sloty.png', 'sloty-logo-v2.png'],
       manifest: {
         name: 'Sloty - Estacionamientos',
         short_name: 'Sloty',

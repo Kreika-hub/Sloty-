@@ -238,7 +238,7 @@ export async function initResident(container, subscription) {
       <div style="min-height:100vh;background:#f8f9fa;font-family:'Montserrat',sans-serif;padding-bottom:120px;">
         <div style="background:#1a1a2e;padding:40px 24px 80px;text-align:center;position:relative;overflow:hidden;">
           <button id="res-logout" style="position:absolute;top:20px;right:20px;background:none;border:none;color:white;opacity:0.5;font-weight:700;cursor:pointer;font-size:0.75rem;">SALIR</button>
-          <img src="/sloty-logo-v2.png.png" style="width:100px;margin-bottom:10px;">
+          <img src="/sloty-logo-v2.png" style="width:100px;margin-bottom:10px;">
           <h1 style="color:white;font-size:1.2rem;font-weight:900;margin:0;">PANEL RESIDENTE</h1>
         </div>
 

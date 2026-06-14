@@ -110,6 +110,9 @@ const defaultState = {
   notifications: [],
   closures: [],
   ads: [],
+  stats: {
+    totalCollected: 0
+  },
   settings: {
     freeHours: 8, baseRate: 1, extraPerHour: 0,
     customFields: [ { id: 'torre', label: 'Torre', required: true }, { id: 'apto', label: 'Apartamento', required: true } ],
@@ -134,7 +137,7 @@ const recalcStatsData = (state) => {
         }
     })
   }
-  return { ...state.stats, totalSpots: total, occupied, dead: debt }
+  return { ...state.stats, totalSpots: total, occupied, debt: debt }
 }
 
 const IGNORE_WORDS = [
@@ -372,22 +375,44 @@ export const logMovement = (movement) => {
   }
 }
 
-export const saveClosure = (closure) => {
+export const saveClosure = async (closure) => {
   const state = getParkingState()
   state.closures = state.closures || []
-  
+
   const closedIds = closure.movements.map(m => m.id)
   state.movements.forEach(m => {
     if (closedIds.includes(m.id)) m.closed = true
   })
 
-  state.closures.unshift({
+  const closureObj = {
     ...closure,
     id: `c-${Date.now()}`,
     timestamp: new Date().toISOString()
-  })
-  
+  }
+  state.closures.unshift(closureObj)
   saveParkingState(state)
+
+  // Subir a Supabase
+  if (state.buildingId) {
+    try {
+      await supabase.from('guard_shifts').insert({
+        building_id:  state.buildingId,
+        guard_name:   closure.guardName  || 'Guardia',
+        guard_id:     closure.guardId    || null,
+        started_at:   closure.startedAt  || new Date().toISOString(),
+        ended_at:     new Date().toISOString(),
+        total_cash:   closure.totals?.cash   || 0,
+        total_mobile: closure.totals?.mobile || 0,
+        total_bs:     closure.totals?.bs     || 0,
+        entries:      closure.movements.filter(m => m.type === 'ENTRY').length,
+        exits:        closure.movements.filter(m => m.type === 'EXIT').length,
+        absences:     closure.absences  || [],
+        movements:    closure.movements || []
+      })
+    } catch (e) {
+      console.warn('[Sloty] No se pudo subir el cierre a la nube:', e)
+    }
+  }
 }
 
 export const logAudit = (action, user = 'ADMIN') => {

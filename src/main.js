@@ -25,6 +25,14 @@ const renderAlert = (msg, isError = false) => {
   layer.querySelector('#alert-close-btn').onclick = () => layer.remove();
 }
 
+const renderSuspendedScreen = () => `
+  <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#1a1a2e; color:white; text-align:center; padding:40px;">
+    <div style="font-size:3rem; margin-bottom:20px;">🚫</div>
+    <div style="font-size:1.2rem; font-weight:900; color:#e63946; text-transform:uppercase; letter-spacing:2px;">Servicio Suspendido</div>
+    <div style="font-size:0.8rem; color:rgba(255,255,255,0.5); margin-top:12px; font-weight:700;">Contacta al administrador del sistema.</div>
+  </div>
+`;
+
 const screens = {
   welcome: $('welcome-screen'),
   login: $('login-screen'),
@@ -49,7 +57,7 @@ const renderWelcome = () => {
       <div style="position: absolute; bottom: -10%; right: -10%; width: 60vw; height: 60vw; background: radial-gradient(circle, rgba(15,52,96,0.5) 0%, rgba(0,0,0,0) 70%); border-radius: 50%; pointer-events: none;"></div>
 
       <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;gap:15px; z-index: 1;">
-        <img src="/sloty-logo-v2.png.png" alt="Sloty" style="width:75%;max-width:300px;height:auto;display:block;margin:0 auto; filter: drop-shadow(0px 10px 20px rgba(0,0,0,0.5));" />
+        <img src="/sloty-logo-v2.png" alt="Sloty" style="width:75%;max-width:300px;height:auto;display:block;margin:0 auto; filter: drop-shadow(0px 10px 20px rgba(0,0,0,0.5));" />
         <p aria-label="Gestión inteligente de estacionamientos" style="color:rgba(255,255,255,0.85);font-size:0.85rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin:10px 0 0;text-align:center;">GESTIÓN INTELIGENTE DE<br>ESTACIONAMIENTOS</p>
       </div>
       <div style="width:100%;max-width:420px;display:flex;flex-direction:column;gap:14px;padding-bottom:20px;">
@@ -187,7 +195,7 @@ const renderLogin = () => {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="width:24px; height:24px;"><path d="m15 18-6-6 6-6"/></svg>
       </button>
       <div style="margin-bottom:32px;text-align:center;">
-        <img src="/sloty-logo-v2.png.png" alt="Sloty" style="width:180px;height:auto;display:block;margin:0 auto 8px;" />
+        <img src="/sloty-logo-v2.png" alt="Sloty" style="width:180px;height:auto;display:block;margin:0 auto 8px;" />
         <p style="color:rgba(255,255,255,0.4);font-size:0.8rem;font-weight:600;margin-top:4px;">Panel Administrador</p>
       </div>
       <div style="width:100%;max-width:340px;display:flex;flex-direction:column;gap:14px;">
@@ -242,7 +250,7 @@ const renderLogin = () => {
     errorEl.textContent = ''
     
     // Check which role is selected
-    const isMaster = [...chips].find(c => c.style.background === 'rgb(245, 197, 24)' || c.style.background === '#F5C518' || c.classList.contains('active'))?.dataset.role === 'MASTER'
+    const isMaster = [...chips].find(c => c.dataset.role === 'ADMIN' || c.classList.contains('active'))?.dataset.role === 'MASTER'
     
     // Dynamic loading phrases
     const phrases = ['Conectando...', 'Preparando experiencia...', 'Cargando tu panel...', 'Casi listos...'];
@@ -322,19 +330,7 @@ const renderLogin = () => {
 
       // Verificar suspensión antes de iniciar
       if (resolvedBuilding.membership_status === 'SUSPENDED') {
-        mainScreen.innerHTML = `
-          <div style="min-height:100vh;background:#1a1a2e;display:flex;
-            flex-direction:column;align-items:center;justify-content:center;
-            padding:40px;text-align:center;">
-            <div style="font-size:3rem;margin-bottom:20px;">🔒</div>
-            <div style="font-size:1.2rem;font-weight:900;color:white;
-              margin-bottom:12px;">Servicio Suspendido</div>
-            <div style="font-size:0.75rem;color:rgba(255,255,255,0.4);
-              line-height:1.6;max-width:280px;">
-              La membresía de este edificio no está activa.
-              Contacta al administrador de Sloty.
-            </div>
-          </div>`
+        mainScreen.innerHTML = renderSuspendedScreen()
         return
       }
 
@@ -594,7 +590,7 @@ const renderBuildingLogin = () => {
       <button id="btn-back-to-welcome" style="position:absolute;top:24px;left:24px;background:none;border:none;color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;width:40px;height:40px;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="width:24px; height:24px;"><path d="m15 18-6-6 6-6"/></svg>
       </button>
-      <img src="/sloty-logo-v2.png.png" alt="Sloty" style="width:140px;height:auto;display:block;margin-bottom:8px;" />
+      <img src="/sloty-logo-v2.png" alt="Sloty" style="width:140px;height:auto;display:block;margin-bottom:8px;" />
       <p style="color:rgba(255,255,255,0.4);font-size:0.75rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 40px;">IDENTIFICA TU EDIFICIO</p>
       
       <div style="width:100%;max-width:320px;background:rgba(255,255,255,0.05);padding:30px;border-radius:24px;text-align:center;border:1px solid rgba(255,255,255,0.1);">
@@ -669,7 +665,7 @@ const renderGuardPin = () => {
           <button id="btn-back-guard" style="background:none;border:none;color:rgba(255,255,255,0.5);font-size:1.5rem;cursor:pointer;">←</button>
           <button id="btn-change-build" style="background:rgba(255,255,255,0.1);border:none;color:white;padding:6px 12px;border-radius:8px;font-size:0.6rem;font-weight:900;cursor:pointer;">CAMBIAR EDIFICIO</button>
         </div>
-        <img src="/sloty-logo-v2.png.png" alt="Sloty" style="width:120px;height:auto;display:block;margin-bottom:8px;" />
+        <img src="/sloty-logo-v2.png" alt="Sloty" style="width:120px;height:auto;display:block;margin-bottom:8px;" />
         <p style="color:rgba(255,255,255,0.4);font-size:0.65rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 32px;">SELECCIONA TU PERFIL</p>
         
         <div style="width:100%;max-width:320px;display:grid;grid-template-columns:1fr 1fr;gap:16px;">
@@ -755,19 +751,7 @@ const renderGuardPin = () => {
             showOnly('main')
             const currentState = getParkingState()
             if (currentState.membership_status === 'SUSPENDED') {
-              screens.main.innerHTML = `
-                <div style="min-height:100vh;background:#1a1a2e;display:flex;
-                  flex-direction:column;align-items:center;justify-content:center;
-                  padding:40px;text-align:center;">
-                  <div style="font-size:3rem;margin-bottom:20px;">🔒</div>
-                  <div style="font-size:1.2rem;font-weight:900;color:white;
-                    margin-bottom:12px;">Servicio Suspendido</div>
-                  <div style="font-size:0.75rem;color:rgba(255,255,255,0.4);
-                    line-height:1.6;max-width:280px;">
-                    La membresía de este edificio no está activa. 
-                    Contacta al administrador de Sloty para reactivar el servicio.
-                  </div>
-                </div>`
+              screens.main.innerHTML = renderSuspendedScreen()
               return
             }
             initGuard(screens.main, guard.name)
@@ -801,19 +785,7 @@ async function redirectByRole(userId) {
     case 'ADMIN':  
       const currentState = getParkingState()
       if (currentState.membership_status === 'SUSPENDED') {
-        screens.main.innerHTML = `
-          <div style="min-height:100vh;background:#1a1a2e;display:flex;
-            flex-direction:column;align-items:center;justify-content:center;
-            padding:40px;text-align:center;">
-            <div style="font-size:3rem;margin-bottom:20px;">🔒</div>
-            <div style="font-size:1.2rem;font-weight:900;color:white;
-              margin-bottom:12px;">Servicio Suspendido</div>
-            <div style="font-size:0.75rem;color:rgba(255,255,255,0.4);
-              line-height:1.6;max-width:280px;">
-              La membresía de este edificio no está activa. 
-              Contacta al administrador de Sloty para reactivar el servicio.
-            </div>
-          </div>`
+        screens.main.innerHTML = renderSuspendedScreen()
         return
       }
       initAdmin(screens.main);  
