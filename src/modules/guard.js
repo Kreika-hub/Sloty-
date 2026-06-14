@@ -578,7 +578,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
     updateParkingState(state); 
     const realAmount = pendingPayment?.amount || 0
     logMovement({ 
-      type: 'SALIDA', 
+      type: 'EXIT', 
       plate: slotData.plate, 
       slot: slotData.label, 
       category: slotData.category, 

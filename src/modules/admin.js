@@ -907,6 +907,48 @@ export const initAdmin = (container) => {
       };
       render();
     },
+    VIEW_CLOSURE: (btn) => {
+      const id = btn.dataset.id
+      const state = getParkingState()
+      const c = (state.closures || []).find(x => x.id === id)
+      if (!c) return
+      
+      const methodsHtml = Object.entries(c.methods || {}).map(([m, val]) => `
+         <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+           <span style="font-size:0.75rem; color:#666; font-weight:700;">${m.replace('_', ' ')}</span>
+           <span style="font-size:0.85rem; color:var(--primary); font-weight:900;">$${val.toFixed(2)}</span>
+         </div>
+      `).join('')
+
+      const movsHtml = (c.movements || []).map(m => `
+         <div style="padding:10px; border-bottom:1px solid #f8f8f8; display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-size:0.75rem; font-weight:900;">${m.plate} <span style="font-weight:700; color:#bbb; margin-left:5px;">${m.slot}</span></div>
+            <div style="text-align:right;">
+               <div style="font-size:0.75rem; font-weight:900; color:#22c55e;">$${(m.amount||0).toFixed(2)}</div>
+               <div style="font-size:0.5rem; color:#bbb;">Ref: ${m.reference || 'EFEC'}</div>
+            </div>
+         </div>
+      `).join('')
+
+      pendingAction = {
+        type: 'CUSTOM_MODAL',
+        title: 'Detalle de Cierre',
+        content: `
+          <div style="padding:15px; text-align:left;">
+             <div style="background:#f8f9fa; border-radius:16px; padding:15px; margin-bottom:20px;">
+                ${methodsHtml || '<div style="font-size:0.7rem; color:#999; text-align:center;">Sin detalles por método</div>'}
+                <div style="border-top:1.5px solid #eee; margin-top:10px; padding-top:10px; display:flex; justify-content:space-between; font-weight:950;">
+                   <span>TOTAL CIERRE</span>
+                   <span style="color:#22c55e;">$${(c.total || 0).toFixed(2)}</span>
+                </div>
+             </div>
+             <div style="font-size:0.6rem; font-weight:900; color:#999; text-transform:uppercase; margin-bottom:10px;">MOVIMIENTOS DE LA SESIÓN</div>
+             <div style="max-height:250px; overflow-y:auto; border:1px solid #f4f4f4; border-radius:12px;">
+                ${movsHtml || '<div style="padding:20px; text-align:center; color:#ccc;">No hay movimientos registrados</div>'}
+             </div>
+          </div>
+        `
+      }
       render()
     },
     VIEW_GUARD_DETAIL: async (guardName) => {
