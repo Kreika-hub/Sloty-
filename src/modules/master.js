@@ -551,36 +551,60 @@ export const initMaster = (container) => {
 
         <div style="font-size:0.7rem; font-weight:900; color:#999;
                     letter-spacing:2px; text-transform:uppercase; margin-bottom:10px;">
-          Ingresos por Mes
+          Evolución de Ingresos
         </div>
-        <div style="display:grid; gap:8px; margin-bottom:24px;">
-          ${months.length === 0 ? `
-            <div style="color:rgba(255,255,255,0.3); font-size:0.75rem; padding:12px;">
-              Sin registros de pago aún
-            </div>` :
-            months.map(m => {
-              const amount = byMonth[m];
-              const max = Math.max(...Object.values(byMonth));
-              const pct = max > 0 ? (amount / max) * 100 : 0;
-              const [year, month] = m.split('-');
-              const label = new Date(year, month - 1).toLocaleString('es-VE', { month: 'long', year: 'numeric' });
-              return `
-                <div style="background:rgba(255,255,255,0.06); padding:12px 14px; border-radius:12px;">
-                  <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-                    <span style="color:white; font-size:0.75rem; font-weight:700; text-transform:capitalize;">
-                      ${label}
-                    </span>
-                    <span style="color:#F5C518; font-size:0.75rem; font-weight:900;">
-                      $${amount.toFixed(2)}
-                    </span>
-                  </div>
-                  <div style="background:rgba(255,255,255,0.08); border-radius:50px; height:4px;">
-                    <div style="background:#F5C518; border-radius:50px; height:4px;
-                                width:${pct.toFixed(1)}%; transition:width 0.3s;">
-                    </div>
-                  </div>
-                </div>`;
-            }).join('')}
+        
+        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05); border-radius:16px; padding:20px; margin-bottom:24px;">
+          ${(() => {
+            if (months.length === 0) return '<div style="color:rgba(255,255,255,0.3); font-size:0.75rem; text-align:center; padding:20px;">Sin registros de pago aún</div>';
+            
+            const chron = [...months].reverse();
+            const values = chron.map(m => byMonth[m]);
+            const maxVal = Math.max(...values) || 1;
+            const w = 300, h = 100;
+            
+            let pts = '';
+            let dots = '';
+            let labels = '';
+            
+            chron.forEach((m, idx) => {
+               const val = values[idx];
+               const x = chron.length === 1 ? w/2 : (idx / (chron.length - 1)) * w;
+               const y = h - ((val / maxVal) * (h - 20)); // 20px padding top
+               pts += \`\${x},\${y} \`;
+               
+               dots += \`<circle cx="\${x}" cy="\${y}" r="4" fill="#1a1a2e" stroke="#F5C518" stroke-width="2" />\`;
+               dots += \`<text x="\${x}" y="\${y - 10}" fill="white" font-size="8" font-weight="900" font-family="Montserrat" text-anchor="middle">$\${val}</text>\`;
+               
+               const [yy, mm] = m.split('-');
+               const lbl = new Date(yy, mm - 1).toLocaleString('es-VE', { month:'short' }).toUpperCase();
+               labels += \`<text x="\${x}" y="\${h + 16}" fill="rgba(255,255,255,0.5)" font-size="8" font-weight="700" font-family="Montserrat" text-anchor="middle">\${lbl}</text>\`;
+            });
+
+            return \`
+              <svg viewBox="0 -15 \${w} \${h + 35}" style="width:100%; height:auto; display:block; overflow:visible;">
+                <defs>
+                   <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="rgba(245,197,24,0.4)" />
+                      <stop offset="100%" stop-color="rgba(245,197,24,0.0)" />
+                   </linearGradient>
+                </defs>
+                
+                <!-- Guideline -->
+                <line x1="0" y1="\${h}" x2="\${w}" y2="\${h}" stroke="rgba(255,255,255,0.1)" stroke-width="1" stroke-dasharray="4" />
+                
+                <!-- Area -->
+                \${chron.length > 1 ? \`<polygon points="0,\${h} \${pts} \${w},\${h}" fill="url(#areaGrad)" />\` : ''}
+                
+                <!-- Line -->
+                <polyline points="\${pts}" fill="none" stroke="#F5C518" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+                
+                <!-- Dots & Labels -->
+                \${dots}
+                \${labels}
+              </svg>
+            \`;
+          })()}
         </div>
 
         <div style="font-size:0.7rem; font-weight:900; color:#e63946;
