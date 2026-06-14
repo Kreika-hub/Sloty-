@@ -1,7 +1,7 @@
 import { getParkingState, saveParkingState, logAudit, supabase } from '../db.js'
 
 export const initMaster = (container) => {
-  let activeTab = 'BUILDINGS'
+  let activeTab = 'SYSTEM'
   let selectedBuilding = null
   let selectedBuildingData = null
   let buildingStats = null
