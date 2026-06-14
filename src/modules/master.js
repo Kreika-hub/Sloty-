@@ -479,6 +479,44 @@ export const initMaster = (container) => {
         </div>
       </div>`;
   }
+  // ─── SVG Area Chart Helper ─────────────────────────────────
+  const makeAreaChart = (byMonth, months) => {
+    if (!months || months.length === 0) {
+      return '<div style="color:rgba(255,255,255,0.3);font-size:0.75rem;text-align:center;padding:20px;">Sin registros de pago aún</div>';
+    }
+    const chron = [...months].reverse();
+    const values = chron.map(m => byMonth[m] || 0);
+    const maxVal = Math.max(...values) || 1;
+    const W = 300, H = 100;
+    let pts = '', dots = '', labels = '';
+
+    chron.forEach((m, idx) => {
+      const val = values[idx];
+      const x = chron.length === 1 ? W / 2 : (idx / (chron.length - 1)) * W;
+      const y = H - ((val / maxVal) * (H - 20));
+      pts += x + ',' + y + ' ';
+      dots += '<circle cx="' + x + '" cy="' + y + '" r="4" fill="#1a1a2e" stroke="#F5C518" stroke-width="2"/>';
+      dots += '<text x="' + x + '" y="' + (y - 10) + '" fill="white" font-size="8" font-weight="900" font-family="Montserrat" text-anchor="middle">$' + val + '</text>';
+      const parts = m.split('-');
+      const lbl = new Date(parts[0], parts[1] - 1).toLocaleString('es-VE', { month: 'short' }).toUpperCase();
+      labels += '<text x="' + x + '" y="' + (H + 16) + '" fill="rgba(255,255,255,0.5)" font-size="8" font-weight="700" font-family="Montserrat" text-anchor="middle">' + lbl + '</text>';
+    });
+
+    const areaPolygon = chron.length > 1
+      ? '<polygon points="0,' + H + ' ' + pts + W + ',' + H + '" fill="url(#areaGrad)"/>'
+      : '';
+
+    return '<svg viewBox="0 -15 ' + W + ' ' + (H + 35) + '" style="width:100%;height:auto;display:block;overflow:visible;">'
+      + '<defs><linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">'
+      + '<stop offset="0%" stop-color="rgba(245,197,24,0.4)"/>'
+      + '<stop offset="100%" stop-color="rgba(245,197,24,0)"/>'
+      + '</linearGradient></defs>'
+      + '<line x1="0" y1="' + H + '" x2="' + W + '" y2="' + H + '" stroke="rgba(255,255,255,0.1)" stroke-width="1" stroke-dasharray="4"/>'
+      + areaPolygon
+      + '<polyline points="' + pts + '" fill="none" stroke="#F5C518" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>'
+      + dots + labels
+      + '</svg>';
+  }
 
   const renderSystem = (buildings = [], memberships = [], eco = {}) => {
     const totalBld     = buildings.length;
@@ -555,56 +593,7 @@ export const initMaster = (container) => {
         </div>
         
         <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05); border-radius:16px; padding:20px; margin-bottom:24px;">
-          ${(() => {
-            if (months.length === 0) return '<div style="color:rgba(255,255,255,0.3); font-size:0.75rem; text-align:center; padding:20px;">Sin registros de pago aún</div>';
-            
-            const chron = [...months].reverse();
-            const values = chron.map(m => byMonth[m]);
-            const maxVal = Math.max(...values) || 1;
-            const w = 300, h = 100;
-            
-            let pts = '';
-            let dots = '';
-            let labels = '';
-            
-            chron.forEach((m, idx) => {
-               const val = values[idx];
-               const x = chron.length === 1 ? w/2 : (idx / (chron.length - 1)) * w;
-               const y = h - ((val / maxVal) * (h - 20)); // 20px padding top
-               pts += \`\${x},\${y} \`;
-               
-               dots += \`<circle cx="\${x}" cy="\${y}" r="4" fill="#1a1a2e" stroke="#F5C518" stroke-width="2" />\`;
-               dots += \`<text x="\${x}" y="\${y - 10}" fill="white" font-size="8" font-weight="900" font-family="Montserrat" text-anchor="middle">$\${val}</text>\`;
-               
-               const [yy, mm] = m.split('-');
-               const lbl = new Date(yy, mm - 1).toLocaleString('es-VE', { month:'short' }).toUpperCase();
-               labels += \`<text x="\${x}" y="\${h + 16}" fill="rgba(255,255,255,0.5)" font-size="8" font-weight="700" font-family="Montserrat" text-anchor="middle">\${lbl}</text>\`;
-            });
-
-            return \`
-              <svg viewBox="0 -15 \${w} \${h + 35}" style="width:100%; height:auto; display:block; overflow:visible;">
-                <defs>
-                   <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stop-color="rgba(245,197,24,0.4)" />
-                      <stop offset="100%" stop-color="rgba(245,197,24,0.0)" />
-                   </linearGradient>
-                </defs>
-                
-                <!-- Guideline -->
-                <line x1="0" y1="\${h}" x2="\${w}" y2="\${h}" stroke="rgba(255,255,255,0.1)" stroke-width="1" stroke-dasharray="4" />
-                
-                <!-- Area -->
-                \${chron.length > 1 ? \`<polygon points="0,\${h} \${pts} \${w},\${h}" fill="url(#areaGrad)" />\` : ''}
-                
-                <!-- Line -->
-                <polyline points="\${pts}" fill="none" stroke="#F5C518" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
-                
-                <!-- Dots & Labels -->
-                \${dots}
-                \${labels}
-              </svg>
-            \`;
-          })()}
+          ${makeAreaChart(byMonth, months)}
         </div>
 
         <div style="font-size:0.7rem; font-weight:900; color:#e63946;
