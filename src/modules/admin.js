@@ -13,6 +13,10 @@ export const initAdmin = (container) => {
   let cachedMetrics = null
   let metricsLoading = false
 
+  window.handleAction = (type, payload) => {
+    if (actions[type]) actions[type](payload)
+  }
+
   let cachedSubs = null;
   let cachedSubsAt = 0;
   const SUBS_TTL = 30_000;
@@ -903,49 +907,106 @@ export const initAdmin = (container) => {
       };
       render();
     },
-    VIEW_CLOSURE: (btn) => {
-      const id = btn.dataset.id
-      const state = getParkingState()
-      const c = state.closures.find(x => x.id === id)
-      if (!c) return
-      
-      const methodsHtml = Object.entries(c.methods || {}).map(([m, val]) => `
-         <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
-           <span style="font-size:0.75rem; color:#666; font-weight:700;">${m.replace('_', ' ')}</span>
-           <span style="font-size:0.85rem; color:var(--primary); font-weight:900;">$${val.toFixed(2)}</span>
-         </div>
-      `).join('')
-
-      const movsHtml = (c.movements || []).map(m => `
-         <div style="padding:10px; border-bottom:1px solid #f8f8f8; display:flex; justify-content:space-between; align-items:center;">
-            <div style="font-size:0.75rem; font-weight:900;">${m.plate} <span style="font-weight:700; color:#bbb; margin-left:5px;">${m.slot}</span></div>
-            <div style="text-align:right;">
-               <div style="font-size:0.75rem; font-weight:900; color:#22c55e;">$${(m.amount||0).toFixed(2)}</div>
-               <div style="font-size:0.5rem; color:#bbb;">Ref: ${m.reference || 'EFEC'}</div>
-            </div>
-         </div>
-      `).join('')
-
-      pendingAction = {
-        type: 'CUSTOM_MODAL',
-        title: 'Detalle de Cierre',
-        content: `
-          <div style="padding:15px; text-align:left;">
-             <div style="background:#f8f9fa; border-radius:16px; padding:15px; margin-bottom:20px;">
-                ${methodsHtml || '<div style="font-size:0.7rem; color:#999; text-align:center;">Sin detalles por método</div>'}
-                <div style="border-top:1.5px solid #eee; margin-top:10px; padding-top:10px; display:flex; justify-content:space-between; font-weight:950;">
-                   <span>TOTAL CIERRE</span>
-                   <span style="color:#22c55e;">$${(c.total || 0).toFixed(2)}</span>
-                </div>
-             </div>
-             <div style="font-size:0.6rem; font-weight:900; color:#999; text-transform:uppercase; margin-bottom:10px;">MOVIMIENTOS DE LA SESIÓN</div>
-             <div style="max-height:250px; overflow-y:auto; border:1px solid #f4f4f4; border-radius:12px;">
-                ${movsHtml || '<div style="padding:20px; text-align:center; color:#ccc;">No hay movimientos registrados</div>'}
-             </div>
-          </div>
-        `
-      }
       render()
+    },
+    VIEW_GUARD_DETAIL: async (guardName) => {
+      const { data: gShifts } = await supabase
+        .from('guard_shifts')
+        .select('*')
+        .eq('building_id', state.buildingId)
+        .eq('guard_name', guardName)
+        .order('ended_at', { ascending: false });
+
+      const shifts = gShifts || [];
+      const totalEarned = shifts.reduce((a, s) => a + (s.total_cash||0) + (s.total_mobile||0) + (s.total_bs||0), 0);
+      const totalEntries = shifts.reduce((a, s) => a + (s.entries||0), 0);
+      const totalExits = shifts.reduce((a, s) => a + (s.exits||0), 0);
+      const totalAbsMin = shifts.reduce((a, s) => a + (s.absences||[]).reduce((b, ab) => b + (ab.duration_min||0), 0), 0);
+
+      const html = `
+        <div style="padding:20px; padding-bottom:120px; background:#f8f9fa; min-height:100vh;">
+          <div style="display:flex; align-items:center; gap:12px; margin-bottom:20px;">
+            <button onclick="handleAction('BACK_TO_FINANCE')"
+                    style="background:#1a1a2e; color:#F5C518; border:none;
+                           border-radius:50px; padding:8px 16px; font-size:0.7rem;
+                           font-weight:900; cursor:pointer;">← VOLVER</button>
+            <div style="font-size:1.1rem; font-weight:900; color:#1a1a2e; text-transform:uppercase;">
+              ${guardName}
+            </div>
+          </div>
+
+          <!-- RESUMEN GLOBAL DEL GUARDIA -->
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:20px;">
+            <div style="background:#1a1a2e; color:white; padding:20px; border-radius:20px; text-align:center;">
+              <div style="font-size:1.6rem; font-weight:900;">$${totalEarned.toFixed(2)}</div>
+              <div style="font-size:0.6rem; color:#F5C518; font-weight:700; margin-top:4px;">TOTAL RECAUDADO</div>
+            </div>
+            <div style="background:#F5C518; color:#1a1a2e; padding:20px; border-radius:20px; text-align:center;">
+              <div style="font-size:1.6rem; font-weight:900;">${shifts.length}</div>
+              <div style="font-size:0.6rem; font-weight:700; margin-top:4px;">TURNOS TOTALES</div>
+            </div>
+            <div style="background:white; padding:16px; border-radius:20px; text-align:center; border:1px solid #eee;">
+              <div style="font-size:1.3rem; font-weight:900; color:#22c55e;">${totalEntries}</div>
+              <div style="font-size:0.6rem; color:#999; font-weight:700; margin-top:2px;">ENTRADAS</div>
+            </div>
+            <div style="background:white; padding:16px; border-radius:20px; text-align:center; border:1px solid #eee;">
+              <div style="font-size:1.3rem; font-weight:900; color:#e63946;">${totalAbsMin}</div>
+              <div style="font-size:0.6rem; color:#999; font-weight:700; margin-top:2px;">MIN AUSENTE</div>
+            </div>
+          </div>
+
+          <!-- HISTORIAL DE TURNOS -->
+          <div style="font-size:0.7rem; font-weight:900; color:#999; letter-spacing:2px; margin-bottom:12px;">HISTORIAL DE TURNOS</div>
+          ${shifts.map(s => {
+            const earned = (s.total_cash||0) + (s.total_mobile||0) + (s.total_bs||0);
+            const absMin = (s.absences||[]).reduce((a, ab) => a + (ab.duration_min||0), 0);
+            const start = new Date(s.started_at).toLocaleString('es-VE', { dateStyle:'short', timeStyle:'short' });
+            const end = new Date(s.ended_at).toLocaleString('es-VE', { dateStyle:'short', timeStyle:'short' });
+            return `
+              <div style="background:white; border-radius:16px; padding:16px;
+                          margin-bottom:10px; border:1px solid #eee;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                  <div style="font-size:0.7rem; color:#999; font-weight:700;">${start} → ${end}</div>
+                  <div style="font-size:0.9rem; font-weight:900; color:#1a1a2e;">$${earned.toFixed(2)}</div>
+                </div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                  <span style="background:#f0f0f0; border-radius:50px; padding:3px 10px;
+                               font-size:0.65rem; font-weight:700; color:#333;">
+                    🚗 ${s.entries||0} entradas
+                  </span>
+                  <span style="background:#f0f0f0; border-radius:50px; padding:3px 10px;
+                               font-size:0.65rem; font-weight:700; color:#333;">
+                    💵 $${(s.total_cash||0).toFixed(2)} efectivo
+                  </span>
+                  <span style="background:#f0f0f0; border-radius:50px; padding:3px 10px;
+                               font-size:0.65rem; font-weight:700; color:#333;">
+                    📱 $${(s.total_mobile||0).toFixed(2)} móvil
+                  </span>
+                  ${absMin > 0 ? `
+                    <span style="background:#FCEBEB; border-radius:50px; padding:3px 10px;
+                                 font-size:0.65rem; font-weight:700; color:#e63946;">
+                      ⏸ ${absMin} min ausente
+                    </span>` : ''}
+                </div>
+                ${(s.absences||[]).length > 0 ? `
+                  <div style="margin-top:10px; padding-top:10px; border-top:1px solid #f0f0f0;">
+                    <div style="font-size:0.65rem; font-weight:900; color:#999; margin-bottom:6px;">AUSENCIAS</div>
+                    ${s.absences.map(ab => `
+                      <div style="font-size:0.65rem; color:#e63946; margin-bottom:3px;">
+                        ${new Date(ab.from).toLocaleTimeString('es-VE', {timeStyle:'short'})}
+                        → ${new Date(ab.to).toLocaleTimeString('es-VE', {timeStyle:'short'})}
+                        (${ab.duration_min} min)
+                      </div>`).join('')}
+                  </div>` : ''}
+              </div>`;
+          }).join('')}
+        </div>`;
+
+      elMain.innerHTML = html;
+    },
+    BACK_TO_FINANCE: async () => {
+      cachedFinance = null;
+      await render();
     }
   }
 
@@ -1133,11 +1194,11 @@ export const initAdmin = (container) => {
     const activeAds = (ads || []).filter(a => a.active) || []
 
     let avgHours = 0;
-    const salidas = movements.filter(m => m.type === 'SALIDA');
+    const salidas = movements.filter(m => m.type === 'EXIT');
     if (salidas.length > 0) {
       let totalMs = 0; let counted = 0;
       salidas.forEach(sal => {
-        const ing = movements.find(m => m.type === 'INGRESO' && m.plate === sal.plate && m.timestamp < sal.timestamp);
+        const ing = movements.find(m => (m.type === 'ENTRY' || m.type === 'INGRESO') && m.plate === sal.plate && m.timestamp < sal.timestamp);
         if (ing) { totalMs += (new Date(sal.timestamp) - new Date(ing.timestamp)); counted++; }
       });
       if (counted > 0) avgHours = (totalMs / counted) / (1000 * 60 * 60);
@@ -1372,6 +1433,22 @@ export const initAdmin = (container) => {
     cachedFinance   = { subsPays, todayPays };
     cachedFinanceAt = Date.now();
   }
+
+  const { data: shifts } = await supabase
+    .from('guard_shifts')
+    .select('id, guard_name, started_at, ended_at, total_cash, total_mobile, total_bs, entries, exits, absences')
+    .eq('building_id', state.buildingId)
+    .order('ended_at', { ascending: false })
+    .limit(200);
+
+  const guardShifts = shifts || [];
+
+  // Agrupar por guardia
+  const byGuard = {};
+  guardShifts.forEach(s => {
+    if (!byGuard[s.guard_name]) byGuard[s.guard_name] = [];
+    byGuard[s.guard_name].push(s);
+  });
   const subsRevMonth = subsPays.reduce((a, p) => a + (p.amount || 0), 0)
   const subsRevToday = todayPays.reduce((a, p) => a + (p.amount || 0), 0)
 
@@ -1407,6 +1484,49 @@ export const initAdmin = (container) => {
       <div style="padding:20px; padding-bottom:120px; background:#f8f9fa;">
         <h2 style="font-weight:900; color:var(--primary); font-size:1.4rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:20px;">RENDIMIENTO FINANCIERO</h2>
         
+        <!-- PANEL DE GUARDIAS -->
+        <div style="margin-bottom:20px;">
+          <div style="font-size:0.7rem; font-weight:900; color:#999; letter-spacing:2px; text-transform:uppercase; margin-bottom:12px;">GUARDIAS</div>
+          <div style="display:flex; gap:12px; overflow-x:auto; padding-bottom:8px;">
+            ${Object.keys(byGuard).length === 0 ? `
+              <div style="font-size:0.75rem; color:#999; padding:12px;">Sin turnos registrados aún.</div>
+            ` : Object.entries(byGuard).map(([name, shiftList]) => {
+              const totalEarned = shiftList.reduce((a, s) => a + (s.total_cash||0) + (s.total_mobile||0) + (s.total_bs||0), 0);
+              const totalShifts = shiftList.length;
+              const totalAbsMin = shiftList.reduce((a, s) => a + (s.absences||[]).reduce((b, ab) => b + (ab.duration_min||0), 0), 0);
+              const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+              return `
+                <div onclick="handleAction('VIEW_GUARD_DETAIL', '${name}')"
+                     style="flex-shrink:0; background:#1a1a2e; border-radius:20px;
+                            padding:16px 14px; text-align:center; cursor:pointer;
+                            min-width:100px; transition:transform 0.15s;"
+                     onmouseover="this.style.transform='scale(1.04)'"
+                     onmouseout="this.style.transform='scale(1)'">
+                  <div style="width:48px; height:48px; border-radius:50%;
+                              background:#F5C518; color:#1a1a2e; font-size:1.1rem;
+                              font-weight:900; display:flex; align-items:center;
+                              justify-content:center; margin:0 auto 8px;">
+                    ${initials}
+                  </div>
+                  <div style="font-size:0.7rem; font-weight:900; color:white;
+                              text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">
+                    ${name.split(' ')[0]}
+                  </div>
+                  <div style="font-size:0.65rem; color:#F5C518; font-weight:700;">
+                    $${totalEarned.toFixed(2)}
+                  </div>
+                  <div style="font-size:0.6rem; color:rgba(255,255,255,0.4); margin-top:2px;">
+                    ${totalShifts} turno${totalShifts !== 1 ? 's' : ''}
+                  </div>
+                  ${totalAbsMin > 0 ? `
+                    <div style="font-size:0.6rem; color:#e63946; margin-top:3px; font-weight:700;">
+                      ⏸ ${totalAbsMin}min ausente
+                    </div>` : ''}
+                </div>`;
+            }).join('')}
+          </div>
+        </div>
+
         <!-- REVENUE CARDS -->
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:15px;">
            <div style="background:#1a1a2e; color:white; padding:25px 15px; border-radius:28px; text-align:center; box-shadow:0 10px 25px rgba(26,26,46,0.2);">
@@ -1764,7 +1884,7 @@ export const initAdmin = (container) => {
                   <div style="font-size:0.7rem; font-weight:700; color:#999; margin-top:2px;">${new Date(m.timestamp).toLocaleString()}</div>
                 </div>
                 <div style="text-align:right;">
-                  <div style="font-weight:900; color:${m.type==='INGRESO'?'#22c55e':'#3b82f6'}; font-size:0.6rem; letter-spacing:1px;">${m.type}</div>
+                  <div style="font-weight:900; color:${(m.type==='ENTRY'||m.type==='INGRESO')?'#22c55e':'#3b82f6'}; font-size:0.6rem; letter-spacing:1px;">${m.type}</div>
                   <div style="font-size:0.8rem; font-weight:900; color:#1a1a2e; margin-top:2px;">${m.slot || '--'}</div>
                 </div>
               </div>

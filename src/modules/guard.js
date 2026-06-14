@@ -366,7 +366,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
           full_name: visitorName,
           plate,
           visits_to: metadata?.apto ? `Apto ${metadata.apto}` : '',
-          type: 'entry'
+          type: 'ENTRY'
         })
       })
       
@@ -420,7 +420,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
 
       if (totalOwed > 0) {
         pendingPayment = {
-          type: 'SALIDA',
+          type: 'EXIT',
           plate: selectedSlot.plate,
           slot: selectedSlot.label,
           category: selectedSlot.category,
@@ -435,7 +435,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
       }
     },
     EXIT_DEBT: () => processExit('DEBT'),
-    FORMA_PRINT: () => printTicket('SALIDA'),
+    FORMA_PRINT: () => printTicket('EXIT'),
     CIERRE_CAJA: () => {
       currentView = 'CLOSURE'; render()
     },
@@ -459,7 +459,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
       
       logMovement(mov)
       
-      if (pendingPayment.type === 'SALIDA') {
+      if (pendingPayment.type === 'EXIT') {
         processExit(pendingPayment.targetStatus)
       } else {
         // PREPAGO case: finalizing the entry
@@ -564,6 +564,9 @@ export const initGuard = (container, guardName = 'Guardia') => {
 
       // Volver al panel normal (restaurar shell si fue borrado por innerHTML global)
       location.reload();
+    },
+    CONFIRM_HANDOVER: async () => {
+      await render();
     }
   }
 
@@ -1063,8 +1066,8 @@ export const initGuard = (container, guardName = 'Guardia') => {
       return acc
     }, {})
     
-    const todayEntries = state.movements.filter(m => m.type === 'entry' && !m.closed && m.guardName === guardName).length;
-    const todayExits = state.movements.filter(m => m.type === 'SALIDA' && !m.closed && m.guardName === guardName).length;
+    const todayEntries = state.movements.filter(m => m.type === 'ENTRY' && !m.closed && m.guardName === guardName).length;
+    const todayExits = state.movements.filter(m => m.type === 'EXIT' && !m.closed && m.guardName === guardName).length;
 
     return `
     <div style="padding:20px; padding-bottom:120px;">
@@ -1193,7 +1196,87 @@ export const initGuard = (container, guardName = 'Guardia') => {
     `
   }
 
-  const render = () => {
+  const renderShiftHandover = async (state, guardName) => {
+    // Buscar el último turno cerrado de este edificio
+    const { data: lastShift } = await supabase
+      .from('guard_shifts')
+      .select('*')
+      .eq('building_id', state.buildingId)
+      .order('ended_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (!lastShift) return null; // primer turno, no hay entrega
+
+    const earned = (lastShift.total_cash||0) + (lastShift.total_mobile||0) + (lastShift.total_bs||0);
+    const end = new Date(lastShift.ended_at).toLocaleString('es-VE', { dateStyle:'short', timeStyle:'short' });
+
+    // Contar carros actualmente adentro
+    const carsInside = (state.movements||[]).filter(m => m.type === 'ENTRY' && !m.closed).length;
+
+    return `
+      <div style="min-height:100vh; background:#1a1a2e; display:flex;
+                  flex-direction:column; align-items:center; justify-content:center;
+                  padding:30px; text-align:center;">
+        <div style="font-size:2rem; margin-bottom:8px;">🔄</div>
+        <div style="font-size:0.7rem; font-weight:900; color:#F5C518;
+                    letter-spacing:3px; text-transform:uppercase; margin-bottom:4px;">
+          Entrega de Turno
+        </div>
+        <div style="font-size:0.75rem; color:rgba(255,255,255,0.4); margin-bottom:24px;">
+          Último turno cerrado: ${end}
+        </div>
+
+        <div style="background:rgba(255,255,255,0.05); border-radius:24px;
+                    padding:20px; width:100%; max-width:320px; margin-bottom:16px;">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+            <div style="background:#F5C518; border-radius:14px; padding:14px;">
+              <div style="font-size:1.3rem; font-weight:900; color:#1a1a2e;">$${earned.toFixed(2)}</div>
+              <div style="font-size:0.6rem; font-weight:900; color:#1a1a2e; margin-top:2px;">RECAUDADO</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.08); border-radius:14px; padding:14px;">
+              <div style="font-size:1.3rem; font-weight:900; color:white;">${carsInside}</div>
+              <div style="font-size:0.6rem; font-weight:900; color:rgba(255,255,255,0.5); margin-top:2px;">CARROS ADENTRO</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.08); border-radius:14px; padding:14px;">
+              <div style="font-size:1.3rem; font-weight:900; color:white;">${lastShift.entries||0}</div>
+              <div style="font-size:0.6rem; font-weight:900; color:rgba(255,255,255,0.5); margin-top:2px;">ENTRADAS</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.08); border-radius:14px; padding:14px;">
+              <div style="font-size:1.3rem; font-weight:900; color:white;">${lastShift.exits||0}</div>
+              <div style="font-size:0.6rem; font-weight:900; color:rgba(255,255,255,0.5); margin-top:2px;">SALIDAS</div>
+            </div>
+          </div>
+
+          <div style="font-size:0.65rem; color:rgba(255,255,255,0.4);
+                      font-weight:700; text-align:left; margin-bottom:6px;">
+            GUARDIA ANTERIOR
+          </div>
+          <div style="display:flex; align-items:center; gap:10px;
+                      background:rgba(255,255,255,0.05); border-radius:12px; padding:10px;">
+            <div style="width:36px; height:36px; border-radius:50%; background:#F5C518;
+                        color:#1a1a2e; font-size:0.9rem; font-weight:900;
+                        display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+              ${lastShift.guard_name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)}
+            </div>
+            <div style="text-align:left;">
+              <div style="font-size:0.8rem; font-weight:900; color:white;">${lastShift.guard_name}</div>
+              <div style="font-size:0.65rem; color:rgba(255,255,255,0.4); font-weight:700;">Turno completado</div>
+            </div>
+          </div>
+        </div>
+
+        <button data-action="CONFIRM_HANDOVER"
+                style="background:#F5C518; color:#1a1a2e; border:none;
+                       border-radius:50px; padding:14px 40px; font-size:0.8rem;
+                       font-weight:900; letter-spacing:1px; cursor:pointer;
+                       text-transform:uppercase; width:100%; max-width:320px;">
+          ENTENDIDO — INICIAR MI TURNO
+        </button>
+      </div>`;
+  };
+
+  const render = async () => {
     const freshState = getParkingState()
     if (!elShell) renderShell(freshState)
     elShell.innerHTML = renderHeader(freshState)
@@ -1327,6 +1410,15 @@ export const initGuard = (container, guardName = 'Guardia') => {
     if (btn && actions[btn.dataset.action]) actions[btn.dataset.action](btn)
   }
 
+  const startModule = async () => {
+    const handover = await renderShiftHandover(state, guardName);
+    if (handover) {
+      container.innerHTML = handover;
+    } else {
+      await render();
+    }
+  }
+
   let syncInt = setInterval(() => {
     state = getParkingState()
     const clock = document.getElementById('guard-clock')
@@ -1360,5 +1452,5 @@ export const initGuard = (container, guardName = 'Guardia') => {
     })
     .subscribe()
 
-  render()
+  startModule()
 }
