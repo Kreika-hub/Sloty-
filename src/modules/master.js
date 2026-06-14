@@ -480,7 +480,7 @@ export const initMaster = (container) => {
       </div>`;
   }
 
-  const renderSystem = (buildings = [], memberships = []) => {
+  const renderSystem = (buildings = [], memberships = [], eco = {}) => {
     const totalBld     = buildings.length;
     const activeBld    = buildings.filter(b => b.membership_status !== 'SUSPENDED').length;
     const suspendedBld = totalBld - activeBld;
@@ -501,6 +501,26 @@ export const initMaster = (container) => {
 
     return `
       <div style="padding:20px; padding-bottom:100px;">
+      
+        <div style="font-size:0.7rem; font-weight:900; color:#F5C518;
+                    letter-spacing:2px; text-transform:uppercase; margin-bottom:12px;">
+          Tracción de la Plataforma
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; margin-bottom:24px;">
+          <div style="background:rgba(245,197,24,0.1); padding:16px; border:1px solid #F5C518; border-radius:14px; text-align:center;">
+            <div style="font-size:1.4rem; font-weight:900; color:#F5C518;">${eco.residents || 0}</div>
+            <div style="font-size:0.55rem; color:#F5C518; font-weight:900; margin-top:2px; text-transform:uppercase;">Usuarios Activos</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.06); padding:16px; border-radius:14px; text-align:center;">
+            <div style="font-size:1.4rem; font-weight:900; color:white;">${eco.movements || 0}</div>
+            <div style="font-size:0.55rem; color:#999; font-weight:900; margin-top:2px; text-transform:uppercase;">Movimientos Rec.</div>
+          </div>
+          <div style="background:rgba(34,197,94,0.1); padding:16px; border:1px solid #22c55e; border-radius:14px; text-align:center;">
+            <div style="font-size:1.4rem; font-weight:900; color:#22c55e;">${eco.personnel || 0}</div>
+            <div style="font-size:0.55rem; color:#22c55e; font-weight:900; margin-top:2px; text-transform:uppercase;">Guardias Ops.</div>
+          </div>
+        </div>
+
         <div style="font-size:0.7rem; font-weight:900; color:#999;
                     letter-spacing:2px; text-transform:uppercase; margin-bottom:12px;">
           Estadísticas Globales
@@ -663,9 +683,25 @@ export const initMaster = (container) => {
       }, 100);
     }
     else if (activeTab === 'SYSTEM') {
-      const { data: bld } = await supabase.from('buildings').select('*')
-      const { data: mems } = await supabase.from('sloty_memberships').select('amount, paid_at')
-      html = renderSystem(bld || [], mems || [])
+      const [
+        { data: bld }, 
+        { data: mems },
+        { count: resCount },
+        { count: persCount },
+        { count: movCount }
+      ] = await Promise.all([
+        supabase.from('buildings').select('*'),
+        supabase.from('sloty_memberships').select('amount, paid_at'),
+        supabase.from('subscriptions').select('*', { count: 'exact', head: true }),
+        supabase.from('personnel').select('*', { count: 'exact', head: true }),
+        supabase.from('access_logs').select('*', { count: 'exact', head: true })
+      ])
+      
+      html = renderSystem(bld || [], mems || [], {
+          residents: resCount || 0,
+          personnel: persCount || 0,
+          movements: movCount || 0
+      })
     }
     
     elContent.innerHTML = html
