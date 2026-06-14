@@ -496,31 +496,27 @@ export const showToast = (message, type = 'info') => {
 const renderFallbackToast = (message, type) => {
   const existing = document.getElementById('sloty-toast')
   if (existing) existing.remove()
+  
   const toast = document.createElement('div')
   toast.id = 'sloty-toast'
-  const colors = {
-    info:    { bg: '#333333', color: '#ffffff' },
-    success: { bg: '#22c55e', color: 'white'   },
-    error:   { bg: '#e63946', color: 'white'   }
-  }
-  const { bg, color } = colors[type] || colors.info
-  // Estilo más acorde a notificaciones Push de Android/iOS (burbuja flotante estándar)
-  toast.style.cssText = `position:fixed; top:20px; left:50%; width:90%; max-width:400px;
-    transform:translateX(-50%); background:${bg}; color:${color}; 
-    padding:16px; border-radius:12px; font-weight:600; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    font-size:0.9rem; z-index:9999; display:flex; align-items:center; gap:12px;
-    box-shadow:0 4px 12px rgba(0,0,0,0.15); pointer-events:none; transition: opacity 0.3s ease;`
+  toast.className = 'native-toast'
+  
+  const icon = type === 'success' ? '✅' : (type === 'error' ? '❌' : '🔔')
   
   toast.innerHTML = `
-    <img src="/icons/pwa-192x192.png" style="width:30px; height:30px; border-radius:6px; object-fit:contain; background:black;" />
+    <div style="font-size:1.2rem;">${icon}</div>
     <div style="flex:1;">
-      <div style="font-size:0.75rem; opacity:0.8; margin-bottom:2px;">Sloty</div>
+      <div style="font-size:0.65rem; opacity:0.5; text-transform:uppercase; letter-spacing:1px; margin-bottom:2px;">Sloty</div>
       <div>${message}</div>
     </div>
   `
   document.body.appendChild(toast)
+  
+  // Triggers the CSS transition
+  requestAnimationFrame(() => toast.classList.add('show'))
+  
   setTimeout(() => {
-    toast.style.opacity = '0';
-    setTimeout(() => toast.remove(), 300)
+    toast.classList.remove('show')
+    setTimeout(() => toast.remove(), 400)
   }, 4000)
 }

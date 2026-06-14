@@ -149,6 +149,19 @@ export const initAdmin = (container) => {
       editingLevel = null
       render()
     },
+    SHOW_PLANS: async () => {
+       const state = getParkingState()
+       // Redirect to main.js's native plan selection if exposed, 
+       // but for now we can trigger it by simulating a register screen
+       const mainModal = document.getElementById('login-screen')
+       if (mainModal) {
+         mainModal.classList.remove('hidden')
+         // We need access to renderPlanSelection from main.js
+         window.dispatchEvent(new CustomEvent('sloty_show_plans', { 
+           detail: { id: state.buildingId, name: state.buildingName } 
+         }))
+       }
+    },
     DELETE_LEVEL: (btn) => {
       const name = btn.dataset.name
       pendingAction = { type: 'LEVEL', name }
@@ -1225,7 +1238,17 @@ export const initAdmin = (container) => {
                 ${(() => {
                   const plan = getParkingState().plan || 'TRIAL'
                   const planColors = { TRIAL:'#888', BRONCE:'#cd7f32', PLATA:'#aaa', ORO:'#F5C518' }
-                  return `<div style="font-size:0.45rem; font-weight:900; color:${planColors[plan] || '#888'}; letter-spacing:0.5px; background:rgba(255,255,255,0.07); padding:2px 6px; border-radius:6px; margin-left:4px;">${plan}</div>`
+                  let upgradeBtn = ''
+                  if (plan !== 'ORO') {
+                    upgradeBtn = `
+                      <button data-action="SHOW_PLANS" class="gold-btn" style="margin-left:10px;">
+                        <span>🚀 SUBIR A ORO</span>
+                      </button>`
+                  }
+                  return `
+                    <div style="font-size:0.45rem; font-weight:900; color:${planColors[plan] || '#888'}; letter-spacing:0.5px; background:rgba(255,255,255,0.07); padding:2px 6px; border-radius:6px; margin-left:4px;">${plan}</div>
+                    ${upgradeBtn}
+                  `
                 })()}
                 ${metricHtml}
               </div>

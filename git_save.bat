@@ -1,3 +1,3 @@
 git add .
-git commit -m "Correccion de flujo de login redundante y mejoras de UI"
+git commit -m "Notificaciones nativas, boton dorado de upgrade y mejoras de flujo"
 git push origin main
