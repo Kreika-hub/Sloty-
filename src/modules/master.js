@@ -221,7 +221,7 @@ export const initMaster = (container) => {
         supabase.from('payments').select('amount,status,payment_date,method').eq('building_id', buildingId).gte('payment_date', firstDay),
         supabase.from('personnel').select('name,role,pin').eq('building_id', buildingId),
         supabase.from('guard_shifts').select('guard_name,ended_at,total_cash,total_mobile,total_bs,entries,exits,absences').eq('building_id', buildingId).order('ended_at', { ascending: false }).limit(5),
-        supabase.from('building_payment_proofs').select('*').eq('building_id', buildingId).order('created_at', { ascending: false }).limit(10),
+        supabase.from('building_payment_proofs').select('*, buildings(name, phone, admin_email, city, code)').eq('building_id', buildingId).order('created_at', { ascending: false }).limit(10),
         supabase.from('incidents').select('id,type,description,guard_name,created_at,resolved').eq('building_id', buildingId).eq('resolved', false).limit(10),
         supabase.from('parking_slots').select('*', { count: 'exact', head: true }).eq('building_id', buildingId)
       ])
@@ -1343,9 +1343,9 @@ export const initMaster = (container) => {
         { data: newBlds }
       ] = await Promise.all([
         supabase.from('building_payment_proofs')
-          .select('*, buildings(name, phone, admin_email, code)')
+          .select('*, buildings(name, phone, admin_email, city, code)')
           .eq('status', 'PENDING')
-          .order('submitted_at', { ascending: false }),
+          .order('created_at', { ascending: false }),
         supabase.from('buildings')
           .select('*')
           .gte('created_at', sevenDaysAgo)
