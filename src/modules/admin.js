@@ -300,6 +300,21 @@ export const initAdmin = (container) => {
       const msg = `Hola ${name}, te saludamos de la Administración. Te recordamos que presentas un saldo pendiente de $${debt} en tu mensualidad. Por favor, realiza tu pago para mantener tu acceso activo. ¡Gracias!`;
       window.open(`https://wa.me/${phone.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`, '_blank');
     },
+    SEND_EXPIRY_ALERT: (btn) => {
+      const { name, days, phone, amount } = btn.dataset;
+      if (!phone) return alert('No hay teléfono registrado');
+      const d = parseInt(days);
+      const isExpired = d < 0;
+      let msg = '';
+      if (isExpired) {
+        msg = `Hola ${name}, te saludamos de la Administración de tu edificio.\n\nTe escribimos para notificarte que tu suscripción de estacionamiento presenta un *VENCIMIENTO* de ${Math.abs(d)} días.\n\nPor favor, regulariza tu pago de *$${amount}* lo antes posible para reactivar tu acceso automático.\n\n¡Gracias!`;
+      } else if (d === 0) {
+        msg = `Hola ${name}, te saludamos de la Administración de tu edificio.\n\nTe recordamos que tu mensualidad de estacionamiento por *$${amount}* *VENCE HOY*.\n\nAgradecemos tu pronto pago para mantener activo tu acceso sin interrupciones.\n\n¡Gracias!`;
+      } else {
+        msg = `Hola ${name}, te saludamos de la Administración de tu edificio.\n\nTe recordamos amigablemente que tu mensualidad de estacionamiento por *$${amount}* vence en *${d} días*.\n\nAgradecemos tu previsión.\n\n¡Gracias!`;
+      }
+      window.open(`https://wa.me/${phone.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`, '_blank');
+    },
     SHOW_RESIDENT_HISTORY: (btn) => {
       const { id, name } = btn.dataset;
       const state = getParkingState();
@@ -2466,6 +2481,11 @@ export const initAdmin = (container) => {
                    Vence: <span style="color:${new Date(r.expiry_date) > new Date() ? '#22c55e' : '#e63946'}; font-weight:900;">${new Date(r.expiry_date).toLocaleDateString()}</span>
                 </div>
                 <div style="display:flex; gap:10px;">
+                   ${daysLeft <= 7 || daysLeft < 0 ? `
+                   <button data-action="SEND_EXPIRY_ALERT" data-id="${r.id}" data-name="${r.resident_name}" data-phone="${r.phone}" data-days="${daysLeft}" data-amount="${r.custom_price || 0}" style="background:#f59e0b; border:none; width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:white; font-size:1.1rem;" title="Enviar Alerta de Vencimiento">
+                      🔔
+                   </button>
+                   ` : ''}
                    <button data-action="RESIDENT_PAYMENTS" data-id="${r.id}" data-name="${r.resident_name}" style="background:#f4f4f4; border:none; width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#3b82f6;">
                       <div style="width:18px; height:18px;">${ICONS.FINANCE}</div>
                    </button>
