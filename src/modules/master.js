@@ -416,20 +416,20 @@ export const initMaster = (container) => {
               </div>
           <div style="display:flex; gap:8px;">
             ${(bld?.membership_status === 'SUSPENDED' || bld?.membership_status === 'PENDING_CASH') ? `
-              <button onclick="handleMasterAction('CONTACT_COLLECTION','${buildingId}')"
+              <button onclick="window.handleMasterAction('CONTACT_COLLECTION','${buildingId}')"
                 style="background:rgba(230,57,70,0.1); color:#e63946; border:1px solid #e63946;
                        border-radius:8px; padding:8px 12px; font-size:0.65rem;
                        font-weight:900; cursor:pointer; display:flex; align-items:center; gap:6px;">
                 💬 COBRAR DEUDA
               </button>
             ` : ''}
-            <button onclick="handleMasterAction('CHANGE_PLAN','${buildingId}')"
+            <button onclick="window.handleMasterAction('CHANGE_PLAN','${buildingId}')"
               style="background:rgba(245,197,24,0.1); color:#F5C518; border:1px solid #F5C518;
                      border-radius:8px; padding:8px 12px; font-size:0.65rem;
                      font-weight:900; cursor:pointer;">
               CAMBIAR PLAN
             </button>
-            <button onclick="handleMasterAction('TOGGLE_STATUS','${buildingId}')"
+            <button onclick="window.handleMasterAction('TOGGLE_STATUS','${buildingId}')"
               style="background:${bld?.membership_status === 'SUSPENDED' ? 'rgba(34,197,94,0.1)' : 'rgba(230,57,70,0.1)'};
                      color:${bld?.membership_status === 'SUSPENDED' ? '#22c55e' : '#e63946'};
                      border:1px solid ${bld?.membership_status === 'SUSPENDED' ? '#22c55e' : '#e63946'};
@@ -458,7 +458,7 @@ export const initMaster = (container) => {
                   </div>
                   <div style="font-size:0.65rem; color:#999; margin-top:2px;">
                     ${p.reference || 'Sin referencia'} ·
-                    ${new Date(p.submitted_at).toLocaleString('es-VE', { dateStyle:'short', timeStyle:'short' })}
+                    ${new Date(p.created_at || p.submitted_at).toLocaleString('es-VE', { dateStyle:'short', timeStyle:'short' })}
                   </div>
                 </div>
               </div>
@@ -468,13 +468,13 @@ export const initMaster = (container) => {
                             max-height:200px; object-fit:cover; cursor:pointer;"
                      onclick="window.open('${p.proof_image}','_blank')" />` : ''}
               <div style="display:flex; gap:8px;">
-                <button onclick="handleMasterAction('APPROVE_PROOF','${p.id}|${buildingId}|${p.plan_key}')"
+                <button onclick="window.handleMasterAction('APPROVE_PROOF','${p.id}|${buildingId}|${p.plan_key}')"
                   style="flex:1; background:#22c55e; color:white; border:none;
                          border-radius:10px; padding:10px; font-size:0.7rem;
                          font-weight:900; cursor:pointer;">
                   ✓ APROBAR
                 </button>
-                <button onclick="handleMasterAction('REJECT_PROOF','${p.id}|${buildingId}')"
+                <button onclick="window.handleMasterAction('REJECT_PROOF','${p.id}|${buildingId}')"
                   style="flex:1; background:#e63946; color:white; border:none;
                          border-radius:10px; padding:10px; font-size:0.7rem;
                          font-weight:900; cursor:pointer;">
