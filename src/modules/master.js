@@ -875,26 +875,19 @@ export const initMaster = (container) => {
     const planColors = { TRIAL:'#888', BRONCE:'#cd7f32', PLATA:'#aaa', ORO:'#F5C518' }
     const planPrices = { TRIAL:'Gratis', BRONCE:'$29/mes', PLATA:'$59/mes', ORO:'$99/mes' }
 
+    const pendingProofs = proofs.filter(p => !p.status || p.status === 'PENDING')
+    const historyProofs = proofs.filter(p => p.status && p.status !== 'PENDING')
+
     if (proofs.length === 0) return `
       <div style="padding:40px 20px; text-align:center;">
         <div style="font-size:3rem; margin-bottom:12px;">📭</div>
         <div style="font-size:0.8rem; font-weight:900; color:rgba(255,255,255,0.4);
                     text-transform:uppercase; letter-spacing:2px;">
-          Sin solicitudes pendientes
-        </div>
-        <div style="font-size:0.7rem; color:rgba(255,255,255,0.25); margin-top:8px;">
-          Cuando un edificio envíe un comprobante aparecerá aquí
+          Sin solicitudes recientes
         </div>
       </div>`;
 
-    return `
-      <div style="padding:16px; padding-bottom:100px;">
-        <div style="font-size:0.65rem; font-weight:900; color:#F5C518;
-                    letter-spacing:2px; text-transform:uppercase; margin-bottom:14px;">
-          ${proofs.length} solicitud${proofs.length > 1 ? 'es' : ''} pendiente${proofs.length > 1 ? 's' : ''}
-        </div>
-
-        ${proofs.map(p => {
+    const renderProofCard = (p, isPending) => {
           const bld = p.buildings || {}
           const submitted = p.created_at
             ? new Date(p.created_at).toLocaleString('es-VE', { dateStyle:'medium', timeStyle:'short' })
@@ -918,12 +911,70 @@ export const initMaster = (container) => {
             'Por favor verifica los datos y vuelve a intentarlo. Si crees que es un error, escr\u00edbenos aqu\u00ed mismo.'
           )
 
+          let actionsHtml = '';
+          if (isPending) {
+             actionsHtml = `
+              <!-- ACCIONES -->
+              <div style="padding:14px 18px;">
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
+                  <button onclick="window.handleMasterAction('APPROVE_PROOF','${raw}')"
+                    style="background:#22c55e; color:white; border:none; border-radius:12px;
+                           padding:12px; font-size:0.75rem; font-weight:900; cursor:pointer;">
+                    \u2713 APROBAR
+                  </button>
+                  <button onclick="window.handleMasterAction('REJECT_PROOF','${p.id}|${p.building_id}')"
+                    style="background:#e63946; color:white; border:none; border-radius:12px;
+                           padding:12px; font-size:0.75rem; font-weight:900; cursor:pointer;">
+                    \u2717 RECHAZAR
+                  </button>
+                </div>
+                ${phone ? `
+                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
+                    <a href="https://wa.me/${phone}?text=${welcomeMsg}" target="_blank"
+                       style="background:#25D366; color:white; border-radius:12px; padding:10px;
+                              font-size:0.65rem; font-weight:900; text-decoration:none; text-align:center; display:block;">
+                      \ud83d\udcac WS Bienvenida
+                    </a>
+                    <a href="https://wa.me/${phone}?text=${rejectMsg}" target="_blank"
+                       style="background:rgba(255,255,255,0.06); color:rgba(255,255,255,0.6);
+                              border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:10px;
+                              font-size:0.65rem; font-weight:900; text-decoration:none; text-align:center; display:block;">
+                      \ud83d\udcac WS Rechazo
+                    </a>
+                  </div>
+                  <a href="https://wa.me/${phone}" target="_blank"
+                     style="display:block; background:rgba(255,255,255,0.04); color:rgba(255,255,255,0.4);
+                            border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:10px;
+                            font-size:0.65rem; font-weight:900; text-decoration:none; text-align:center;">
+                    \ud83d\udcac Abrir chat directo con el admin
+                  </a>` : `
+                  <div style="background:rgba(255,255,255,0.04); border-radius:12px; padding:10px; text-align:center;">
+                    <div style="font-size:0.65rem; color:rgba(255,255,255,0.3); font-weight:700;">
+                      Sin tel\u00e9fono registrado \u2014 edita el edificio para agregar contacto
+                    </div>
+                  </div>`}
+              </div>
+             `;
+          } else {
+             // Historial actions
+             const sColor = p.status === 'CONFIRMED' ? '#22c55e' : '#e63946';
+             const sLabel = p.status === 'CONFIRMED' ? 'APROBADO' : 'RECHAZADO';
+             actionsHtml = `
+              <div style="padding:14px 18px; text-align:center;">
+                <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:12px; border:1px solid rgba(255,255,255,0.1);">
+                   <span style="font-size:0.65rem; color:#999; font-weight:800; text-transform:uppercase;">Estado Final:</span><br>
+                   <span style="font-size:0.9rem; font-weight:900; color:${sColor};">${sLabel}</span>
+                </div>
+              </div>
+             `;
+          }
+
           return `
-            <div style="background:#0f1127; border:1px solid rgba(245,197,24,0.2);
-                        border-radius:20px; overflow:hidden; margin-bottom:20px;">
+            <div style="background:#0f1127; border:1px solid ${isPending ? 'rgba(245,197,24,0.2)' : 'rgba(255,255,255,0.1)'};
+                        border-radius:20px; overflow:hidden; margin-bottom:20px; opacity:${isPending ? '1' : '0.8'};">
 
               <!-- HEADER EDIFICIO -->
-              <div style="padding:16px 18px 12px; background:rgba(245,197,24,0.05);
+              <div style="padding:16px 18px 12px; background:${isPending ? 'rgba(245,197,24,0.05)' : 'rgba(255,255,255,0.02)'};
                           border-bottom:1px solid rgba(255,255,255,0.06);">
                 <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                   <div>
@@ -1006,48 +1057,38 @@ export const initMaster = (container) => {
                   </div>
                 </div>`}
 
-              <!-- ACCIONES -->
-              <div style="padding:14px 18px;">
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
-                  <button onclick="window.handleMasterAction('APPROVE_PROOF','${raw}')"
-                    style="background:#22c55e; color:white; border:none; border-radius:12px;
-                           padding:12px; font-size:0.75rem; font-weight:900; cursor:pointer;">
-                    \u2713 APROBAR
-                  </button>
-                  <button onclick="window.handleMasterAction('REJECT_PROOF','${p.id}|${p.building_id}')"
-                    style="background:#e63946; color:white; border:none; border-radius:12px;
-                           padding:12px; font-size:0.75rem; font-weight:900; cursor:pointer;">
-                    \u2717 RECHAZAR
-                  </button>
-                </div>
-                ${phone ? `
-                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
-                    <a href="https://wa.me/${phone}?text=${welcomeMsg}" target="_blank"
-                       style="background:#25D366; color:white; border-radius:12px; padding:10px;
-                              font-size:0.65rem; font-weight:900; text-decoration:none; text-align:center; display:block;">
-                      \ud83d\udcac WS Bienvenida
-                    </a>
-                    <a href="https://wa.me/${phone}?text=${rejectMsg}" target="_blank"
-                       style="background:rgba(255,255,255,0.06); color:rgba(255,255,255,0.6);
-                              border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:10px;
-                              font-size:0.65rem; font-weight:900; text-decoration:none; text-align:center; display:block;">
-                      \ud83d\udcac WS Rechazo
-                    </a>
-                  </div>
-                  <a href="https://wa.me/${phone}" target="_blank"
-                     style="display:block; background:rgba(255,255,255,0.04); color:rgba(255,255,255,0.4);
-                            border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:10px;
-                            font-size:0.65rem; font-weight:900; text-decoration:none; text-align:center;">
-                    \ud83d\udcac Abrir chat directo con el admin
-                  </a>` : `
-                  <div style="background:rgba(255,255,255,0.04); border-radius:12px; padding:10px; text-align:center;">
-                    <div style="font-size:0.65rem; color:rgba(255,255,255,0.3); font-weight:700;">
-                      Sin tel\u00e9fono registrado \u2014 edita el edificio para agregar contacto
-                    </div>
-                  </div>`}
-              </div>
+              ${actionsHtml}
             </div>`
-        }).join('')}
+    };
+
+    return `
+      <div style="padding:16px; padding-bottom:100px;">
+        ${pendingProofs.length > 0 ? `
+        <div style="font-size:0.65rem; font-weight:900; color:#F5C518;
+                    letter-spacing:2px; text-transform:uppercase; margin-bottom:14px;">
+          ${pendingProofs.length} solicitud${pendingProofs.length > 1 ? 'es' : ''} pendiente${pendingProofs.length > 1 ? 's' : ''}
+        </div>
+        ${pendingProofs.map(p => renderProofCard(p, true)).join('')}
+        ` : `
+        <div style="padding:40px 20px; text-align:center; background:rgba(255,255,255,0.02); border-radius:20px; margin-bottom:20px;">
+          <div style="font-size:3rem; margin-bottom:12px;">✅</div>
+          <div style="font-size:0.8rem; font-weight:900; color:rgba(255,255,255,0.4);
+                      text-transform:uppercase; letter-spacing:2px;">
+            Al día
+          </div>
+          <div style="font-size:0.7rem; color:rgba(255,255,255,0.25); margin-top:8px;">
+            No hay solicitudes pendientes por revisar.
+          </div>
+        </div>
+        `}
+
+        ${historyProofs.length > 0 ? `
+        <div style="font-size:0.65rem; font-weight:900; color:#999;
+                    letter-spacing:2px; text-transform:uppercase; margin-top:30px; margin-bottom:14px; border-top:1px solid rgba(255,255,255,0.1); padding-top:20px;">
+          Historial (${historyProofs.length})
+        </div>
+        ${historyProofs.map(p => renderProofCard(p, false)).join('')}
+        ` : ''}
       </div>`;
   }
 
@@ -1500,8 +1541,8 @@ export const initMaster = (container) => {
       ] = await Promise.all([
         supabase.from('building_payment_proofs')
           .select('*, buildings(name, phone, admin_email, city, code)')
-          .eq('status', 'PENDING')
-          .order('created_at', { ascending: false }),
+          .order('created_at', { ascending: false })
+          .limit(50),
         supabase.from('buildings')
           .select('*')
           .gte('created_at', sevenDaysAgo)
