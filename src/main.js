@@ -276,6 +276,36 @@ const renderLogin = () => {
     $('btn-login').disabled = true
 
     try {
+      // ─── BYPASS PROVISIONAL ──────────────────────────────────────
+      const pwd = $('login-password')?.value?.trim() || ''
+      if (email === 'nucita' && pwd === '1234' && isMaster) {
+        clearInterval(interval)
+        errorEl.textContent = ''
+        showOnly('main')
+        initMaster($('main-screen'))
+        return
+      }
+      if (email === 'nucita.admin' && pwd === '1234' && !isMaster) {
+        clearInterval(interval)
+        errorEl.textContent = ''
+        showOnly('main')
+        const bypassBuilding = {
+          id: 'bypass-building-id', name: 'Edificio Nucita (Demo)',
+          code: 'NUC-001', plan: 'ORO', membership_status: 'ACTIVE',
+          admin_email: 'nucita.admin@sloty.com'
+        }
+        const bypassState = {
+          buildingId: bypassBuilding.id, buildingName: bypassBuilding.name,
+          buildingCode: bypassBuilding.code, plan: 'ORO',
+          membership_status: 'ACTIVE', adminInfo: { email: bypassBuilding.admin_email, registered: true },
+          levels: [], personnel: [], movements: [], isBypass: true
+        }
+        localStorage.setItem('sloty_state', JSON.stringify(bypassState))
+        initAdmin($('main-screen'))
+        return
+      }
+      // ─────────────────────────────────────────────────────────────
+
       let building;
       if (email && !isMaster) {
         try {

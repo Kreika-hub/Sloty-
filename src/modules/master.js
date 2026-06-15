@@ -78,105 +78,98 @@ export const initMaster = (container) => {
 
       const overlay = document.createElement('div');
       overlay.id = 'change-plan-overlay';
-      overlay.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,0.8);
-        z-index:99999;display:flex;align-items:flex-end;justify-content:center;`;
-      overlay.innerHTML = `
-        <div style="background:#1a1a2e; border-radius:24px 24px 0 0; padding:24px;
-                    width:100%; max-width:500px; border:1px solid rgba(255,255,255,0.1);
-                    font-family:'Montserrat',sans-serif;">
-          <div style="font-size:0.65rem; font-weight:900; color:#999;
-                      text-transform:uppercase; letter-spacing:2px; margin-bottom:4px;">
-            Cambiar Plan
-          </div>
-          <div style="font-size:1rem; font-weight:900; color:white; margin-bottom:20px;">
-            ${bld.name}
-          </div>
-
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:20px;">
-            ${PLAN_OPTIONS.map(p => `
-              <button onclick="window._selectMasterPlan('${p.key}')"
-                id="plan-btn-${p.key}"
-                style="background:${bld.plan === p.key ? p.color : 'rgba(255,255,255,0.06)'};
-                       color:${bld.plan === p.key ? (p.key === 'ORO' ? '#1a1a2e' : 'white') : 'rgba(255,255,255,0.7)'};
-                       border:2px solid ${bld.plan === p.key ? p.color : 'rgba(255,255,255,0.1)'};
-                       border-radius:14px; padding:14px 12px; cursor:pointer;
-                       text-align:left; transition:all 0.15s;">
-                <div style="font-size:0.85rem; font-weight:900;">${p.label}</div>
-                <div style="font-size:0.7rem; opacity:0.8; margin-top:2px;">${p.price}</div>
-                <div style="font-size:0.6rem; opacity:0.6; margin-top:1px;">${p.slots}</div>
-                ${bld.plan === p.key ? `
-                  <div style="font-size:0.6rem; font-weight:900; margin-top:4px; opacity:0.8;">
-                    ✓ Plan actual
-                  </div>` : ''}
-              </button>`).join('')}
-          </div>
-
-          <div style="display:flex; gap:10px;">
-            <button onclick="document.getElementById('change-plan-overlay').remove();
-                             delete window._selectMasterPlan; delete window._currentPlanId;"
-              style="flex:1; padding:14px; background:rgba(255,255,255,0.06);
-                     color:white; border:none; border-radius:12px;
-                     font-weight:900; cursor:pointer; font-family:'Montserrat',sans-serif;">
-              CANCELAR
-            </button>
-            <button id="btn-confirm-plan"
-              style="flex:2; padding:14px; background:rgba(255,255,255,0.1);
-                     color:rgba(255,255,255,0.4); border:none; border-radius:12px;
-                     font-weight:900; cursor:pointer; font-family:'Montserrat',sans-serif;"
-              disabled>
-              SELECCIONA UN PLAN
-            </button>
-          </div>
-        </div>`;
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:99999;display:flex;align-items:flex-end;justify-content:center;';
+      overlay.innerHTML =
+        '<div style="background:#1a1a2e; border-radius:24px 24px 0 0; padding:24px;'
+        + ' width:100%; max-width:500px; border:1px solid rgba(255,255,255,0.1);'
+        + ' font-family:\'Montserrat\',sans-serif;">'
+        + '<div style="font-size:0.65rem; font-weight:900; color:#999; text-transform:uppercase; letter-spacing:2px; margin-bottom:4px;">Cambiar Plan</div>'
+        + '<div style="font-size:1rem; font-weight:900; color:white; margin-bottom:20px;">' + bld.name + '</div>'
+        + '<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:20px;">'
+        + PLAN_OPTIONS.map(p =>
+            '<button onclick="window._selectMasterPlan(\'' + p.key + '\')"'
+            + ' id="plan-btn-' + p.key + '"'
+            + ' style="background:' + (bld.plan === p.key ? p.color : 'rgba(255,255,255,0.06)') + ';'
+            + 'color:' + (bld.plan === p.key ? (p.key === 'ORO' ? '#1a1a2e' : 'white') : 'rgba(255,255,255,0.7)') + ';'
+            + 'border:2px solid ' + (bld.plan === p.key ? p.color : 'rgba(255,255,255,0.1)') + ';'
+            + 'border-radius:14px; padding:14px 12px; cursor:pointer; text-align:left; transition:all 0.15s;">'
+            + '<div style="font-size:0.85rem; font-weight:900;">' + p.label + '</div>'
+            + '<div style="font-size:0.7rem; opacity:0.8; margin-top:2px;">' + p.price + '</div>'
+            + '<div style="font-size:0.6rem; opacity:0.6; margin-top:1px;">' + p.slots + '</div>'
+            + (bld.plan === p.key ? '<div style="font-size:0.6rem; font-weight:900; margin-top:4px; opacity:0.8;">\u2713 Plan actual</div>' : '')
+            + '</button>'
+          ).join('')
+        + '</div>'
+        + '<div style="display:flex; gap:10px;">'
+        + '<button onclick="document.getElementById(\'change-plan-overlay\').remove(); delete window._selectMasterPlan; delete window._currentPlanId;"'
+        + ' style="flex:1; padding:14px; background:rgba(255,255,255,0.06); color:white; border:none; border-radius:12px; font-weight:900; cursor:pointer; font-family:\'Montserrat\',sans-serif;">CANCELAR</button>'
+        + '<button id="btn-confirm-plan" style="flex:2; padding:14px; background:rgba(255,255,255,0.1); color:rgba(255,255,255,0.4); border:none; border-radius:12px; font-weight:900; cursor:pointer; font-family:\'Montserrat\',sans-serif;" disabled>SELECCIONA UN PLAN</button>'
+        + '</div>'
+        + '</div>';
 
       document.body.appendChild(overlay);
 
-      // Estado del plan seleccionado
       let selectedPlan = bld.plan;
       window._currentPlanId = id;
 
       window._selectMasterPlan = (planKey) => {
         selectedPlan = planKey;
-        // Actualizar estilos de botones
         PLAN_OPTIONS.forEach(p => {
-          const btn = document.getElementById(`plan-btn-${p.key}`);
+          const btn = document.getElementById('plan-btn-' + p.key);
           if (!btn) return;
           const isSelected = p.key === planKey;
           btn.style.background = isSelected ? p.color : 'rgba(255,255,255,0.06)';
-          btn.style.color = isSelected
-            ? (p.key === 'ORO' ? '#1a1a2e' : 'white')
-            : 'rgba(255,255,255,0.7)';
-          btn.style.border = `2px solid ${isSelected ? p.color : 'rgba(255,255,255,0.1)'}`;
+          btn.style.color = isSelected ? (p.key === 'ORO' ? '#1a1a2e' : 'white') : 'rgba(255,255,255,0.7)';
+          btn.style.border = '2px solid ' + (isSelected ? p.color : 'rgba(255,255,255,0.1)');
         });
-        // Habilitar botón de confirmar
         const confirmBtn = document.getElementById('btn-confirm-plan');
         const plan = PLAN_OPTIONS.find(p => p.key === planKey);
         confirmBtn.disabled = false;
         confirmBtn.style.background = '#F5C518';
         confirmBtn.style.color = '#1a1a2e';
-        confirmBtn.textContent = `CAMBIAR A ${plan?.label?.toUpperCase()}`;
+        confirmBtn.textContent = 'CAMBIAR A ' + (plan?.label?.toUpperCase() || '');
       };
 
       document.getElementById('btn-confirm-plan').onclick = async () => {
-        if (!selectedPlan || selectedPlan === bld.plan) {
-          overlay.remove();
-          return;
+        if (!selectedPlan || selectedPlan === bld.plan) { overlay.remove(); return; }
+
+        // Confirmación de pago nativa
+        const paid = selectedPlan === 'TRIAL' ? false : confirm('\u00bfYa recibiste el pago de este cliente?');
+        let amount = 0;
+        let method = 'EFECTIVO';
+        if (paid) {
+          const rawAmount = prompt('\u00bfCu\u00e1nto pagaron? (en d\u00f3lares)');
+          amount = parseFloat(rawAmount) || 0;
+          const rawMethod = prompt('M\u00e9todo de pago:\n1 = Efectivo\n2 = Pago M\u00f3vil\n3 = Transferencia\n4 = Zelle\n\nEscribe el n\u00famero:');
+          const methodMap = { '1':'EFECTIVO', '2':'PAGO_MOVIL', '3':'TRANSFERENCIA', '4':'ZELLE' };
+          method = methodMap[rawMethod] || 'EFECTIVO';
         }
+
+        if (!confirm('\u00bfConfirmar upgrade a plan ' + selectedPlan + ' para ' + bld.name + '?')) return;
+
         const durations = { TRIAL: 15, BRONCE: 30, PLATA: 30, ORO: 30 };
         const days = durations[selectedPlan] || 30;
         const expiry = new Date();
         expiry.setDate(expiry.getDate() + days);
 
-        await supabase.from('buildings').update({
+        const updates = [supabase.from('buildings').update({
           plan: selectedPlan,
+          membership_status: 'ACTIVE',
           membership_expiry: expiry.toISOString()
-        }).eq('id', id);
+        }).eq('id', id)];
 
+        if (paid && amount > 0) {
+          updates.push(supabase.from('sloty_memberships').insert({
+            building_id: id, plan_key: selectedPlan, status: 'CONFIRMED',
+            amount, payment_method: method,
+            paid_at: new Date().toISOString(), expiry_date: expiry.toISOString()
+          }));
+        }
+
+        await Promise.all(updates);
         overlay.remove();
         delete window._selectMasterPlan;
         delete window._currentPlanId;
-
-        // Refrescar dossier si está abierto
         if (document.getElementById('dossier-overlay')) {
           document.getElementById('dossier-overlay').remove();
           actions.OPEN_DOSSIER(id);
@@ -730,68 +723,111 @@ export const initMaster = (container) => {
     ADD_BUILDING: () => {
       const overlay = document.createElement('div');
       overlay.id = 'master-modal';
-      overlay.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,0.7);
-        z-index:999;display:flex;align-items:flex-end;justify-content:center;`;
-      overlay.innerHTML = `
-        <div style="background:#1a1a2e; border-radius:24px 24px 0 0; padding:28px;
-                    width:100%; max-width:500px; border:1px solid rgba(255,255,255,0.1);">
-          <div style="font-size:1rem; font-weight:900; color:white; margin-bottom:4px;">
-            Nuevo Edificio
-          </div>
-          <div style="font-size:0.7rem; color:#999; margin-bottom:20px;">
-            Se creará en Supabase con plan Trial
-          </div>
-          <input id="nb-name" placeholder="Nombre del edificio"
-            style="width:100%; padding:14px; border-radius:12px; border:none;
-                  background:rgba(255,255,255,0.08); color:white; font-size:0.85rem;
-                  font-weight:700; margin-bottom:10px; box-sizing:border-box;" />
-          <input id="nb-code" placeholder="Código único (ej: SLO-0042)"
-            style="width:100%; padding:14px; border-radius:12px; border:none;
-                  background:rgba(255,255,255,0.08); color:white; font-size:0.85rem;
-                  font-weight:700; margin-bottom:10px; box-sizing:border-box;" />
-          <input id="nb-city" placeholder="Ciudad"
-            style="width:100%; padding:14px; border-radius:12px; border:none;
-                  background:rgba(255,255,255,0.08); color:white; font-size:0.85rem;
-                  font-weight:700; margin-bottom:10px; box-sizing:border-box;" />
-          <input id="nb-phone" placeholder="Teléfono de contacto (opcional)"
-            style="width:100%; padding:14px; border-radius:12px; border:none;
-                  background:rgba(255,255,255,0.08); color:white; font-size:0.85rem;
-                  font-weight:700; margin-bottom:20px; box-sizing:border-box;" />
-          <div style="display:flex; gap:10px;">
-            <button id="nb-cancel"
-              style="flex:1; padding:14px; background:rgba(255,255,255,0.08);
-                    color:white; border:none; border-radius:12px;
-                    font-weight:900; cursor:pointer;">
-              CANCELAR
-            </button>
-            <button id="nb-confirm"
-              style="flex:2; padding:14px; background:#F5C518; color:#1a1a2e;
-                    border:none; border-radius:12px; font-weight:900; cursor:pointer;">
-              CREAR EDIFICIO
-            </button>
-          </div>
-        </div>`;
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:999;display:flex;align-items:flex-end;justify-content:center;overflow-y:auto;';
+      overlay.innerHTML =
+        '<div id="nb-sheet" style="background:#1a1a2e; border-radius:24px 24px 0 0; padding:28px;'
+        + ' width:100%; max-width:500px; border:1px solid rgba(255,255,255,0.1); padding-bottom:40px;">'
+        + '<div style="font-size:1rem; font-weight:900; color:white; margin-bottom:4px;">Nuevo Edificio</div>'
+        + '<div style="font-size:0.7rem; color:#999; margin-bottom:20px;">Registro manual desde Master Panel</div>'
+        + '<label style="color:#999;font-size:0.6rem;font-weight:900;display:block;margin-bottom:6px;">NOMBRE *</label>'
+        + '<input id="nb-name" placeholder="Ej. Residencial El Prado" style="width:100%;padding:14px;border-radius:12px;border:none;background:rgba(255,255,255,0.08);color:white;font-size:0.85rem;font-weight:700;margin-bottom:12px;box-sizing:border-box;"/>'
+        + '<label style="color:#999;font-size:0.6rem;font-weight:900;display:block;margin-bottom:6px;">CÓDIGO ÚNICO *</label>'
+        + '<input id="nb-code" placeholder="Ej: SLO-0042" style="width:100%;padding:14px;border-radius:12px;border:none;background:rgba(255,255,255,0.08);color:white;font-size:0.85rem;font-weight:700;margin-bottom:12px;box-sizing:border-box;"/>'
+        + '<label style="color:#999;font-size:0.6rem;font-weight:900;display:block;margin-bottom:6px;">EMAIL ADMINISTRADOR</label>'
+        + '<input id="nb-email" type="email" placeholder="admin@edificio.com" style="width:100%;padding:14px;border-radius:12px;border:none;background:rgba(255,255,255,0.08);color:white;font-size:0.85rem;font-weight:700;margin-bottom:12px;box-sizing:border-box;"/>'
+        + '<label style="color:#999;font-size:0.6rem;font-weight:900;display:block;margin-bottom:6px;">TELÉFONO CONTACTO</label>'
+        + '<input id="nb-phone" placeholder="+584129135799" style="width:100%;padding:14px;border-radius:12px;border:none;background:rgba(255,255,255,0.08);color:white;font-size:0.85rem;font-weight:700;margin-bottom:12px;box-sizing:border-box;"/>'
+        + '<label style="color:#999;font-size:0.6rem;font-weight:900;display:block;margin-bottom:6px;">CIUDAD</label>'
+        + '<input id="nb-city" placeholder="Caracas" style="width:100%;padding:14px;border-radius:12px;border:none;background:rgba(255,255,255,0.08);color:white;font-size:0.85rem;font-weight:700;margin-bottom:12px;box-sizing:border-box;"/>'
+        + '<label style="color:#999;font-size:0.6rem;font-weight:900;display:block;margin-bottom:6px;">PLAN</label>'
+        + '<select id="nb-plan" style="width:100%;padding:14px;border-radius:12px;border:none;background:rgba(255,255,255,0.08);color:white;font-size:0.85rem;font-weight:700;margin-bottom:12px;box-sizing:border-box;appearance:none;">'
+        + '<option value="TRIAL">Trial (Gratis · 15 días)</option>'
+        + '<option value="BRONCE">Bronce ($29/mes)</option>'
+        + '<option value="PLATA">Plata ($59/mes)</option>'
+        + '<option value="ORO">Oro ($99/mes)</option>'
+        + '</select>'
+        + '<div id="nb-payment-section" style="display:none;">'
+        + '<label style="color:#999;font-size:0.6rem;font-weight:900;display:block;margin-bottom:6px;">MONTO PAGADO ($)</label>'
+        + '<input id="nb-amount" type="number" placeholder="0.00" style="width:100%;padding:14px;border-radius:12px;border:none;background:rgba(255,255,255,0.08);color:white;font-size:0.85rem;font-weight:700;margin-bottom:12px;box-sizing:border-box;"/>'
+        + '<label style="color:#999;font-size:0.6rem;font-weight:900;display:block;margin-bottom:6px;">MÉTODO DE PAGO</label>'
+        + '<select id="nb-method" style="width:100%;padding:14px;border-radius:12px;border:none;background:rgba(255,255,255,0.08);color:white;font-size:0.85rem;font-weight:700;margin-bottom:20px;box-sizing:border-box;appearance:none;">'
+        + '<option value="EFECTIVO">Efectivo</option>'
+        + '<option value="PAGO_MOVIL">Pago Móvil</option>'
+        + '<option value="TRANSFERENCIA">Transferencia</option>'
+        + '<option value="ZELLE">Zelle</option>'
+        + '</select>'
+        + '</div>'
+        + '<div style="display:flex; gap:10px;">'
+        + '<button id="nb-cancel" style="flex:1;padding:14px;background:rgba(255,255,255,0.08);color:white;border:none;border-radius:12px;font-weight:900;cursor:pointer;">CANCELAR</button>'
+        + '<button id="nb-confirm" style="flex:2;padding:14px;background:#F5C518;color:#1a1a2e;border:none;border-radius:12px;font-weight:900;cursor:pointer;">CREAR EDIFICIO</button>'
+        + '</div>'
+        + '</div>';
       document.body.appendChild(overlay);
+
+      const planSel = document.getElementById('nb-plan');
+      const paySection = document.getElementById('nb-payment-section');
+      planSel.onchange = () => {
+        paySection.style.display = planSel.value === 'TRIAL' ? 'none' : 'block';
+      };
 
       document.getElementById('nb-cancel').onclick = () => overlay.remove();
       document.getElementById('nb-confirm').onclick = async () => {
-        const name  = document.getElementById('nb-name').value.trim();
-        const code  = document.getElementById('nb-code').value.trim();
-        const city  = document.getElementById('nb-city').value.trim();
-        const phone = document.getElementById('nb-phone').value.trim();
+        const name   = document.getElementById('nb-name').value.trim();
+        const code   = document.getElementById('nb-code').value.trim();
+        const city   = document.getElementById('nb-city').value.trim();
+        const phone  = document.getElementById('nb-phone').value.trim();
+        const email  = document.getElementById('nb-email').value.trim();
+        const plan   = document.getElementById('nb-plan').value;
+        const amount = parseFloat(document.getElementById('nb-amount')?.value) || 0;
+        const method = document.getElementById('nb-method')?.value || 'EFECTIVO';
         if (!name || !code) {
           document.getElementById('nb-name').style.border = '1px solid #e63946';
           document.getElementById('nb-code').style.border = '1px solid #e63946';
           return;
         }
-        const { error } = await supabase.from('buildings').insert({
+        const durations = { TRIAL: 15, BRONCE: 30, PLATA: 30, ORO: 30 };
+        const expiry = new Date();
+        expiry.setDate(expiry.getDate() + (durations[plan] || 30));
+        const { data: newBld, error } = await supabase.from('buildings').insert({
           name, code, city, phone: phone || null,
-          plan: 'TRIAL', membership_status: 'ACTIVE',
+          admin_email: email || null,
+          plan, membership_status: 'ACTIVE',
+          membership_expiry: expiry.toISOString(),
           created_at: new Date().toISOString()
-        });
+        }).select().single();
         if (error) { alert('Error al crear el edificio: ' + error.message); return; }
-        overlay.remove(); render();
+        if (plan !== 'TRIAL' && amount > 0 && newBld) {
+          await supabase.from('sloty_memberships').insert({
+            building_id: newBld.id, plan_key: plan, status: 'CONFIRMED',
+            amount, payment_method: method,
+            paid_at: new Date().toISOString(), expiry_date: expiry.toISOString()
+          });
+        }
+        overlay.remove();
+        render();
+        // Ofrecer envío de enlace si hay teléfono
+        if (phone && newBld) {
+          if (confirm('¿Enviar enlace de acceso al admin por WhatsApp?')) {
+            const loginUrl = window.location.origin + window.location.pathname;
+            const msg = encodeURIComponent(
+              'Hola! Bienvenido a Sloty \u{1F680}\n\nTu edificio *' + name + '* ya est\u00e1 activo.\n\n'
+              + '\u{1F449} Accede aqu\u00ed: ' + loginUrl + '\n'
+              + '\u{1F511} C\u00f3digo de edificio: *' + code + '*\n'
+              + (email ? '\u{1F4E7} Email admin: *' + email + '*\n' : '')
+              + '\n\u00a1\u00c9xito con tu gesti\u00f3n! \u{1F680}'
+            );
+            window.open('https://wa.me/' + phone.replace(/\D/g,'') + '?text=' + msg, '_blank');
+          }
+        }
       };
+    },
+    DELETE_BUILDING: async (btn) => {
+      const id   = btn.dataset.id;
+      const name = btn.dataset.name || 'este edificio';
+      if (!confirm('\u26a0\ufe0f \u00bfEliminar ' + name + '?\n\nEsta acci\u00f3n es IRREVERSIBLE y borrar\u00e1 todos los datos asociados.')) return;
+      const { error } = await supabase.from('buildings').delete().eq('id', id);
+      if (error) { alert('Error al eliminar: ' + error.message); return; }
+      render();
     },
     SEND_ACCESS_LINK: async (id) => {
       if (!id) return
@@ -1085,16 +1121,43 @@ export const initMaster = (container) => {
         ${historyProofs.length > 0 ? `
         <div style="font-size:0.65rem; font-weight:900; color:#999;
                     letter-spacing:2px; text-transform:uppercase; margin-top:30px; margin-bottom:14px; border-top:1px solid rgba(255,255,255,0.1); padding-top:20px;">
-          Historial (${historyProofs.length})
+          Historial (${historyProofs.length}) <span style="font-size:0.55rem; font-weight:600; color:rgba(255,255,255,0.3);">— toca para expandir</span>
         </div>
-        ${historyProofs.map(p => renderProofCard(p, false)).join('')}
+        ${historyProofs.map((p, idx) => {
+          const bld = p.buildings || {};
+          const sColor = p.status === 'CONFIRMED' ? '#22c55e' : '#e63946';
+          const sLabel = p.status === 'CONFIRMED' ? 'APROBADO' : 'RECHAZADO';
+          const sEmoji = p.status === 'CONFIRMED' ? '\u2705' : '\u274c';
+          const planColor = { TRIAL:'#888', BRONCE:'#cd7f32', PLATA:'#aaa', ORO:'#F5C518' }[p.plan_key] || '#888';
+          const submitted = p.created_at
+            ? new Date(p.created_at).toLocaleString('es-VE', { dateStyle:'short', timeStyle:'short' })
+            : '---';
+          const hId = 'hist-card-' + idx;
+          return `
+          <div style="background:#0f1127; border:1px solid rgba(255,255,255,0.08); border-radius:16px; overflow:hidden; margin-bottom:10px; opacity:0.85;">
+            <div onclick="(function(){var b=document.getElementById('${hId}');b.style.display=b.style.display==='none'?'block':'none';})();"
+                 style="padding:14px 16px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
+              <div style="flex:1;">
+                <div style="font-size:0.85rem; font-weight:900; color:white;">${bld.name || 'Edificio'}</div>
+                <div style="font-size:0.6rem; color:#999; margin-top:2px;">${submitted} &nbsp;&middot;&nbsp; $${Number(p.amount||0).toFixed(2)}</div>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="background:${planColor}; color:${p.plan_key==='ORO'?'#1a1a2e':'white'}; padding:2px 8px; border-radius:6px; font-size:0.6rem; font-weight:900;">${p.plan_key||'?'}</span>
+                <span style="font-size:0.75rem; font-weight:900; color:${sColor};">${sEmoji} ${sLabel}</span>
+                <span style="color:rgba(255,255,255,0.3); font-size:0.8rem;">&#8250;</span>
+              </div>
+            </div>
+            <div id="${hId}" style="display:none;">
+              ${renderProofCard(p, false)}
+            </div>
+          </div>`;
+        }).join('')}
         ` : ''}
       </div>`;
   }
 
 
   const renderBuildings = (buildings = []) => {
-    // Remove legacy detail view that was kept inside renderBuildings
     return `<div style="padding:20px 20px 0;">
       <button data-action="ADD_BUILDING"
         style="width:100%; background:#F5C518; color:#1a1a2e; border:none;
@@ -1105,10 +1168,19 @@ export const initMaster = (container) => {
       </button>
 
       ${buildings.map(b => `
-        <div data-action="SELECT_BUILDING" data-id="${b.id}" style="background:rgba(255,255,255,0.06);padding:20px;border-radius:16px;cursor:pointer;border:1px solid rgba(255,255,255,0.1);margin-bottom:12px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <div><div style="font-size:1rem;font-weight:900;color:white;">${b.name}</div><div style="font-size:0.6rem;color:#999;margin-top:4px;">${b.code}</div></div>
-            <div>${getBadge(b.plan || 'TRIAL', b.membership_status || 'ACTIVE')}</div>
+        <div style="background:rgba(255,255,255,0.06);padding:20px;border-radius:16px;border:1px solid rgba(255,255,255,0.1);margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
+          <div data-action="SELECT_BUILDING" data-id="${b.id}" style="flex:1; cursor:pointer;">
+            <div style="font-size:1rem;font-weight:900;color:white;">${b.name}</div>
+            <div style="font-size:0.6rem;color:#999;margin-top:4px;">${b.code}</div>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span>${getBadge(b.plan || 'TRIAL', b.membership_status || 'ACTIVE')}</span>
+            <button data-action="DELETE_BUILDING" data-id="${b.id}" data-name="${b.name}"
+              style="background:rgba(230,57,70,0.1); border:1px solid rgba(230,57,70,0.3); color:#e63946;
+                     width:34px; height:34px; border-radius:10px; cursor:pointer; font-size:0.9rem;
+                     display:flex; align-items:center; justify-content:center;">
+              🗑️
+            </button>
           </div>
         </div>
       `).join('')}
