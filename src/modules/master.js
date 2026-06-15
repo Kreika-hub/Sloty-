@@ -8,6 +8,7 @@ export const initMaster = (container) => {
   let recentMemberships = []
   let masterChannel = null
   let pendingProofsCount = 0
+  let notifCount = 0
   
   // DOM Cache
   let elContent = null
@@ -683,6 +684,21 @@ export const initMaster = (container) => {
         overlay.remove(); render();
       };
     },
+    SEND_ACCESS_LINK: async (id) => {
+      if (!id) return
+      const { data: bld } = await supabase.from('buildings').select('name, phone, code, admin_email').eq('id', id).single()
+      if (!bld) return alert('No se encontró el edificio.')
+      if (!bld.phone) return alert('El edificio no tiene teléfono registrado.')
+      const phone = bld.phone.replace(/\D/g, '')
+      const loginUrl = `${window.location.origin}${window.location.pathname}`
+      const msg = encodeURIComponent(
+        `Hola! Bienvenido a Sloty 🚀\n\nTu edificio *${bld.name}* ya está activo.\n\n` +
+        `👉 Accede aquí: ${loginUrl}\n` +
+        `🔑 Código de edificio: *${bld.code}*\n\n` +
+        `Inicia sesión con tu email *${bld.admin_email || '(el que registraste)'}* y configura tu panel.`
+      )
+      window.open(`https://wa.me/${phone}?text=${msg}`, '_blank')
+    },
     RESET_FULL: () => {
        if(confirm('⚠ ¿RESET FULL SYSTEM? Esto borrará el caché local por completo.')) { 
            if(confirm('¿Estás absolutamente seguro?')) {
@@ -712,18 +728,28 @@ export const initMaster = (container) => {
   const tabBar = () => `
     <div style="display:flex;border-bottom:1px solid rgba(255,255,255,0.1);overflow-x:auto;background:#1a1a2e;position:sticky;top:0;z-index:90;">
       ${[
-        { k:'BUILDINGS',   l:'Edificios' },
-        { k:'MEMBERSHIPS', l:'Membres\u00edas' },
-        { k:'ADS',         l:'Anuncios' },
-        { k:'SYSTEM',      l:'Sistema' }
+        { k:'NOTIFICATIONS', l:'🔔 Actividad' },
+        { k:'BUILDINGS',     l:'Edificios'    },
+        { k:'MEMBERSHIPS',   l:'Membresías'   },
+        { k:'ADS',           l:'Anuncios'     },
+        { k:'SYSTEM',        l:'Sistema'      }
       ].map(t => `
         <div data-action="TAB" data-tab="${t.k}"
-             style="padding:14px 20px; font-size:0.75rem; font-weight:900;
-                    cursor:pointer; white-space:nowrap; letter-spacing:1px;
+             style="padding:14px 16px; font-size:0.72rem; font-weight:900;
+                    cursor:pointer; white-space:nowrap; letter-spacing:0.5px;
                     border-bottom:3px solid ${activeTab === t.k ? '#F5C518' : 'transparent'};
                     color:${activeTab === t.k ? '#F5C518' : 'rgba(255,255,255,0.4)'};
                     position:relative;">
           ${t.l}
+          ${t.k === 'NOTIFICATIONS' && notifCount > 0 ? `
+            <span id="master-notif-badge"
+                  style="position:absolute; top:8px; right:2px;
+                         background:#e63946; color:white; font-size:9px;
+                         font-weight:900; width:16px; height:16px;
+                         border-radius:50%; display:inline-flex;
+                         align-items:center; justify-content:center;">
+              ${notifCount}
+            </span>` : ''}
           ${t.k === 'MEMBERSHIPS' && pendingProofsCount > 0 ? `
             <span id="master-pending-badge"
                   style="position:absolute; top:8px; right:4px;
@@ -735,6 +761,140 @@ export const initMaster = (container) => {
             </span>` : ''}
         </div>`).join('')}
     </div>`
+
+  const renderNotifications = (proofs = [], newBuildings = []) => {
+    const methodLabel = (m) => ({ 'PAGO_MOVIL':'Pago Móvil', 'TRANSFERENCIA':'Transferencia', 'EFECTIVO':'Efectivo', 'ZELLE':'Zelle' })[m] || m || 'No especificado'
+    const planColors  = { TRIAL:'#888', BRONCE:'#cd7f32', PLATA:'#aaa', ORO:'#F5C518' }
+
+    const proofCards = proofs.map((p, i) => {
+      const bldName  = p.buildings?.name || 'Edificio desconocido'
+      const bldPhone = p.buildings?.phone || ''
+      const submitted = p.submitted_at ? new Date(p.submitted_at).toLocaleString('es-VE', { dateStyle:'medium', timeStyle:'short' }) : ''
+      const planColor = planColors[p.plan_key] || '#888'
+      const raw = `${p.id}|${p.building_id}|${p.plan_key}`
+      return `
+      <div style="background:#0f1127; border:1px solid rgba(245,197,24,0.25);
+                  border-radius:20px; overflow:hidden; margin-bottom:16px;">
+        <!-- HEADER -->
+        <div style="padding:16px 18px 10px; display:flex; justify-content:space-between; align-items:flex-start;">
+          <div>
+            <div style="font-size:0.65rem; color:#F5C518; font-weight:900; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Comprobante pendiente</div>
+            <div style="font-size:1rem; font-weight:900; color:white;">${bldName}</div>
+            <div style="font-size:0.65rem; color:rgba(255,255,255,0.4); margin-top:3px;">${submitted}</div>
+          </div>
+          <span style="background:${planColor}; color:${p.plan_key === 'ORO' ? '#1a1a2e' : 'white'};
+                       font-size:0.6rem; font-weight:900; padding:4px 10px; border-radius:8px;">
+            ${p.plan_key || 'PLAN'}
+          </span>
+        </div>
+
+        <!-- DATOS DE PAGO -->
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0; border-top:1px solid rgba(255,255,255,0.06); border-bottom:1px solid rgba(255,255,255,0.06);">
+          <div style="padding:12px 14px; border-right:1px solid rgba(255,255,255,0.06);">
+            <div style="font-size:0.5rem; color:#999; font-weight:900; text-transform:uppercase; margin-bottom:3px;">Monto</div>
+            <div style="font-size:0.9rem; font-weight:900; color:#22c55e;">$${Number(p.amount||0).toFixed(2)}</div>
+          </div>
+          <div style="padding:12px 14px; border-right:1px solid rgba(255,255,255,0.06);">
+            <div style="font-size:0.5rem; color:#999; font-weight:900; text-transform:uppercase; margin-bottom:3px;">Método</div>
+            <div style="font-size:0.7rem; font-weight:700; color:white;">${methodLabel(p.payment_method || p.bank)}</div>
+          </div>
+          <div style="padding:12px 14px;">
+            <div style="font-size:0.5rem; color:#999; font-weight:900; text-transform:uppercase; margin-bottom:3px;">Referencia</div>
+            <div style="font-size:0.7rem; font-weight:700; color:white;">${p.reference || '—'}</div>
+          </div>
+        </div>
+
+        <!-- IMAGEN COMPROBANTE -->
+        ${p.proof_image ? `
+        <div style="padding:12px 14px; border-bottom:1px solid rgba(255,255,255,0.06);">
+          <img src="${p.proof_image}" alt="Comprobante"
+               onclick="window.open('${p.proof_image}','_blank')"
+               style="width:100%; max-height:220px; object-fit:cover; border-radius:12px; cursor:pointer;" />
+          <div style="font-size:0.55rem; color:#999; margin-top:6px; text-align:center;">Toca la imagen para ampliarla</div>
+        </div>` : `
+        <div style="padding:12px 14px; text-align:center; color:rgba(255,255,255,0.2); font-size:0.7rem; border-bottom:1px solid rgba(255,255,255,0.06);">Sin imagen adjunta</div>`}
+
+        <!-- ACCIONES -->
+        <div style="padding:14px 14px; display:flex; gap:8px;">
+          <button onclick="handleMasterAction('APPROVE_PROOF','${raw}')"
+            style="flex:2; background:#22c55e; color:white; border:none; border-radius:12px;
+                   padding:12px; font-size:0.7rem; font-weight:900; cursor:pointer;">
+            ✓ APROBAR
+          </button>
+          <button onclick="handleMasterAction('REJECT_PROOF','${p.id}|${p.building_id}')"
+            style="flex:1; background:rgba(230,57,70,0.15); color:#e63946; border:1px solid #e63946;
+                   border-radius:12px; padding:12px; font-size:0.7rem; font-weight:900; cursor:pointer;">
+            ✗ RECHAZAR
+          </button>
+          ${bldPhone ? `
+          <button onclick="handleMasterAction('CONTACT_COLLECTION','${p.building_id}')"
+            style="background:rgba(37,211,102,0.1); color:#25D366; border:1px solid #25D366;
+                   border-radius:12px; padding:12px 14px; font-size:0.9rem; cursor:pointer;">
+            💬
+          </button>` : ''}
+        </div>
+      </div>`
+    }).join('')
+
+    const newBldCards = newBuildings.map(b => {
+      const created = new Date(b.created_at).toLocaleString('es-VE', { dateStyle:'medium', timeStyle:'short' })
+      return `
+      <div style="background:#0f1127; border:1px solid rgba(34,197,94,0.25);
+                  border-radius:20px; padding:16px 18px; margin-bottom:12px;">
+        <div style="font-size:0.6rem; color:#22c55e; font-weight:900; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">🏢 Nuevo edificio registrado</div>
+        <div style="font-size:0.95rem; font-weight:900; color:white; margin-bottom:2px;">${b.name}</div>
+        <div style="font-size:0.6rem; color:#999; margin-bottom:10px;">${b.code} · ${b.city || 'Sin ciudad'} · ${created}</div>
+        ${b.phone ? `<div style="font-size:0.7rem; color:rgba(255,255,255,0.6); margin-bottom:12px;">📱 ${b.phone}</div>` : ''}
+        ${b.admin_email ? `<div style="font-size:0.7rem; color:rgba(255,255,255,0.6); margin-bottom:12px;">✉️ ${b.admin_email}</div>` : ''}
+        <div style="display:flex; gap:8px;">
+          <button onclick="handleMasterAction('OPEN_DOSSIER','${b.id}')"
+            style="flex:1; background:rgba(245,197,24,0.1); color:#F5C518; border:1px solid #F5C518;
+                   border-radius:10px; padding:10px; font-size:0.65rem; font-weight:900; cursor:pointer;">
+            🔍 Ver Dossier
+          </button>
+          ${b.phone ? `
+          <button onclick="handleMasterAction('SEND_ACCESS_LINK','${b.id}')"
+            style="flex:1; background:#25D366; color:white; border:none;
+                   border-radius:10px; padding:10px; font-size:0.65rem; font-weight:900; cursor:pointer;">
+            📲 Enviar Acceso
+          </button>` : ''}
+        </div>
+      </div>`
+    }).join('')
+
+    return `
+      <div style="padding:20px; padding-bottom:100px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+          <div>
+            <div style="font-size:0.65rem; font-weight:900; color:#F5C518; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:4px;">Centro de Actividad</div>
+            <div style="font-size:0.75rem; color:rgba(255,255,255,0.4);">Comprobantes y registros recientes</div>
+          </div>
+          <button onclick="handleMasterAction('TAB_NOTIF_REFRESH',null)" 
+            style="background:rgba(255,255,255,0.06); border:none; color:white; padding:8px 14px; border-radius:10px; font-size:0.65rem; font-weight:900; cursor:pointer;">
+            🔄 ACTUALIZAR
+          </button>
+        </div>
+
+        ${proofs.length === 0 && newBuildings.length === 0 ? `
+          <div style="text-align:center; padding:60px 20px;">
+            <div style="font-size:3rem; margin-bottom:16px;">✅</div>
+            <div style="color:rgba(255,255,255,0.4); font-size:0.9rem; font-weight:700;">Todo al día</div>
+            <div style="color:rgba(255,255,255,0.2); font-size:0.7rem; margin-top:6px;">No hay comprobantes pendientes ni nuevos registros</div>
+          </div>` : ''}
+
+        ${proofs.length > 0 ? `
+          <div style="font-size:0.6rem; font-weight:900; color:#F5C518; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:12px;">
+            Comprobantes de Pago Pendientes (${proofs.length})
+          </div>
+          ${proofCards}` : ''}
+
+        ${newBuildings.length > 0 ? `
+          <div style="font-size:0.6rem; font-weight:900; color:#22c55e; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:12px; margin-top:${proofs.length > 0 ? '24px' : '0px'};">
+            Nuevos Edificios (últimos 7 días)
+          </div>
+          ${newBldCards}` : ''}
+      </div>`
+  }
 
   const renderBuildings = (buildings = []) => {
     // Remove legacy detail view that was kept inside renderBuildings
@@ -1152,24 +1312,48 @@ export const initMaster = (container) => {
           event: 'INSERT',
           schema: 'public',
           table: 'building_payment_proofs'
-        }, (payload) => {
+        }, () => {
           pendingProofsCount++
-          // Actualizar badge en el tab sin re-renderizar todo
+          notifCount++
           const badge = document.getElementById('master-pending-badge')
-          if (badge) {
-            badge.textContent = pendingProofsCount
-            badge.style.display = 'inline-flex'
-          } else {
-            // Si el tab no está visible, forzar re-render del tabBar
-            const tabsArea = document.getElementById('master-tabs-area')
-            if (tabsArea) tabsArea.innerHTML = tabBar()
-          }
+          if (badge) { badge.textContent = pendingProofsCount; badge.style.display = 'inline-flex' }
+          const nBadge = document.getElementById('master-notif-badge')
+          if (nBadge) { nBadge.textContent = notifCount; nBadge.style.display = 'inline-flex' }
+          else { const ta = document.getElementById('master-tabs-area'); if (ta) ta.innerHTML = tabBar() }
+        })
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'buildings'
+        }, () => {
+          notifCount++
+          const nBadge = document.getElementById('master-notif-badge')
+          if (nBadge) { nBadge.textContent = notifCount; nBadge.style.display = 'inline-flex' }
+          else { const ta = document.getElementById('master-tabs-area'); if (ta) ta.innerHTML = tabBar() }
         })
         .subscribe()
     }
     
     let html = ''
-    if (activeTab === 'BUILDINGS') {
+    if (activeTab === 'NOTIFICATIONS') {
+      notifCount = 0  // reset badge
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+      const [
+        { data: proofs },
+        { data: newBlds }
+      ] = await Promise.all([
+        supabase.from('building_payment_proofs')
+          .select('*, buildings(name, phone, admin_email, code)')
+          .eq('status', 'PENDING')
+          .order('submitted_at', { ascending: false }),
+        supabase.from('buildings')
+          .select('*')
+          .gte('created_at', sevenDaysAgo)
+          .order('created_at', { ascending: false })
+      ])
+      html = renderNotifications(proofs || [], newBlds || [])
+    }
+    else if (activeTab === 'BUILDINGS') {
       const { data: bld } = await supabase.from('buildings').select('*').order('created_at', { ascending: false })
       html = renderBuildings(bld || [])
     }
