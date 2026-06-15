@@ -65,11 +65,36 @@ export const initMaster = (container) => {
       selectedBuildingData.plan = plan;
       render();
     },
-    TOGGLE_STATUS: async () => {
-      const newStatus = selectedBuildingData.membership_status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
-      await supabase.from('buildings').update({ membership_status: newStatus }).eq('id', selectedBuilding);
-      selectedBuildingData.membership_status = newStatus;
+    TOGGLE_STATUS: async (btnOrId) => {
+      const id = typeof btnOrId === 'string' ? btnOrId : selectedBuilding;
+      if (!id) return;
+      const { data: bld } = await supabase.from('buildings').select('membership_status').eq('id', id).single();
+      if (!bld) return;
+      
+      const newStatus = bld.membership_status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
+      await supabase.from('buildings').update({ membership_status: newStatus }).eq('id', id);
+      
+      if (id === selectedBuilding && selectedBuildingData) {
+        selectedBuildingData.membership_status = newStatus;
+      }
+      
+      if (document.getElementById('dossier-overlay')) {
+          document.getElementById('dossier-overlay').remove();
+          actions.OPEN_DOSSIER(id);
+      }
       render();
+    },
+    CHANGE_PLAN: async (id) => {
+      if (!id) return;
+      const p = prompt('Ingrese el nuevo plan (TRIAL, BRONCE, PLATA, ORO):', 'BRONCE');
+      if (p) {
+          await supabase.from('buildings').update({ plan: p.toUpperCase() }).eq('id', id);
+          if (document.getElementById('dossier-overlay')) {
+              document.getElementById('dossier-overlay').remove();
+              actions.OPEN_DOSSIER(id);
+          }
+          render();
+      }
     },
     REGISTER_PAYMENT: (btn) => {
       const bId = btn.dataset.id
@@ -136,119 +161,343 @@ export const initMaster = (container) => {
       const bName = 'Confirmar Pago en Efectivo'
       actions.REGISTER_PAYMENT({ dataset: { id: bId, plan: 'SELECCIONADO', name: bName } })
     },
-    APPROVE_PROOF: async (proof) => {
-        const expiry = new Date()
-        expiry.setDate(expiry.getDate() + 30)
-        
-        await Promise.all([
-            supabase.from('building_payment_proofs').update({ status: 'CONFIRMED' }).eq('id', proof.id),
-            supabase.from('buildings').update({ membership_status: 'ACTIVE', plan: proof.plan_key }).eq('id', proof.building_id),
-            supabase.from('sloty_memberships').insert({
-              building_id: proof.building_id, plan_key: proof.plan_key, status: 'CONFIRMED',
-              amount: proof.amount, payment_reference: proof.reference,
-              paid_at: new Date().toISOString(), expiry_date: expiry.toISOString()
-            })
-        ])
-        render()
+    APPROVE_PROOF: async (raw) => {
+      // Support both old object call and new pipe-string call from dossier
+      const isRaw = typeof raw === 'string'
+      const proofId    = isRaw ? raw.split('|')[0] : raw?.id
+      const buildingId = isRaw ? raw.split('|')[1] : raw?.building_id
+      const planKey    = isRaw ? raw.split('|')[2] : raw?.plan_key
+      if (!proofId || !buildingId) return
+
+      const durations = { TRIAL: 15, BRONCE: 30, PLATA: 30, ORO: 30 }
+      const days = durations[planKey] || 30
+      const expiry = new Date()
+      expiry.setDate(expiry.getDate() + days)
+
+      await Promise.all([
+        supabase.from('building_payment_proofs').update({
+          status: 'CONFIRMED',
+          reviewed_at: new Date().toISOString()
+        }).eq('id', proofId),
+        supabase.from('buildings').update({
+          membership_status: 'ACTIVE',
+          plan: planKey || 'BRONCE',
+          membership_expiry: expiry.toISOString()
+        }).eq('id', buildingId),
+        supabase.from('sloty_memberships').insert({
+          building_id: buildingId, plan_key: planKey, status: 'CONFIRMED',
+          paid_at: new Date().toISOString(), expiry_date: expiry.toISOString()
+        })
+      ])
+
+      document.getElementById('dossier-overlay')?.remove()
+      render()
     },
-    REJECT_PROOF: async (proof) => {
-        await supabase.from('building_payment_proofs').update({ status: 'REJECTED' }).eq('id', proof.id)
-        await supabase.from('buildings').update({ membership_status: 'SUSPENDED' }).eq('id', proof.building_id)
-        render()
+    REJECT_PROOF: async (raw) => {
+      const isRaw = typeof raw === 'string'
+      const proofId    = isRaw ? raw.split('|')[0] : raw?.id
+      const buildingId = isRaw ? raw.split('|')[1] : raw?.building_id
+      if (!proofId || !buildingId) return
+
+      const reason = prompt('Motivo del rechazo (opcional):') || ''
+
+      await Promise.all([
+        supabase.from('building_payment_proofs').update({
+          status: 'REJECTED',
+          reviewed_at: new Date().toISOString(),
+          reference: reason ? `RECHAZADO: ${reason}` : 'RECHAZADO'
+        }).eq('id', proofId),
+        supabase.from('buildings').update({
+          membership_status: 'SUSPENDED'
+        }).eq('id', buildingId)
+      ])
+
+      document.getElementById('dossier-overlay')?.remove()
+      render()
     },
     OPEN_DOSSIER: async (btn) => {
-      const id = btn.dataset.id
-      const { data: bld } = await supabase.from('buildings').select('*').eq('id', id).single()
-      if (!bld) return
+      const buildingId = typeof btn === 'string' ? btn : btn.dataset.id
+      const today    = new Date()
+      const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString()
 
+      const [
+        { data: bld },
+        { data: subs },
+        { data: pays },
+        { data: personnel },
+        { data: shifts },
+        { data: proofs },
+        { data: incidents },
+        { count: slotsCount }
+      ] = await Promise.all([
+        supabase.from('buildings').select('*').eq('id', buildingId).single(),
+        supabase.from('subscriptions').select('id,resident_name,plate,expiry_date,status').eq('building_id', buildingId),
+        supabase.from('payments').select('amount,status,payment_date,method').eq('building_id', buildingId).gte('payment_date', firstDay),
+        supabase.from('personnel').select('name,role,pin').eq('building_id', buildingId),
+        supabase.from('guard_shifts').select('guard_name,ended_at,total_cash,total_mobile,total_bs,entries,exits,absences').eq('building_id', buildingId).order('ended_at', { ascending: false }).limit(5),
+        supabase.from('building_payment_proofs').select('*').eq('building_id', buildingId).order('created_at', { ascending: false }).limit(10),
+        supabase.from('incidents').select('id,type,description,guard_name,created_at,resolved').eq('building_id', buildingId).eq('resolved', false).limit(10),
+        supabase.from('parking_slots').select('*', { count: 'exact', head: true }).eq('building_id', buildingId)
+      ])
+
+      const confirmedPays   = (pays || []).filter(p => p.status === 'CONFIRMED')
+      const pendingPays     = (pays || []).filter(p => p.status === 'PENDING')
+      const totalIncome     = confirmedPays.reduce((a, p) => a + (Number(p.amount) || 0), 0)
+      const activeResidents = (subs || []).filter(s => new Date(s.expiry_date) > today).length
+      const expiredResidents = (subs || []).length - activeResidents
+      const pendingProofs   = (proofs || []).filter(p => p.status === 'PENDING')
+
+      const expiryDate  = bld?.membership_expiry ? new Date(bld.membership_expiry) : null
+      const daysLeft    = expiryDate ? Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24)) : null
+      const expiryColor = !daysLeft ? '#999' : daysLeft < 0 ? '#e63946' : daysLeft <= 7 ? '#F5C518' : '#22c55e'
+
+      document.getElementById('dossier-overlay')?.remove()
       const overlay = document.createElement('div')
-      overlay.id = 'master-modal'
-      overlay.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,0.8);backdrop-filter:blur(10px);
-        z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;`
-      
-      const badge = getBadge(bld.plan || 'TRIAL', bld.membership_status || 'ACTIVE')
-
+      overlay.id = 'dossier-overlay'
+      overlay.style.cssText = `position:fixed;inset:0;background:#0f0f1a;z-index:9999;overflow-y:auto;font-family:'Montserrat',sans-serif;`
       overlay.innerHTML = `
-        <div style="background:#1a1a2e; border-radius:32px; width:100%; max-width:440px; border:1px solid rgba(255,255,255,0.1); overflow:hidden;">
-          <div style="padding:28px; border-bottom:1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between; align-items:center;">
-             <div>
-               <div style="font-size:0.6rem; font-weight:900; color:#F5C518; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Expediente de Edificio</div>
-               <div style="font-size:1.3rem; font-weight:900; color:white;">${bld.name}</div>
-             </div>
-             <button id="dossier-close" style="background:rgba(255,255,255,0.05); border:none; width:40px; height:40px; border-radius:50%; color:white; font-size:1.5rem; cursor:pointer;">×</button>
-          </div>
-          
-          <div style="padding:28px;">
-             <!-- INFO GRID -->
-             <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:28px;">
-                <div>
-                   <div style="font-size:0.55rem; color:#999; font-weight:800; text-transform:uppercase; margin-bottom:4px;">Administrador</div>
-                   <div style="color:white; font-size:0.85rem; font-weight:700;">${bld.admin_email || 'No registrado'}</div>
-                </div>
-                <div>
-                   <div style="font-size:0.55rem; color:#999; font-weight:800; text-transform:uppercase; margin-bottom:4px;">Teléfono</div>
-                   <div style="color:white; font-size:0.85rem; font-weight:700;">${bld.phone || 'No registrado'}</div>
-                </div>
-                <div>
-                   <div style="font-size:0.55rem; color:#999; font-weight:800; text-transform:uppercase; margin-bottom:4px;">Código Sloty</div>
-                   <div style="color:#F5C518; font-size:0.9rem; font-weight:900;">${bld.code}</div>
-                </div>
-                <div>
-                   <div style="font-size:0.55rem; color:#999; font-weight:800; text-transform:uppercase; margin-bottom:4px;">Ubicación</div>
-                   <div style="color:white; font-size:0.85rem; font-weight:700;">${bld.city || 'No especificada'}</div>
-                </div>
-             </div>
+        <div style="max-width:600px; margin:0 auto; padding:20px; padding-bottom:80px;">
 
-             <!-- STATUS BANNER -->
-             <div style="background:rgba(245,197,24,0.05); border-radius:20px; padding:18px; border:1px solid rgba(245,197,24,0.1); margin-bottom:28px; display:flex; justify-content:space-between; align-items:center;">
-                <div>
-                   <div style="font-size:0.55rem; color:#999; font-weight:800; text-transform:uppercase; margin-bottom:4px;">Estatus Membresía</div>
-                   <div style="display:flex; align-items:center; gap:8px;">${badge}</div>
+          <!-- HEADER -->
+          <div style="display:flex; align-items:center; gap:12px; margin-bottom:20px; padding-top:10px;">
+            <button onclick="document.getElementById('dossier-overlay').remove()"
+              style="background:rgba(255,255,255,0.08); color:white; border:none;
+                     border-radius:50px; padding:8px 16px; font-size:0.7rem;
+                     font-weight:900; cursor:pointer;">&#8592; VOLVER</button>
+            <div>
+              <div style="font-size:1.1rem; font-weight:900; color:white;">${bld?.name || 'Edificio'}</div>
+              <div style="font-size:0.65rem; color:#999; font-weight:700;">${bld?.code || ''} &middot; ${bld?.city || ''}</div>
+            </div>
+          </div>
+
+          <!-- ALERTA COMPROBANTES PENDIENTES -->
+          ${pendingProofs.length > 0 ? `
+            <div style="background:rgba(245,197,24,0.12); border:1.5px solid #F5C518;
+                        border-radius:16px; padding:14px 16px; margin-bottom:16px;
+                        display:flex; align-items:center; gap:10px;">
+              <span style="font-size:1.4rem;">&#128206;</span>
+              <div style="flex:1;">
+                <div style="font-size:0.8rem; font-weight:900; color:#F5C518;">
+                  ${pendingProofs.length} comprobante${pendingProofs.length > 1 ? 's' : ''} pendiente${pendingProofs.length > 1 ? 's' : ''} de revisi&oacute;n
                 </div>
-                <button id="btn-toggle-status" data-id="${bld.id}" data-current="${bld.membership_status}" style="background:${bld.membership_status === 'ACTIVE' ? '#e63946' : '#22c55e'}; color:white; border:none; border-radius:12px; padding:8px 14px; font-size:0.65rem; font-weight:900; cursor:pointer;">
-                   ${bld.membership_status === 'ACTIVE' ? 'SUSPENDER' : 'ACTIVAR'}
+                <div style="font-size:0.65rem; color:rgba(255,255,255,0.4); margin-top:2px;">
+                  Desliza abajo para revisar y aprobar
+                </div>
+              </div>
+            </div>` : ''}
+
+          <!-- M&Eacute;TRICAS PRINCIPALES -->
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;">
+            <div style="background:rgba(255,255,255,0.06); padding:16px; border-radius:16px; text-align:center;">
+              <div style="font-size:1.6rem; font-weight:900; color:#F5C518;">$${totalIncome.toFixed(2)}</div>
+              <div style="font-size:0.55rem; color:#999; font-weight:900; margin-top:2px;">INGRESOS ESTE MES</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.06); padding:16px; border-radius:16px; text-align:center;">
+              <div style="font-size:1.6rem; font-weight:900; color:white;">${slotsCount || 0}</div>
+              <div style="font-size:0.55rem; color:#999; font-weight:900; margin-top:2px;">PUESTOS TOTALES</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.06); padding:16px; border-radius:16px; text-align:center;">
+              <div style="font-size:1.6rem; font-weight:900; color:#22c55e;">${activeResidents}</div>
+              <div style="font-size:0.55rem; color:#999; font-weight:900; margin-top:2px;">RESIDENTES AL D&Iacute;A</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.06); padding:16px; border-radius:16px; text-align:center;">
+              <div style="font-size:1.6rem; font-weight:900; color:#e63946;">${expiredResidents}</div>
+              <div style="font-size:0.55rem; color:#999; font-weight:900; margin-top:2px;">VENCIDOS</div>
+            </div>
+          </div>
+
+          <!-- MEMBRES&Iacute;A SLOTY -->
+          <div style="background:rgba(255,255,255,0.06); border-radius:16px; padding:16px; margin-bottom:16px;">
+            <div style="font-size:0.65rem; font-weight:900; color:#999;
+                        text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Membres&iacute;a Sloty</div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <div style="font-size:0.9rem; font-weight:900; color:white;">Plan ${bld?.plan || 'TRIAL'}</div>
+                <div style="font-size:0.65rem; color:${expiryColor}; font-weight:700; margin-top:2px;">
+                  ${daysLeft === null ? 'Sin fecha de vencimiento' :
+                    daysLeft < 0 ? `Vencido hace ${Math.abs(daysLeft)} d&iacute;as` :
+                    daysLeft === 0 ? 'Vence hoy' : `Vence en ${daysLeft} d&iacute;as`}
+                </div>
+              </div>
+          <div style="display:flex; gap:8px;">
+            <button onclick="handleMasterAction('CHANGE_PLAN','${buildingId}')"
+              style="background:rgba(245,197,24,0.1); color:#F5C518; border:1px solid #F5C518;
+                     border-radius:8px; padding:8px 12px; font-size:0.65rem;
+                     font-weight:900; cursor:pointer;">
+              CAMBIAR PLAN
+            </button>
+            <button onclick="handleMasterAction('TOGGLE_STATUS','${buildingId}')"
+              style="background:${bld?.membership_status === 'SUSPENDED' ? 'rgba(34,197,94,0.1)' : 'rgba(230,57,70,0.1)'};
+                     color:${bld?.membership_status === 'SUSPENDED' ? '#22c55e' : '#e63946'};
+                     border:1px solid ${bld?.membership_status === 'SUSPENDED' ? '#22c55e' : '#e63946'};
+                     border-radius:8px; padding:8px 12px; font-size:0.65rem;
+                     font-weight:900; cursor:pointer;">
+              ${bld?.membership_status === 'SUSPENDED' ? 'ACTIVAR' : 'SUSPENDER'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- COMPROBANTES PENDIENTES -->
+      ${pendingProofs.length > 0 ? `
+        <div style="margin-bottom:16px;">
+          <div style="font-size:0.65rem; font-weight:900; color:#F5C518;
+                      text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">
+            Comprobantes Pendientes
+          </div>
+          ${pendingProofs.map(p => `
+            <div style="background:rgba(245,197,24,0.06); border:1px solid rgba(245,197,24,0.2);
+                        border-radius:14px; padding:14px; margin-bottom:10px;">
+              <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                <div>
+                  <div style="font-size:0.8rem; font-weight:900; color:white;">
+                    Plan ${p.plan_key || '—'} · $${Number(p.amount || 0).toFixed(2)}
+                  </div>
+                  <div style="font-size:0.65rem; color:#999; margin-top:2px;">
+                    ${p.reference || 'Sin referencia'} ·
+                    ${new Date(p.submitted_at).toLocaleString('es-VE', { dateStyle:'short', timeStyle:'short' })}
+                  </div>
+                </div>
+              </div>
+              ${p.proof_image ? `
+                <img src="${p.proof_image}" alt="Comprobante"
+                     style="width:100%; border-radius:10px; margin-bottom:10px;
+                            max-height:200px; object-fit:cover; cursor:pointer;"
+                     onclick="window.open('${p.proof_image}','_blank')" />` : ''}
+              <div style="display:flex; gap:8px;">
+                <button onclick="handleMasterAction('APPROVE_PROOF','${p.id}|${buildingId}|${p.plan_key}')"
+                  style="flex:1; background:#22c55e; color:white; border:none;
+                         border-radius:10px; padding:10px; font-size:0.7rem;
+                         font-weight:900; cursor:pointer;">
+                  ✓ APROBAR
                 </button>
-             </div>
+                <button onclick="handleMasterAction('REJECT_PROOF','${p.id}|${buildingId}')"
+                  style="flex:1; background:#e63946; color:white; border:none;
+                         border-radius:10px; padding:10px; font-size:0.7rem;
+                         font-weight:900; cursor:pointer;">
+                  ✗ RECHAZAR
+                </button>
+                ${bld?.phone ? `
+                  <a href="https://wa.me/${bld.phone.replace(/\D/g,'')}?text=Hola, revisamos tu comprobante de pago para el plan ${p.plan_key}."
+                     target="_blank"
+                     style="background:rgba(255,255,255,0.08); color:white; border:none;
+                            border-radius:10px; padding:10px 12px; font-size:0.75rem;
+                            font-weight:900; cursor:pointer; text-decoration:none;
+                            display:flex; align-items:center;">
+                    💬
+                  </a>` : ''}
+              </div>
+            </div>`).join('')}
+        </div>` : ''}
 
-             <!-- ACTIONS -->
-             <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
-                <button id="btn-edit-bld" style="padding:16px; background:rgba(255,255,255,0.05); color:white; border:1px solid rgba(255,255,255,0.1); border-radius:14px; font-weight:900; cursor:pointer; font-size:0.75rem;">✏️ EDITAR DATOS</button>
-                <button id="btn-delete-bld" style="padding:16px; background:rgba(230,57,70,0.1); color:#e63946; border:1px solid rgba(230,57,70,0.2); border-radius:14px; font-weight:900; cursor:pointer; font-size:0.75rem;">🗑️ ELIMINAR</button>
-             </div>
-             
-             <button id="btn-contact-bld" style="width:100%; padding:18px; background:#25D366; color:white; border:none; border-radius:14px; font-weight:900; cursor:pointer; font-size:0.85rem; display:flex; align-items:center; justify-content:center; gap:10px;">
-                <span style="font-size:1.2rem;">📱</span> CONTACTAR POR WHATSAPP
-             </button>
+      <!-- PAGOS PENDIENTES DEL MES -->
+      ${pendingPays.length > 0 ? `
+        <div style="background:rgba(230,57,70,0.06); border:1px solid rgba(230,57,70,0.2);
+                    border-radius:14px; padding:14px; margin-bottom:16px;">
+          <div style="font-size:0.65rem; font-weight:900; color:#e63946;
+                      text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">
+            ${pendingPays.length} Pago${pendingPays.length > 1 ? 's' : ''} de Residente Pendiente${pendingPays.length > 1 ? 's' : ''}
           </div>
-        </div>`
+          <div style="font-size:0.75rem; color:rgba(255,255,255,0.5);">
+            El admin del edificio tiene pagos de residentes sin aprobar este mes.
+          </div>
+        </div>` : ''}
 
-      document.body.appendChild(overlay)
-      document.getElementById('dossier-close').onclick = () => overlay.remove()
+      <!-- INCIDENTES SIN RESOLVER -->
+      ${(incidents || []).length > 0 ? `
+        <div style="background:rgba(230,57,70,0.06); border:1px solid rgba(230,57,70,0.2);
+                    border-radius:14px; padding:14px; margin-bottom:16px;">
+          <div style="font-size:0.65rem; font-weight:900; color:#e63946;
+                      text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">
+            ${incidents.length} Incidente${incidents.length > 1 ? 's' : ''} Sin Resolver
+          </div>
+          ${incidents.map(i => `
+            <div style="font-size:0.75rem; color:rgba(255,255,255,0.6); margin-bottom:4px;">
+              ⚠️ ${i.type} — ${i.description?.slice(0,60)}${i.description?.length > 60 ? '...' : ''}
+            </div>`).join('')}
+        </div>` : ''}
 
-      document.getElementById('btn-contact-bld').onclick = () => {
-         const phone = bld.phone ? bld.phone.replace(/\D/g, '') : ''
-         if(!phone) return alert('Este edificio no tiene un teléfono registrado.')
-         const msg = encodeURIComponent(`Hola, te contacto desde el soporte de Sloty respecto al edificio ${bld.name}.`)
-         window.open(`https://wa.me/${phone}?text=${msg}`, '_blank')
-      }
-      
-      document.getElementById('btn-toggle-status').onclick = async () => {
-         const newS = bld.membership_status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE'
-         await supabase.from('buildings').update({ membership_status: newS }).eq('id', bld.id)
-         overlay.remove(); render()
-      }
+      <!-- PERSONAL -->
+      <div style="background:rgba(255,255,255,0.06); border-radius:14px;
+                  padding:14px; margin-bottom:16px;">
+        <div style="font-size:0.65rem; font-weight:900; color:#999;
+                    text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">
+          Personal (${(personnel || []).length})
+        </div>
+        ${(personnel || []).length === 0 ?
+          `<div style="color:rgba(255,255,255,0.3); font-size:0.75rem;">Sin personal registrado</div>` :
+          (personnel || []).map(p => `
+            <div style="display:flex; justify-content:space-between; align-items:center;
+                        padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+              <div style="color:white; font-size:0.8rem; font-weight:700;">${p.name}</div>
+              <span style="background:rgba(245,197,24,0.1); color:#F5C518; font-size:0.6rem;
+                           font-weight:900; padding:2px 8px; border-radius:6px;">
+                ${p.role || 'GUARDIA'}
+              </span>
+            </div>`).join('')}
+      </div>
 
-      document.getElementById('btn-delete-bld').onclick = async () => {
-         if(!confirm('¿Estás seguro de eliminar este edificio permanentemente? Se borrarán todos sus datos.')) return
-         await supabase.from('buildings').delete().eq('id', bld.id)
-         overlay.remove(); render()
-      }
+      <!-- ÚLTIMOS TURNOS -->
+      <div style="background:rgba(255,255,255,0.06); border-radius:14px;
+                  padding:14px; margin-bottom:16px;">
+        <div style="font-size:0.65rem; font-weight:900; color:#999;
+                    text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">
+          Últimos Turnos de Guardia
+        </div>
+        ${(shifts || []).length === 0 ?
+          `<div style="color:rgba(255,255,255,0.3); font-size:0.75rem;">Sin turnos registrados</div>` :
+          (shifts || []).map(s => {
+            const earned = (s.total_cash||0) + (s.total_mobile||0) + (s.total_bs||0);
+            const absMin = (s.absences||[]).reduce((a, ab) => a + (ab.duration_min||0), 0);
+            return `
+              <div style="display:flex; justify-content:space-between; align-items:center;
+                          padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+                <div>
+                  <div style="color:white; font-size:0.8rem; font-weight:700;">${s.guard_name}</div>
+                  <div style="color:#999; font-size:0.6rem; font-weight:700; margin-top:2px;">
+                    ${new Date(s.ended_at).toLocaleString('es-VE',{dateStyle:'short',timeStyle:'short'})}
+                    · ${s.entries||0} entradas
+                    ${absMin > 0 ? `· <span style="color:#e63946;">⏸${absMin}min</span>` : ''}
+                  </div>
+                </div>
+                <div style="color:#F5C518; font-size:0.85rem; font-weight:900;">
+                  $${earned.toFixed(2)}
+                </div>
+              </div>`;
+          }).join('')}
+      </div>
 
-      document.getElementById('btn-edit-bld').onclick = () => {
-         overlay.remove()
-         actions.EDIT_BUILDING_MASTER(bld)
-      }
-    },
+      <!-- CONTACTO -->
+      ${bld?.phone || bld?.admin_email ? `
+        <div style="background:rgba(255,255,255,0.06); border-radius:14px;
+                    padding:14px; margin-bottom:16px;">
+          <div style="font-size:0.65rem; font-weight:900; color:#999;
+                      text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">
+            Contacto
+          </div>
+          ${bld.phone ? `
+            <a href="https://wa.me/${bld.phone.replace(/\D/g,'')}"
+               target="_blank"
+               style="display:flex; align-items:center; gap:10px; color:white;
+                      text-decoration:none; padding:8px 0;">
+              <span style="font-size:1.2rem;">💬</span>
+              <span style="font-size:0.8rem; font-weight:700;">${bld.phone}</span>
+            </a>` : ''}
+          ${bld.admin_email ? `
+            <a href="mailto:${bld.admin_email}"
+               style="display:flex; align-items:center; gap:10px; color:white;
+                      text-decoration:none; padding:8px 0;">
+              <span style="font-size:1.2rem;">✉️</span>
+              <span style="font-size:0.8rem; font-weight:700;">${bld.admin_email}</span>
+            </a>` : ''}
+        </div>` : ''}
+
+    </div>`;
+
+  document.body.appendChild(overlay);
+},
+
+
     EXPORT_PDF: async () => {
       const { data: blds } = await supabase.from('buildings').select('*')
       const { data: mems } = await supabase.from('sloty_memberships').select('amount')
@@ -976,6 +1225,11 @@ export const initMaster = (container) => {
   }
 
   const render = async () => {
+    // Exponer la función actions() globalmente para los onclick inline del dosier
+    window.handleMasterAction = (action, payload) => {
+      if (actions[action]) actions[action](payload)
+    }
+
     if (!elShell) renderShell()
     elShell.innerHTML = tabBar()
 

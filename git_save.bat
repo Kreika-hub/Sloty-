@@ -1,3 +1,3 @@
 git add .
-git commit -m "feat: Storage upload for proofs & ads, Realtime badge for pending proofs in Master, full Venezuelan bank list with BCV note"
+git commit -m "feat: Full master dossier with 360-view for buildings, inline proof approval/rejection, and financial metrics"
 git push origin main
