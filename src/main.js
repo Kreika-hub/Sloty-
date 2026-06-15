@@ -823,22 +823,34 @@ const renderRegister = () => {
               <div style="font-size:0.6rem;color:rgba(255,255,255,0.3);font-weight:600;margin-top:2px;">Toca el ícono para copiar</div>
             </div>
 
-            ${[
-              { label: 'Banco', value: 'Banco Exterior' },
-              { label: 'Cédula', value: 'V-27031049' },
-              { label: 'Teléfono', value: '04129135799' },
-              { label: 'Monto en Bs.', value: 'A la tasa BCV del día' },
-            ].map(item => `
             <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.05);">
               <div>
-                <div style="font-size:0.55rem;color:rgba(255,255,255,0.35);font-weight:700;text-transform:uppercase;margin-bottom:3px;">${item.label}</div>
-                <div style="font-size:0.9rem;font-weight:900;color:white;">${item.value}</div>
+                <div style="font-size:0.55rem;color:rgba(255,255,255,0.35);font-weight:700;text-transform:uppercase;margin-bottom:3px;">Banco</div>
+                <div style="font-size:0.9rem;font-weight:900;color:white;">Banco Exterior</div>
               </div>
-              <button onclick="navigator.clipboard.writeText('${item.value}').then(()=>{ const b=this; const prev=b.innerHTML; b.innerHTML='✅'; setTimeout(()=>b.innerHTML=prev,1500); })"
-                style="background:rgba(245,197,24,0.1);border:1px solid rgba(245,197,24,0.2);color:#F5C518;width:36px;height:36px;border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.85rem;flex-shrink:0;">
-                📋
-              </button>
-            </div>`).join('')}
+              <button data-copy="Banco Exterior" class="copy-pay-btn" style="background:rgba(245,197,24,0.1);border:1px solid rgba(245,197,24,0.2);color:#F5C518;width:36px;height:36px;border-radius:10px;cursor:pointer;font-size:0.85rem;flex-shrink:0;">📋</button>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.05);">
+              <div>
+                <div style="font-size:0.55rem;color:rgba(255,255,255,0.35);font-weight:700;text-transform:uppercase;margin-bottom:3px;">Cédula</div>
+                <div style="font-size:0.9rem;font-weight:900;color:white;">V-27031049</div>
+              </div>
+              <button data-copy="V-27031049" class="copy-pay-btn" style="background:rgba(245,197,24,0.1);border:1px solid rgba(245,197,24,0.2);color:#F5C518;width:36px;height:36px;border-radius:10px;cursor:pointer;font-size:0.85rem;flex-shrink:0;">📋</button>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.05);">
+              <div>
+                <div style="font-size:0.55rem;color:rgba(255,255,255,0.35);font-weight:700;text-transform:uppercase;margin-bottom:3px;">Teléfono</div>
+                <div style="font-size:0.9rem;font-weight:900;color:white;">04129135799</div>
+              </div>
+              <button data-copy="04129135799" class="copy-pay-btn" style="background:rgba(245,197,24,0.1);border:1px solid rgba(245,197,24,0.2);color:#F5C518;width:36px;height:36px;border-radius:10px;cursor:pointer;font-size:0.85rem;flex-shrink:0;">📋</button>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.05);">
+              <div>
+                <div style="font-size:0.55rem;color:rgba(255,255,255,0.35);font-weight:700;text-transform:uppercase;margin-bottom:3px;">Monto en Bs.</div>
+                <div style="font-size:0.9rem;font-weight:900;color:white;">A la tasa BCV del día</div>
+              </div>
+              <button data-copy="A la tasa BCV del dia" class="copy-pay-btn" style="background:rgba(245,197,24,0.1);border:1px solid rgba(245,197,24,0.2);color:#F5C518;width:36px;height:36px;border-radius:10px;cursor:pointer;font-size:0.85rem;flex-shrink:0;">📋</button>
+            </div>
 
             <div style="padding:14px 16px;">
               <div style="background:rgba(245,197,24,0.08);border-left:3px solid #F5C518;border-radius:0 8px 8px 0;padding:10px 12px;">
@@ -900,6 +912,18 @@ const renderRegister = () => {
     `
 
     document.getElementById('btn-proof-upload').onclick = () => document.getElementById('proof-file').click()
+
+    // Botones de copiar datos de pago
+    document.querySelectorAll('.copy-pay-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const val = btn.dataset.copy
+        navigator.clipboard.writeText(val).then(() => {
+          const prev = btn.innerHTML
+          btn.innerHTML = '✅'
+          setTimeout(() => { btn.innerHTML = prev }, 1500)
+        })
+      })
+    })
     document.getElementById('proof-file').onchange = (e) => {
       const file = e.target.files[0]
       if (!file) return

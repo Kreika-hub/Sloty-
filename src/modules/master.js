@@ -1415,7 +1415,8 @@ export const initMaster = (container) => {
           </div>
         </div>
 
-      </div>`
+      </div>
+
           ${makeAreaChart(byMonth, months)}
         </div>
 
