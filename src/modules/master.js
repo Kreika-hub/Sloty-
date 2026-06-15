@@ -763,138 +763,185 @@ export const initMaster = (container) => {
     </div>`
 
   const renderNotifications = (proofs = [], newBuildings = []) => {
-    const methodLabel = (m) => ({ 'PAGO_MOVIL':'Pago Móvil', 'TRANSFERENCIA':'Transferencia', 'EFECTIVO':'Efectivo', 'ZELLE':'Zelle' })[m] || m || 'No especificado'
-    const planColors  = { TRIAL:'#888', BRONCE:'#cd7f32', PLATA:'#aaa', ORO:'#F5C518' }
+    const planColors = { TRIAL:'#888', BRONCE:'#cd7f32', PLATA:'#aaa', ORO:'#F5C518' }
+    const planPrices = { TRIAL:'Gratis', BRONCE:'$29/mes', PLATA:'$59/mes', ORO:'$99/mes' }
 
-    const proofCards = proofs.map((p, i) => {
-      const bldName  = p.buildings?.name || 'Edificio desconocido'
-      const bldPhone = p.buildings?.phone || ''
-      const submitted = p.submitted_at ? new Date(p.submitted_at).toLocaleString('es-VE', { dateStyle:'medium', timeStyle:'short' }) : ''
-      const planColor = planColors[p.plan_key] || '#888'
-      const raw = `${p.id}|${p.building_id}|${p.plan_key}`
-      return `
-      <div style="background:#0f1127; border:1px solid rgba(245,197,24,0.25);
-                  border-radius:20px; overflow:hidden; margin-bottom:16px;">
-        <!-- HEADER -->
-        <div style="padding:16px 18px 10px; display:flex; justify-content:space-between; align-items:flex-start;">
-          <div>
-            <div style="font-size:0.65rem; color:#F5C518; font-weight:900; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Comprobante pendiente</div>
-            <div style="font-size:1rem; font-weight:900; color:white;">${bldName}</div>
-            <div style="font-size:0.65rem; color:rgba(255,255,255,0.4); margin-top:3px;">${submitted}</div>
-          </div>
-          <span style="background:${planColor}; color:${p.plan_key === 'ORO' ? '#1a1a2e' : 'white'};
-                       font-size:0.6rem; font-weight:900; padding:4px 10px; border-radius:8px;">
-            ${p.plan_key || 'PLAN'}
-          </span>
+    if (proofs.length === 0) return `
+      <div style="padding:40px 20px; text-align:center;">
+        <div style="font-size:3rem; margin-bottom:12px;">📭</div>
+        <div style="font-size:0.8rem; font-weight:900; color:rgba(255,255,255,0.4);
+                    text-transform:uppercase; letter-spacing:2px;">
+          Sin solicitudes pendientes
         </div>
-
-        <!-- DATOS DE PAGO -->
-        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0; border-top:1px solid rgba(255,255,255,0.06); border-bottom:1px solid rgba(255,255,255,0.06);">
-          <div style="padding:12px 14px; border-right:1px solid rgba(255,255,255,0.06);">
-            <div style="font-size:0.5rem; color:#999; font-weight:900; text-transform:uppercase; margin-bottom:3px;">Monto</div>
-            <div style="font-size:0.9rem; font-weight:900; color:#22c55e;">$${Number(p.amount||0).toFixed(2)}</div>
-          </div>
-          <div style="padding:12px 14px; border-right:1px solid rgba(255,255,255,0.06);">
-            <div style="font-size:0.5rem; color:#999; font-weight:900; text-transform:uppercase; margin-bottom:3px;">Método</div>
-            <div style="font-size:0.7rem; font-weight:700; color:white;">${methodLabel(p.payment_method || p.bank)}</div>
-          </div>
-          <div style="padding:12px 14px;">
-            <div style="font-size:0.5rem; color:#999; font-weight:900; text-transform:uppercase; margin-bottom:3px;">Referencia</div>
-            <div style="font-size:0.7rem; font-weight:700; color:white;">${p.reference || '—'}</div>
-          </div>
+        <div style="font-size:0.7rem; color:rgba(255,255,255,0.25); margin-top:8px;">
+          Cuando un edificio envíe un comprobante aparecerá aquí
         </div>
-
-        <!-- IMAGEN COMPROBANTE -->
-        ${p.proof_image ? `
-        <div style="padding:12px 14px; border-bottom:1px solid rgba(255,255,255,0.06);">
-          <img src="${p.proof_image}" alt="Comprobante"
-               onclick="window.open('${p.proof_image}','_blank')"
-               style="width:100%; max-height:220px; object-fit:cover; border-radius:12px; cursor:pointer;" />
-          <div style="font-size:0.55rem; color:#999; margin-top:6px; text-align:center;">Toca la imagen para ampliarla</div>
-        </div>` : `
-        <div style="padding:12px 14px; text-align:center; color:rgba(255,255,255,0.2); font-size:0.7rem; border-bottom:1px solid rgba(255,255,255,0.06);">Sin imagen adjunta</div>`}
-
-        <!-- ACCIONES -->
-        <div style="padding:14px 14px; display:flex; gap:8px;">
-          <button onclick="handleMasterAction('APPROVE_PROOF','${raw}')"
-            style="flex:2; background:#22c55e; color:white; border:none; border-radius:12px;
-                   padding:12px; font-size:0.7rem; font-weight:900; cursor:pointer;">
-            ✓ APROBAR
-          </button>
-          <button onclick="handleMasterAction('REJECT_PROOF','${p.id}|${p.building_id}')"
-            style="flex:1; background:rgba(230,57,70,0.15); color:#e63946; border:1px solid #e63946;
-                   border-radius:12px; padding:12px; font-size:0.7rem; font-weight:900; cursor:pointer;">
-            ✗ RECHAZAR
-          </button>
-          ${bldPhone ? `
-          <button onclick="handleMasterAction('CONTACT_COLLECTION','${p.building_id}')"
-            style="background:rgba(37,211,102,0.1); color:#25D366; border:1px solid #25D366;
-                   border-radius:12px; padding:12px 14px; font-size:0.9rem; cursor:pointer;">
-            💬
-          </button>` : ''}
-        </div>
-      </div>`
-    }).join('')
-
-    const newBldCards = newBuildings.map(b => {
-      const created = new Date(b.created_at).toLocaleString('es-VE', { dateStyle:'medium', timeStyle:'short' })
-      return `
-      <div style="background:#0f1127; border:1px solid rgba(34,197,94,0.25);
-                  border-radius:20px; padding:16px 18px; margin-bottom:12px;">
-        <div style="font-size:0.6rem; color:#22c55e; font-weight:900; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">🏢 Nuevo edificio registrado</div>
-        <div style="font-size:0.95rem; font-weight:900; color:white; margin-bottom:2px;">${b.name}</div>
-        <div style="font-size:0.6rem; color:#999; margin-bottom:10px;">${b.code} · ${b.city || 'Sin ciudad'} · ${created}</div>
-        ${b.phone ? `<div style="font-size:0.7rem; color:rgba(255,255,255,0.6); margin-bottom:12px;">📱 ${b.phone}</div>` : ''}
-        ${b.admin_email ? `<div style="font-size:0.7rem; color:rgba(255,255,255,0.6); margin-bottom:12px;">✉️ ${b.admin_email}</div>` : ''}
-        <div style="display:flex; gap:8px;">
-          <button onclick="handleMasterAction('OPEN_DOSSIER','${b.id}')"
-            style="flex:1; background:rgba(245,197,24,0.1); color:#F5C518; border:1px solid #F5C518;
-                   border-radius:10px; padding:10px; font-size:0.65rem; font-weight:900; cursor:pointer;">
-            🔍 Ver Dossier
-          </button>
-          ${b.phone ? `
-          <button onclick="handleMasterAction('SEND_ACCESS_LINK','${b.id}')"
-            style="flex:1; background:#25D366; color:white; border:none;
-                   border-radius:10px; padding:10px; font-size:0.65rem; font-weight:900; cursor:pointer;">
-            📲 Enviar Acceso
-          </button>` : ''}
-        </div>
-      </div>`
-    }).join('')
+      </div>`;
 
     return `
-      <div style="padding:20px; padding-bottom:100px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-          <div>
-            <div style="font-size:0.65rem; font-weight:900; color:#F5C518; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:4px;">Centro de Actividad</div>
-            <div style="font-size:0.75rem; color:rgba(255,255,255,0.4);">Comprobantes y registros recientes</div>
-          </div>
-          <button onclick="handleMasterAction('TAB_NOTIF_REFRESH',null)" 
-            style="background:rgba(255,255,255,0.06); border:none; color:white; padding:8px 14px; border-radius:10px; font-size:0.65rem; font-weight:900; cursor:pointer;">
-            🔄 ACTUALIZAR
-          </button>
+      <div style="padding:16px; padding-bottom:100px;">
+        <div style="font-size:0.65rem; font-weight:900; color:#F5C518;
+                    letter-spacing:2px; text-transform:uppercase; margin-bottom:14px;">
+          ${proofs.length} solicitud${proofs.length > 1 ? 'es' : ''} pendiente${proofs.length > 1 ? 's' : ''}
         </div>
 
-        ${proofs.length === 0 && newBuildings.length === 0 ? `
-          <div style="text-align:center; padding:60px 20px;">
-            <div style="font-size:3rem; margin-bottom:16px;">✅</div>
-            <div style="color:rgba(255,255,255,0.4); font-size:0.9rem; font-weight:700;">Todo al día</div>
-            <div style="color:rgba(255,255,255,0.2); font-size:0.7rem; margin-top:6px;">No hay comprobantes pendientes ni nuevos registros</div>
-          </div>` : ''}
+        ${proofs.map(p => {
+          const bld = p.buildings || {}
+          const submitted = p.created_at
+            ? new Date(p.created_at).toLocaleString('es-VE', { dateStyle:'medium', timeStyle:'short' })
+            : 'Fecha desconocida'
+          const planColor = planColors[p.plan_key] || '#888'
+          const planPrice = planPrices[p.plan_key] || ''
+          const raw = `${p.id}|${p.building_id}|${p.plan_key}`
+          const phone = (bld.phone || '').replace(/\D/g, '')
+          const loginUrl = window.location.origin + window.location.pathname
+          const welcomeMsg = encodeURIComponent(
+            '\u2705 *\u00a1Bienvenido a Sloty!*\n\n' +
+            'Hola, tu comprobante fue aprobado y tu edificio *' + (bld.name || 'tu edificio') + '* ya est\u00e1 activo en la plataforma.\n\n' +
+            '\ud83d\udcf1 *Accede aqu\u00ed:* ' + loginUrl + '\n' +
+            '\ud83d\udd11 *C\u00f3digo de edificio:* ' + (bld.code || '\u2014') + '\n' +
+            '\ud83d\udce6 *Plan activado:* ' + (p.plan_key || '') + ' (' + planPrice + ')\n\n' +
+            'Si tienes alguna duda estamos aqu\u00ed para ayudarte. \u00a1\u00c9xito con tu gesti\u00f3n! \ud83d\ude80'
+          )
+          const rejectMsg = encodeURIComponent(
+            '\u274c *Comprobante Rechazado \u2014 Sloty*\n\n' +
+            'Hola, revisamos tu comprobante de pago para el plan *' + (p.plan_key || '') + '* y no pudimos aprobarlo.\n\n' +
+            'Por favor verifica los datos y vuelve a intentarlo. Si crees que es un error, escr\u00edbenos aqu\u00ed mismo.'
+          )
 
-        ${proofs.length > 0 ? `
-          <div style="font-size:0.6rem; font-weight:900; color:#F5C518; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:12px;">
-            Comprobantes de Pago Pendientes (${proofs.length})
-          </div>
-          ${proofCards}` : ''}
+          return `
+            <div style="background:#0f1127; border:1px solid rgba(245,197,24,0.2);
+                        border-radius:20px; overflow:hidden; margin-bottom:20px;">
 
-        ${newBuildings.length > 0 ? `
-          <div style="font-size:0.6rem; font-weight:900; color:#22c55e; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:12px; margin-top:${proofs.length > 0 ? '24px' : '0px'};">
-            Nuevos Edificios (últimos 7 días)
-          </div>
-          ${newBldCards}` : ''}
-      </div>`
+              <!-- HEADER EDIFICIO -->
+              <div style="padding:16px 18px 12px; background:rgba(245,197,24,0.05);
+                          border-bottom:1px solid rgba(255,255,255,0.06);">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                  <div>
+                    <div style="font-size:1rem; font-weight:900; color:white; margin-bottom:2px;">
+                      ${bld.name || 'Edificio sin nombre'}
+                    </div>
+                    <div style="font-size:0.65rem; color:#999; font-weight:700;">
+                      ${bld.code || '\u2014'} \u00b7 ${bld.city || 'Ciudad no registrada'}
+                    </div>
+                  </div>
+                  <span style="background:${planColor}; color:${p.plan_key === 'ORO' ? '#1a1a2e' : 'white'};
+                               padding:4px 10px; border-radius:8px; font-size:0.65rem; font-weight:900;">
+                    ${p.plan_key || 'TRIAL'}
+                  </span>
+                </div>
+              </div>
+
+              <!-- DATOS DE CONTACTO -->
+              <div style="padding:12px 18px; border-bottom:1px solid rgba(255,255,255,0.06);
+                          display:flex; gap:16px; flex-wrap:wrap;">
+                ${bld.admin_email ? `
+                  <div style="display:flex; align-items:center; gap:6px;">
+                    <span>\u2709\ufe0f</span>
+                    <span style="font-size:0.7rem; color:rgba(255,255,255,0.6); font-weight:700;">${bld.admin_email}</span>
+                  </div>` : ''}
+                ${bld.phone ? `
+                  <div style="display:flex; align-items:center; gap:6px;">
+                    <span>\ud83d\udcf1</span>
+                    <span style="font-size:0.7rem; color:rgba(255,255,255,0.6); font-weight:700;">${bld.phone}</span>
+                  </div>` : ''}
+              </div>
+
+              <!-- DATOS DEL PAGO -->
+              <div style="padding:14px 18px; border-bottom:1px solid rgba(255,255,255,0.06);">
+                <div style="font-size:0.6rem; font-weight:900; color:#999;
+                            text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">
+                  Detalles del Pago
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                  <div style="background:rgba(255,255,255,0.04); border-radius:10px; padding:10px;">
+                    <div style="font-size:1.1rem; font-weight:900; color:#F5C518;">
+                      $${Number(p.amount || 0).toFixed(2)}
+                    </div>
+                    <div style="font-size:0.6rem; color:#999; font-weight:700; margin-top:2px;">MONTO</div>
+                  </div>
+                  <div style="background:rgba(255,255,255,0.04); border-radius:10px; padding:10px;">
+                    <div style="font-size:0.75rem; font-weight:900; color:white; word-break:break-all;">
+                      ${p.reference || 'Sin referencia'}
+                    </div>
+                    <div style="font-size:0.6rem; color:#999; font-weight:700; margin-top:2px;">REFERENCIA</div>
+                  </div>
+                </div>
+                <div style="font-size:0.65rem; color:rgba(255,255,255,0.3); font-weight:700; margin-top:8px;">
+                  \ud83d\udcc5 Enviado: ${submitted}
+                </div>
+              </div>
+
+              <!-- COMPROBANTE -->
+              ${p.proof_image ? `
+                <div style="padding:14px 18px; border-bottom:1px solid rgba(255,255,255,0.06);">
+                  <div style="font-size:0.6rem; font-weight:900; color:#999;
+                              text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">
+                    Comprobante
+                  </div>
+                  <img src="${p.proof_image}" alt="Comprobante de pago"
+                       style="width:100%; border-radius:12px; max-height:280px;
+                              object-fit:contain; background:rgba(255,255,255,0.03); cursor:pointer;"
+                       onclick="window.open('${p.proof_image}','_blank')" />
+                  <div style="font-size:0.6rem; color:rgba(255,255,255,0.3); font-weight:700;
+                              margin-top:6px; text-align:center;">
+                    Toca la imagen para verla completa
+                  </div>
+                </div>` : `
+                <div style="padding:14px 18px; border-bottom:1px solid rgba(255,255,255,0.06);">
+                  <div style="background:rgba(230,57,70,0.08); border:1px dashed rgba(230,57,70,0.3);
+                              border-radius:10px; padding:12px; text-align:center;">
+                    <div style="font-size:0.7rem; color:#e63946; font-weight:700;">
+                      \u26a0\ufe0f Sin comprobante adjunto
+                    </div>
+                  </div>
+                </div>`}
+
+              <!-- ACCIONES -->
+              <div style="padding:14px 18px;">
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
+                  <button onclick="window.handleMasterAction('APPROVE_PROOF','${raw}')"
+                    style="background:#22c55e; color:white; border:none; border-radius:12px;
+                           padding:12px; font-size:0.75rem; font-weight:900; cursor:pointer;">
+                    \u2713 APROBAR
+                  </button>
+                  <button onclick="window.handleMasterAction('REJECT_PROOF','${p.id}|${p.building_id}')"
+                    style="background:#e63946; color:white; border:none; border-radius:12px;
+                           padding:12px; font-size:0.75rem; font-weight:900; cursor:pointer;">
+                    \u2717 RECHAZAR
+                  </button>
+                </div>
+                ${phone ? `
+                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
+                    <a href="https://wa.me/${phone}?text=${welcomeMsg}" target="_blank"
+                       style="background:#25D366; color:white; border-radius:12px; padding:10px;
+                              font-size:0.65rem; font-weight:900; text-decoration:none; text-align:center; display:block;">
+                      \ud83d\udcac WS Bienvenida
+                    </a>
+                    <a href="https://wa.me/${phone}?text=${rejectMsg}" target="_blank"
+                       style="background:rgba(255,255,255,0.06); color:rgba(255,255,255,0.6);
+                              border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:10px;
+                              font-size:0.65rem; font-weight:900; text-decoration:none; text-align:center; display:block;">
+                      \ud83d\udcac WS Rechazo
+                    </a>
+                  </div>
+                  <a href="https://wa.me/${phone}" target="_blank"
+                     style="display:block; background:rgba(255,255,255,0.04); color:rgba(255,255,255,0.4);
+                            border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:10px;
+                            font-size:0.65rem; font-weight:900; text-decoration:none; text-align:center;">
+                    \ud83d\udcac Abrir chat directo con el admin
+                  </a>` : `
+                  <div style="background:rgba(255,255,255,0.04); border-radius:12px; padding:10px; text-align:center;">
+                    <div style="font-size:0.65rem; color:rgba(255,255,255,0.3); font-weight:700;">
+                      Sin tel\u00e9fono registrado \u2014 edita el edificio para agregar contacto
+                    </div>
+                  </div>`}
+              </div>
+            </div>`
+        }).join('')}
+      </div>`;
   }
+
 
   const renderBuildings = (buildings = []) => {
     // Remove legacy detail view that was kept inside renderBuildings
