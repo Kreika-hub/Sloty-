@@ -65,15 +65,124 @@ export const initMaster = (container) => {
     },
     CHANGE_PLAN: async (id) => {
       if (!id) return;
-      const p = prompt('Ingrese el nuevo plan (TRIAL, BRONCE, PLATA, ORO):', 'BRONCE');
-      if (p) {
-          await supabase.from('buildings').update({ plan: p.toUpperCase() }).eq('id', id);
-          if (document.getElementById('dossier-overlay')) {
-              document.getElementById('dossier-overlay').remove();
-              actions.OPEN_DOSSIER(id);
-          }
-          render();
-      }
+      const { data: bld } = await supabase.from('buildings')
+        .select('name, plan').eq('id', id).single();
+      if (!bld) return;
+
+      const PLAN_OPTIONS = [
+        { key: 'TRIAL',  label: 'Trial',  price: 'Gratis',   slots: '10 puestos',  color: '#888' },
+        { key: 'BRONCE', label: 'Bronce', price: '$29/mes',  slots: '50 puestos',  color: '#cd7f32' },
+        { key: 'PLATA',  label: 'Plata',  price: '$59/mes',  slots: '150 puestos', color: '#aaa' },
+        { key: 'ORO',    label: 'Oro',    price: '$99/mes',  slots: 'Ilimitado',   color: '#F5C518' },
+      ];
+
+      const overlay = document.createElement('div');
+      overlay.id = 'change-plan-overlay';
+      overlay.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,0.8);
+        z-index:99999;display:flex;align-items:flex-end;justify-content:center;`;
+      overlay.innerHTML = `
+        <div style="background:#1a1a2e; border-radius:24px 24px 0 0; padding:24px;
+                    width:100%; max-width:500px; border:1px solid rgba(255,255,255,0.1);
+                    font-family:'Montserrat',sans-serif;">
+          <div style="font-size:0.65rem; font-weight:900; color:#999;
+                      text-transform:uppercase; letter-spacing:2px; margin-bottom:4px;">
+            Cambiar Plan
+          </div>
+          <div style="font-size:1rem; font-weight:900; color:white; margin-bottom:20px;">
+            ${bld.name}
+          </div>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:20px;">
+            ${PLAN_OPTIONS.map(p => `
+              <button onclick="window._selectMasterPlan('${p.key}')"
+                id="plan-btn-${p.key}"
+                style="background:${bld.plan === p.key ? p.color : 'rgba(255,255,255,0.06)'};
+                       color:${bld.plan === p.key ? (p.key === 'ORO' ? '#1a1a2e' : 'white') : 'rgba(255,255,255,0.7)'};
+                       border:2px solid ${bld.plan === p.key ? p.color : 'rgba(255,255,255,0.1)'};
+                       border-radius:14px; padding:14px 12px; cursor:pointer;
+                       text-align:left; transition:all 0.15s;">
+                <div style="font-size:0.85rem; font-weight:900;">${p.label}</div>
+                <div style="font-size:0.7rem; opacity:0.8; margin-top:2px;">${p.price}</div>
+                <div style="font-size:0.6rem; opacity:0.6; margin-top:1px;">${p.slots}</div>
+                ${bld.plan === p.key ? `
+                  <div style="font-size:0.6rem; font-weight:900; margin-top:4px; opacity:0.8;">
+                    ✓ Plan actual
+                  </div>` : ''}
+              </button>`).join('')}
+          </div>
+
+          <div style="display:flex; gap:10px;">
+            <button onclick="document.getElementById('change-plan-overlay').remove();
+                             delete window._selectMasterPlan; delete window._currentPlanId;"
+              style="flex:1; padding:14px; background:rgba(255,255,255,0.06);
+                     color:white; border:none; border-radius:12px;
+                     font-weight:900; cursor:pointer; font-family:'Montserrat',sans-serif;">
+              CANCELAR
+            </button>
+            <button id="btn-confirm-plan"
+              style="flex:2; padding:14px; background:rgba(255,255,255,0.1);
+                     color:rgba(255,255,255,0.4); border:none; border-radius:12px;
+                     font-weight:900; cursor:pointer; font-family:'Montserrat',sans-serif;"
+              disabled>
+              SELECCIONA UN PLAN
+            </button>
+          </div>
+        </div>`;
+
+      document.body.appendChild(overlay);
+
+      // Estado del plan seleccionado
+      let selectedPlan = bld.plan;
+      window._currentPlanId = id;
+
+      window._selectMasterPlan = (planKey) => {
+        selectedPlan = planKey;
+        // Actualizar estilos de botones
+        PLAN_OPTIONS.forEach(p => {
+          const btn = document.getElementById(`plan-btn-${p.key}`);
+          if (!btn) return;
+          const isSelected = p.key === planKey;
+          btn.style.background = isSelected ? p.color : 'rgba(255,255,255,0.06)';
+          btn.style.color = isSelected
+            ? (p.key === 'ORO' ? '#1a1a2e' : 'white')
+            : 'rgba(255,255,255,0.7)';
+          btn.style.border = `2px solid ${isSelected ? p.color : 'rgba(255,255,255,0.1)'}`;
+        });
+        // Habilitar botón de confirmar
+        const confirmBtn = document.getElementById('btn-confirm-plan');
+        const plan = PLAN_OPTIONS.find(p => p.key === planKey);
+        confirmBtn.disabled = false;
+        confirmBtn.style.background = '#F5C518';
+        confirmBtn.style.color = '#1a1a2e';
+        confirmBtn.textContent = `CAMBIAR A ${plan?.label?.toUpperCase()}`;
+      };
+
+      document.getElementById('btn-confirm-plan').onclick = async () => {
+        if (!selectedPlan || selectedPlan === bld.plan) {
+          overlay.remove();
+          return;
+        }
+        const durations = { TRIAL: 15, BRONCE: 30, PLATA: 30, ORO: 30 };
+        const days = durations[selectedPlan] || 30;
+        const expiry = new Date();
+        expiry.setDate(expiry.getDate() + days);
+
+        await supabase.from('buildings').update({
+          plan: selectedPlan,
+          membership_expiry: expiry.toISOString()
+        }).eq('id', id);
+
+        overlay.remove();
+        delete window._selectMasterPlan;
+        delete window._currentPlanId;
+
+        // Refrescar dossier si está abierto
+        if (document.getElementById('dossier-overlay')) {
+          document.getElementById('dossier-overlay').remove();
+          actions.OPEN_DOSSIER(id);
+        }
+        render();
+      };
     },
     REGISTER_PAYMENT: (btn) => {
       const bId = btn.dataset.id
