@@ -775,26 +775,76 @@ const renderRegister = () => {
           <p style="color:rgba(255,255,255,0.4);font-size:0.75rem;">Adquiriendo: Plan ${plan.label} · ${plan.price}</p>
         </div>
 
-        <!-- NEW: Payment instructions & QR -->
-        <div style="max-width:400px;width:100%;margin:0 auto 24px;background:rgba(255,255,255,0.03);border:1px dashed rgba(255,255,255,0.1);border-radius:18px;padding:20px;text-align:center;">
-          <div style="color:#F5C518;font-size:0.7rem;font-weight:900;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">Datos para Pago Móvil</div>
-          <div style="background:white;padding:10px;border-radius:12px;display:inline-block;margin-bottom:12px;">
-            <!-- Placeholder QR -->
-            <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="#1a1a2e" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><rect x="7" y="7" width="3" height="3"></rect><rect x="14" y="7" width="3" height="3"></rect><rect x="7" y="14" width="3" height="3"></rect><rect x="14" y="14" width="3" height="3"></rect></svg>
+        <!-- Sloty logo + datos edificio + datos de pago copiables -->
+        <div style="max-width:400px;width:100%;margin:0 auto 24px;">
+
+          <!-- LOGO SLOTY -->
+          <div style="background:#0f1127;border:1px solid rgba(245,197,24,0.2);border-radius:20px;padding:28px 20px 24px;text-align:center;margin-bottom:16px;">
+            <div style="display:inline-flex;align-items:center;justify-content:center;background:#F5C518;width:64px;height:64px;border-radius:18px;margin-bottom:14px;">
+              <svg width="36" height="36" viewBox="0 0 32 32" fill="none">
+                <rect x="4" y="4" width="24" height="24" rx="6" fill="#1a1a2e"/>
+                <rect x="9" y="9" width="6" height="6" rx="1.5" fill="#F5C518"/>
+                <rect x="17" y="9" width="6" height="6" rx="1.5" fill="#F5C518"/>
+                <rect x="9" y="17" width="6" height="6" rx="1.5" fill="#F5C518"/>
+                <rect x="17" y="17" width="6" height="6" rx="1.5" fill="rgba(245,197,24,0.4)"/>
+              </svg>
+            </div>
+            <div style="font-size:1.3rem;font-weight:900;color:white;letter-spacing:-0.5px;">SLOTY</div>
+            <div style="font-size:0.65rem;font-weight:700;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:2px;margin-top:2px;">Gestión de Estacionamiento</div>
           </div>
-          <div style="color:white;font-size:0.85rem;font-weight:700;line-height:1.6;">
-            <strong>Banesco (0134)</strong><br>
-            Teléfono: 0414-1234567<br>
-            CI: V-12345678
+
+          <!-- DATOS DEL EDIFICIO (verificación) -->
+          <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:16px;margin-bottom:16px;">
+            <div style="font-size:0.6rem;font-weight:900;color:#F5C518;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px;">📋 Datos del Edificio</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
+              <div>
+                <div style="font-size:0.55rem;color:rgba(255,255,255,0.35);font-weight:700;text-transform:uppercase;margin-bottom:2px;">Edificio</div>
+                <div style="font-size:0.85rem;font-weight:900;color:white;">${building.name || 'Sin nombre'}</div>
+              </div>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
+              <div>
+                <div style="font-size:0.55rem;color:rgba(255,255,255,0.35);font-weight:700;text-transform:uppercase;margin-bottom:2px;">Código</div>
+                <div style="font-size:0.85rem;font-weight:900;color:white;">${building.code || '—'}</div>
+              </div>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;">
+              <div>
+                <div style="font-size:0.55rem;color:rgba(255,255,255,0.35);font-weight:700;text-transform:uppercase;margin-bottom:2px;">Plan · Monto</div>
+                <div style="font-size:0.85rem;font-weight:900;color:#F5C518;">${plan.label} · ${plan.price}</div>
+              </div>
+            </div>
           </div>
-          <hr style="border:none;border-top:1px solid rgba(255,255,255,0.1);margin:16px 0;">
-          <div style="text-align:left;font-size:0.8rem;color:rgba(255,255,255,0.6);line-height:1.5;">
-            <strong style="color:white;">Edificio:</strong> ${building.name}<br>
-            <strong style="color:white;">Total a Pagar:</strong> ${plan.price}<br>
-            <div style="margin-top:10px; padding:10px; background:rgba(245,197,24,0.1); border-left:3px solid #F5C518; border-radius:0 8px 8px 0;">
-              <em style="color:#F5C518; font-size:0.75rem; font-weight:700; font-style:normal;">
-                ⚠️ NOTA: El pago en Bolívares (Bs.) debe realizarse a la tasa oficial del BCV correspondiente al día en que se ejecute la transferencia.
-              </em>
+
+          <!-- DATOS DE PAGO COPIABLES -->
+          <div style="background:#0f1127;border:1px solid rgba(245,197,24,0.25);border-radius:16px;overflow:hidden;">
+            <div style="padding:14px 16px;background:rgba(245,197,24,0.08);border-bottom:1px solid rgba(245,197,24,0.15);">
+              <div style="font-size:0.6rem;font-weight:900;color:#F5C518;text-transform:uppercase;letter-spacing:1.5px;">💳 Datos de Pago Móvil</div>
+              <div style="font-size:0.6rem;color:rgba(255,255,255,0.3);font-weight:600;margin-top:2px;">Toca el ícono para copiar</div>
+            </div>
+
+            ${[
+              { label: 'Banco', value: 'Banco Exterior' },
+              { label: 'Cédula', value: 'V-27031049' },
+              { label: 'Teléfono', value: '04129135799' },
+              { label: 'Monto en Bs.', value: 'A la tasa BCV del día' },
+            ].map(item => `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.05);">
+              <div>
+                <div style="font-size:0.55rem;color:rgba(255,255,255,0.35);font-weight:700;text-transform:uppercase;margin-bottom:3px;">${item.label}</div>
+                <div style="font-size:0.9rem;font-weight:900;color:white;">${item.value}</div>
+              </div>
+              <button onclick="navigator.clipboard.writeText('${item.value}').then(()=>{ const b=this; const prev=b.innerHTML; b.innerHTML='✅'; setTimeout(()=>b.innerHTML=prev,1500); })"
+                style="background:rgba(245,197,24,0.1);border:1px solid rgba(245,197,24,0.2);color:#F5C518;width:36px;height:36px;border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.85rem;flex-shrink:0;">
+                📋
+              </button>
+            </div>`).join('')}
+
+            <div style="padding:14px 16px;">
+              <div style="background:rgba(245,197,24,0.08);border-left:3px solid #F5C518;border-radius:0 8px 8px 0;padding:10px 12px;">
+                <div style="font-size:0.7rem;color:#F5C518;font-weight:700;">⚠️ Nota importante</div>
+                <div style="font-size:0.65rem;color:rgba(255,255,255,0.5);margin-top:4px;line-height:1.5;">El pago en Bolívares (Bs.) debe realizarse a la tasa oficial del BCV correspondiente al día en que se ejecute la transferencia.</div>
+              </div>
             </div>
           </div>
         </div>
