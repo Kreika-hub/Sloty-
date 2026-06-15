@@ -622,11 +622,31 @@ const renderRegister = () => {
   // ─── PLAN SELECTION ──────────────────────────────────────────
   const renderPlanSelection = (building) => {
     const PLANS = [
-      { key: 'TRIAL',  label: 'Prueba Gratis',  price: 'GRATIS', days: '3 días', desc: 'Hasta 10 puestos', color: '#888',    highlight: false },
-      { key: 'BRONCE', label: 'Bronce',          price: '$15/mes',  days: null,    desc: 'Hasta 50 puestos', color: '#cd7f32', highlight: false },
-      { key: 'PLATA',  label: 'Plata',           price: '$30/mes',  days: null,    desc: 'Hasta 150 puestos + Caja', color: '#aaa', highlight: false },
-      { key: 'ORO',    label: 'Oro',             price: '$55/mes',  days: null,    desc: 'Ilimitado + todos los módulos', color: '#F5C518', highlight: true },
+      { key: 'TRIAL',  label: 'Prueba Gratis',  price: 'GRATIS', days: '3 días', desc: 'Hasta 10 puestos', color: '#888',    highlight: false, benefits: ['Gestión Básica de Visitantes', 'Hasta 10 puestos', 'Panel básico de Guardia'] },
+      { key: 'BRONCE', label: 'Bronce',          price: '$15/mes',  days: null,    desc: 'Hasta 50 puestos', color: '#cd7f32', highlight: false, benefits: ['Hasta 50 puestos asignables', 'Control de Caja Chica', 'Registro Ilimitado'] },
+      { key: 'PLATA',  label: 'Plata',           price: '$30/mes',  days: null,    desc: 'Hasta 150 puestos + Caja', color: '#aaa', highlight: false, benefits: ['Hasta 150 puestos', 'Panel Multi-Turnos', 'Control de Deudores'] },
+      { key: 'ORO',    label: 'Oro',             price: '$55/mes',  days: null,    desc: 'Ilimitado + todos los módulos', color: '#F5C518', highlight: true, benefits: ['Puestos Ilimitados', 'Todos los módulos financieros', 'Soporte VIP Prioritario'] },
     ]
+
+    window.viewPlanBenefits = (key) => {
+      const plan = PLANS.find(p => p.key === key)
+      if(!plan) return
+      const overlay = document.createElement('div')
+      overlay.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,0.8);backdrop-filter:blur(5px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;`
+      overlay.innerHTML = `
+        <div style="background:#1a1a2e; border-radius:24px; padding:30px; width:100%; max-width:350px; border:1px solid ${plan.color}; text-align:center;">
+           <div style="font-size:2.5rem; margin-bottom:10px;">✨</div>
+           <div style="color:${plan.color}; font-weight:900; font-size:1.2rem; margin-bottom:6px;">Plan ${plan.label}</div>
+           <div style="color:white; font-size:1.5rem; font-weight:900; margin-bottom:20px;">${plan.price}</div>
+           <div style="text-align:left; margin-bottom:30px; font-size:0.85rem; color:rgba(255,255,255,0.8); line-height:1.6;">
+              ${plan.benefits.map(b => `<div style="margin-bottom:8px;">✅ ${b}</div>`).join('')}
+           </div>
+           <button class="close-b" style="width:100%; padding:14px; background:rgba(255,255,255,0.1); color:white; border:none; border-radius:12px; font-weight:900; cursor:pointer;">CERRAR</button>
+        </div>
+      `
+      document.body.appendChild(overlay)
+      overlay.querySelector('.close-b').onclick = (e) => { e.stopPropagation(); overlay.remove() }
+    }
     let selectedPlan = null
 
     screens.register.innerHTML = `
@@ -650,7 +670,8 @@ const renderRegister = () => {
                 ${p.days ? '<div style="font-size:0.65rem;color:#22c55e;font-weight:700;margin-top:2px;">' + p.days + ' gratis</div>' : ''}
               </div>
               <div style="text-align:right;">
-                <div style="font-size:1rem;font-weight:900;color:white;">${p.price}</div>
+                <div style="font-size:1rem;font-weight:900;color:white;margin-bottom:6px;">${p.price}</div>
+                <button onclick="event.stopPropagation(); window.viewPlanBenefits('${p.key}')" style="background:rgba(255,255,255,0.1); color:white; border:none; padding:6px 10px; border-radius:6px; font-size:0.6rem; font-weight:900; cursor:pointer;">VER BENEFICIOS</button>
               </div>
             </div>
           `).join('')}
@@ -1342,3 +1363,19 @@ window.addEventListener('sloty_show_plans', (e) => {
     window.slotyGlobalShowPlans(e.detail.id);
   }
 });
+
+// ─── GLOBAL SUPPORT BUBBLE ──────────────────────────────────────
+const renderSupportBubble = () => {
+    if(document.getElementById('sloty-support-bubble')) return;
+    const bubble = document.createElement('a');
+    bubble.id = 'sloty-support-bubble';
+    bubble.href = 'https://wa.me/584128832447?text=Hola,%20necesito%20soporte%20con%20Sloty';
+    bubble.target = '_blank';
+    bubble.style.cssText = 'position:fixed; bottom:20px; right:20px; background:#25D366; color:white; width:50px; height:50px; border-radius:50%; display:flex; align-items:center; justify-content:center; text-decoration:none; font-size:1.6rem; z-index:99999; box-shadow:0 4px 10px rgba(0,0,0,0.3); transition:transform 0.2s;';
+    bubble.innerHTML = '💬';
+    bubble.title = 'Contactar a Soporte';
+    bubble.onmouseover = () => bubble.style.transform = 'scale(1.1)';
+    bubble.onmouseout = () => bubble.style.transform = 'scale(1)';
+    document.body.appendChild(bubble);
+};
+document.addEventListener('DOMContentLoaded', renderSupportBubble);

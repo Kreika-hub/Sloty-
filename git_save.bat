@@ -1,3 +1,3 @@
 git add .
-git commit -m "feat: Full master dossier with 360-view for buildings, inline proof approval/rejection, and financial metrics"
+git commit -m "feat: Adding plan benefits matrix, global tech support integration, and direct collection messages via WhatsApp"
 git push origin main

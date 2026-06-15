@@ -34,30 +34,8 @@ export const initMaster = (container) => {
     TAB: (btn) => { activeTab = btn.dataset.tab; selectedBuilding = null; render() },
     BACK: () => { selectedBuilding = null; render() },
     SELECT_BUILDING: async (btn) => { 
-      selectedBuilding = btn.dataset.id;
-      // Fetch stats for building
-      const now = new Date();
-      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-      
-      const [ { count: slotsCount }, { count: resCount }, { data: pays },
-              { data: mems }, { data: bld }, { data: personnel }, { data: shifts } ] =
-        await Promise.all([
-          supabase.from('parking_slots').select('*', { count: 'exact', head: true }).eq('building_id', selectedBuilding),
-          supabase.from('subscriptions').select('*', { count: 'exact', head: true }).eq('building_id', selectedBuilding),
-          supabase.from('payments').select('amount').eq('building_id', selectedBuilding).eq('status', 'CONFIRMED').gte('payment_date', firstDay),
-          supabase.from('sloty_memberships').select('*').eq('building_id', selectedBuilding).order('created_at', { ascending: false }).limit(5),
-          supabase.from('buildings').select('*').eq('id', selectedBuilding).single(),
-          supabase.from('personnel').select('name, role, pin').eq('building_id', selectedBuilding),
-          supabase.from('guard_shifts').select('guard_name, ended_at, total_cash, total_mobile, total_bs, entries, exits, absences').eq('building_id', selectedBuilding).order('ended_at', { ascending: false }).limit(10)
-        ]);
-
-      const sumPays = pays ? pays.reduce((a,b) => a + (Number(b.amount) || 0), 0) : 0;
-      buildingStats = { slotsCount: slotsCount || 0, resCount: resCount || 0, sumPays };
-      recentMemberships = mems || [];
-      selectedBuildingData = bld || {};
-      selectedBuildingData._personnel = personnel || [];
-      selectedBuildingData._shifts = shifts || [];
-      render();
+      const id = btn.dataset.id;
+      actions.OPEN_DOSSIER(id);
     },
     SET_PLAN: async (btn) => {
       const plan = btn.dataset.plan;
@@ -155,6 +133,13 @@ export const initMaster = (container) => {
           .update({ membership_status: 'ACTIVE' }).eq('id', bId)
         render()
       }
+    },
+    CONTACT_COLLECTION: async (id) => {
+        const { data: bld } = await supabase.from('buildings').select('name, phone, plan').eq('id', id).single();
+        if (!bld || !bld.phone) return alert('No hay teléfono registrado para este edificio.');
+        const phone = bld.phone.replace(/\D/g, '');
+        const msg = encodeURIComponent(`Hola admin de ${bld.name}, te contactamos de Sloty. Tienes una deuda pendiente por tu plan ${bld.plan}. Por favor, realiza el pago a la brevedad para reactivar tu servicio.`);
+        window.open(`https://wa.me/${phone}?text=${msg}`, '_blank');
     },
     ACTIVATE_CASH: (btn) => {
       const bId = btn.dataset.id
@@ -320,6 +305,14 @@ export const initMaster = (container) => {
                 </div>
               </div>
           <div style="display:flex; gap:8px;">
+            ${(bld?.membership_status === 'SUSPENDED' || bld?.membership_status === 'PENDING_CASH') ? `
+              <button onclick="handleMasterAction('CONTACT_COLLECTION','${buildingId}')"
+                style="background:rgba(230,57,70,0.1); color:#e63946; border:1px solid #e63946;
+                       border-radius:8px; padding:8px 12px; font-size:0.65rem;
+                       font-weight:900; cursor:pointer; display:flex; align-items:center; gap:6px;">
+                💬 COBRAR DEUDA
+              </button>
+            ` : ''}
             <button onclick="handleMasterAction('CHANGE_PLAN','${buildingId}')"
               style="background:rgba(245,197,24,0.1); color:#F5C518; border:1px solid #F5C518;
                      border-radius:8px; padding:8px 12px; font-size:0.65rem;
@@ -744,117 +737,7 @@ export const initMaster = (container) => {
     </div>`
 
   const renderBuildings = (buildings = []) => {
-    if (selectedBuilding && selectedBuildingData) {
-      const b = selectedBuildingData;
-      return `<div style="padding:20px;">
-        <button data-action="BACK" style="background:none;border:none;color:rgba(255,255,255,0.5);font-size:0.8rem;cursor:pointer;margin-bottom:15px;font-weight:900;">← VOLVER</button>
-        <div style="background:rgba(255,255,255,0.06);padding:20px;border-radius:16px;margin-bottom:20px;">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-             <div>
-               <div style="font-size:1.2rem;font-weight:900;color:white;">${b.name || 'Edificio'}</div>
-               <div style="font-size:0.7rem;color:#999;margin-top:4px;">${b.code || ''}</div>
-             </div>
-             <div>${getBadge(b.plan || 'TRIAL', b.membership_status || 'ACTIVE')}</div>
-          </div>
-          
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:20px 0;">
-            <div style="background:rgba(255,255,255,0.04);padding:10px;border-radius:8px;text-align:center;"><div style="color:#F5C518;font-weight:900;font-size:1.2rem;">${buildingStats?.slotsCount || 0}</div><div style="font-size:0.5rem;color:#999;">PUESTOS</div></div>
-            <div style="background:rgba(255,255,255,0.04);padding:10px;border-radius:8px;text-align:center;"><div style="color:#22c55e;font-weight:900;font-size:1.2rem;">${buildingStats?.resCount || 0}</div><div style="font-size:0.5rem;color:#999;">RESIDENTES</div></div>
-            <div style="background:rgba(255,255,255,0.04);padding:10px;border-radius:8px;text-align:center;"><div style="color:white;font-weight:900;font-size:1.2rem;">$${(buildingStats?.sumPays || 0).toFixed(2)}</div><div style="font-size:0.5rem;color:#999;">INGRESOS (MES)</div></div>
-          </div>
-          
-          <h4 style="color:white;font-size:0.8rem;margin-bottom:10px;">CONTROL DE PLAN</h4>
-          <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;">
-             ${PLANS.map(p => `<button data-action="SET_PLAN" data-plan="${p.key}" style="background:${b.plan===p.key?p.color:'rgba(255,255,255,0.1)'}; color:${b.plan===p.key && p.key==='ORO'?'#1a1a2e':'white'}; border:none; padding:8px 12px; border-radius:8px; font-weight:900; font-size:0.7rem; cursor:pointer;">${p.label.toUpperCase()}</button>`).join('')}
-          </div>
-          
-          <h4 style="color:white;font-size:0.8rem;margin-bottom:10px;">ESTADO DEL SERVICIO</h4>
-          <button data-action="TOGGLE_STATUS" style="background:${b.membership_status==='ACTIVE'?'rgba(230,57,70,0.2)':'rgba(34,197,94,0.2)'}; color:${b.membership_status==='ACTIVE'?'#e63946':'#22c55e'}; border:1px solid currentColor; padding:10px 15px; border-radius:8px; font-weight:900; font-size:0.7rem; width:100%; cursor:pointer;">
-             ${b.membership_status==='ACTIVE' ? 'SUSPENDER EDIFICIO' : 'ACTIVAR EDIFICIO'}
-          </button>
-        </div>
-        
-        <h3 style="color:white; font-size:0.85rem; font-weight:900; margin-bottom:10px;">ÚLTIMOS PAGOS DE MEMBRESÍA</h3>
-        <div style="display:grid;gap:8px;">
-           ${recentMemberships.map(m => `
-             <div style="background:rgba(255,255,255,0.06); padding:12px; border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
-                <div>
-                   <div style="color:white;font-weight:900;font-size:0.9rem;">$${m.amount}</div>
-                   <div style="color:#999;font-size:0.6rem;">${new Date(m.paid_at).toLocaleDateString()} · Expira: ${new Date(m.expiry_date).toLocaleDateString()}</div>
-                </div>
-                <div style="font-size:0.65rem; color:#22c55e; font-weight:900; background:rgba(34,197,94,0.1); padding:4px 8px; border-radius:6px;">${m.status}</div>
-             </div>
-           `).join('')}
-           ${!recentMemberships.length ? '<div style="color:#666; font-size:0.7rem;">No hay registros de pago.</div>' : ''}
-        </div>
-
-        <!-- PERSONAL -->
-        <div style="margin-top:20px;">
-          <div style="font-size:0.7rem; font-weight:900; color:#999;
-                      letter-spacing:2px; text-transform:uppercase; margin-bottom:10px;">
-            Personal Registrado
-          </div>
-          ${(b._personnel || []).length === 0 ? `
-            <div style="color:rgba(255,255,255,0.3); font-size:0.7rem; padding:12px;">
-              Sin personal registrado
-            </div>` :
-            (b._personnel || []).map(p => `
-              <div style="background:rgba(255,255,255,0.06); padding:10px 14px;
-                          border-radius:10px; margin-bottom:6px;
-                          display:flex; justify-content:space-between; align-items:center;">
-                <div>
-                  <div style="color:white; font-size:0.8rem; font-weight:900;">${p.name}</div>
-                  <div style="color:#999; font-size:0.6rem; font-weight:700;">${p.role || 'GUARDIA'}</div>
-                </div>
-                <span style="background:rgba(245,197,24,0.1); color:#F5C518;
-                            font-size:0.6rem; font-weight:900; padding:3px 8px;
-                            border-radius:6px;">
-                  PIN: ${p.pin}
-                </span>
-              </div>`).join('')}
-        </div>
-
-        <!-- ÚLTIMOS TURNOS -->
-        <div style="margin-top:20px; margin-bottom:30px;">
-          <div style="font-size:0.7rem; font-weight:900; color:#999;
-                      letter-spacing:2px; text-transform:uppercase; margin-bottom:10px;">
-            Últimos Turnos de Guardia
-          </div>
-          ${(b._shifts || []).length === 0 ? `
-            <div style="color:rgba(255,255,255,0.3); font-size:0.7rem; padding:12px;">
-              Sin turnos registrados aún
-            </div>` :
-            (b._shifts || []).map(s => {
-              const earned = (s.total_cash||0) + (s.total_mobile||0) + (s.total_bs||0);
-              const absMin = (s.absences||[]).reduce((a, ab) => a + (ab.duration_min||0), 0);
-              return `
-                <div style="background:rgba(255,255,255,0.06); padding:12px 14px;
-                            border-radius:10px; margin-bottom:6px;">
-                  <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
-                    <div style="color:white; font-size:0.8rem; font-weight:900;">
-                      ${s.guard_name}
-                    </div>
-                    <div style="color:#F5C518; font-size:0.8rem; font-weight:900;">
-                      $${earned.toFixed(2)}
-                    </div>
-                  </div>
-                  <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                    <span style="color:#999; font-size:0.6rem; font-weight:700;">
-                      ${new Date(s.ended_at).toLocaleString('es-VE', { dateStyle:'short', timeStyle:'short' })}
-                    </span>
-                    <span style="color:#999; font-size:0.6rem; font-weight:700;">
-                      🚗 ${s.entries||0} entradas
-                    </span>
-                    ${absMin > 0 ? `
-                      <span style="color:#e63946; font-size:0.6rem; font-weight:700;">
-                        ⏸ ${absMin}min ausente
-                      </span>` : ''}
-                  </div>
-                </div>`;
-            }).join('')}
-        </div>
-      </div>`
-    }
+    // Remove legacy detail view that was kept inside renderBuildings
     return `<div style="padding:20px 20px 0;">
       <button data-action="ADD_BUILDING"
         style="width:100%; background:#F5C518; color:#1a1a2e; border:none;
@@ -1148,6 +1031,34 @@ export const initMaster = (container) => {
         </div>
         
         <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05); border-radius:16px; padding:20px; margin-bottom:24px;">
+           ${renderChart(Object.values(byMonth).reverse().slice(0, 6))}
+        </div>
+
+        <div style="font-size:0.7rem; font-weight:900; color:#999;
+                    letter-spacing:2px; text-transform:uppercase; margin-bottom:10px;">
+          Matriz de Beneficios por Plan
+        </div>
+
+        <div style="display:grid; gap:10px; margin-bottom:24px;">
+          <div style="background:rgba(255,255,255,0.06); border-radius:14px; padding:16px; display:flex; align-items:center; gap:15px;">
+            <div style="background:#888; color:white; font-size:0.6rem; font-weight:900; padding:6px 12px; border-radius:8px; min-width:60px; text-align:center;">TRIAL</div>
+            <div style="font-size:0.75rem; color:rgba(255,255,255,0.7); line-height:1.4;">Gestión Básica • Hasta 10 puestos • Menú Guardia Simple</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.06); border-radius:14px; padding:16px; display:flex; align-items:center; gap:15px;">
+            <div style="background:#cd7f32; color:white; font-size:0.6rem; font-weight:900; padding:6px 12px; border-radius:8px; min-width:60px; text-align:center;">BRONCE</div>
+            <div style="font-size:0.75rem; color:rgba(255,255,255,0.7); line-height:1.4;">Hasta 50 puestos • Control Caja Chica • Registro Ilimitado</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.06); border-radius:14px; padding:16px; display:flex; align-items:center; gap:15px;">
+            <div style="background:#aaa; color:white; font-size:0.6rem; font-weight:900; padding:6px 12px; border-radius:8px; min-width:60px; text-align:center;">PLATA</div>
+            <div style="font-size:0.75rem; color:rgba(255,255,255,0.7); line-height:1.4;">Hasta 150 puestos • Control de Deudores • Multi-Turno</div>
+          </div>
+          <div style="background:rgba(245,197,24,0.1); border:1px solid #F5C518; border-radius:14px; padding:16px; display:flex; align-items:center; gap:15px;">
+            <div style="background:#F5C518; color:#1a1a2e; font-size:0.6rem; font-weight:900; padding:6px 12px; border-radius:8px; min-width:60px; text-align:center;">ORO</div>
+            <div style="font-size:0.75rem; color:rgba(255,255,255,0.9); line-height:1.4;">Puestos Ilimitados • Absolutamente todos los módulos financieros • Soporte Técnico VIP</div>
+          </div>
+        </div>
+
+      </div>`
           ${makeAreaChart(byMonth, months)}
         </div>
 
