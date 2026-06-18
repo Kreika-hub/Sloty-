@@ -2271,7 +2271,12 @@ export const initAdmin = (container) => {
 
   const renderProfile = (state) => `
     <div style="padding:20px; padding-bottom:120px; background:#f8f9fa;">
-      <h2 style="font-weight:900; color:var(--primary); font-size:1.4rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:20px;">PERFIL DEL EDIFICIO</h2>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+        <h2 style="font-weight:900; color:var(--primary); font-size:1.4rem; text-transform:uppercase; letter-spacing:1px; margin:0;">PERFIL DEL EDIFICIO</h2>
+        <button data-action="SHOW_PLANS" style="background:#e63946; color:white; border:none; padding:8px 16px; border-radius:12px; font-weight:900; font-size:0.75rem; cursor:pointer; text-transform:uppercase; box-shadow:0 10px 20px rgba(230,57,70,0.2);">
+          RENOVAR SUSCRIPCIÓN
+        </button>
+      </div>
       
       <div style="background:white; padding:30px; border-radius:32px; box-shadow:0 15px 40px rgba(0,0,0,0.04); border:1.5px solid #f0f0f0;">
         <div style="text-align:center; margin-bottom:20px;">

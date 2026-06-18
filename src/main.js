@@ -322,6 +322,14 @@ const renderLogin = () => {
 
       // DEV BYPASS: always bypass if not found
       let resolvedBuilding = building
+      if (resolvedBuilding) {
+         try {
+           const { data: mems } = await supabase.from('sloty_memberships').select('expiry_date').eq('building_id', resolvedBuilding.id).eq('status', 'CONFIRMED').order('expiry_date', { ascending: false }).limit(1);
+           if (mems && mems.length > 0) {
+               resolvedBuilding.membership_expiry = mems[0].expiry_date;
+           }
+         } catch(e) { console.warn('Could not fetch membership expiry') }
+      }
       if (!resolvedBuilding && !isMaster) {
         try {
           const { data: fallback } = await supabase
@@ -381,30 +389,52 @@ const renderLogin = () => {
           return
       }
 
-      // 2. Validación de Trial (3 días)
+      // 2. Validación Universal de Suscripción / Trial
+      let isExpired = false;
+      
       if (resolvedBuilding.plan === 'TRIAL') {
           const start = new Date(resolvedBuilding.trial_started_at || resolvedBuilding.created_at)
           const now = new Date()
           const diffDays = Math.ceil((now - start) / (1000 * 60 * 60 * 24))
-          
-          if (diffDays > 3) {
-              mainScreen.innerHTML = `
-                <div style="min-height:100vh;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;text-align:center;">
-                  <div style="font-size:4rem;margin-bottom:20px;">⌛</div>
-                  <h1 style="color:white;font-size:1.6rem;font-weight:900;margin-bottom:10px;">¡Trial Expirado!</h1>
-                  <p style="color:rgba(255,255,255,0.5);font-size:0.95rem;margin-bottom:30px;max-width:320px;">
-                    Tus 3 días de prueba han terminado. Activa un plan para seguir gestionando tu edificio.
-                  </p>
-                  <button onclick="window.slotyGlobalShowPlans('${resolvedBuilding.id}')" style="padding:18px;background:#F5C518;color:#1a1a2e;border:none;border-radius:14px;font-weight:900;cursor:pointer;width:100%;max-width:300px;">
-                    VER PLANES DISPONIBLES
-                  </button>
-                </div>
-              `
-              return
+          if (diffDays > 3) isExpired = true;
+          else {
+              newState.trialDaysLeft = 3 - (diffDays - 1)
+              localStorage.setItem('sloty_state', JSON.stringify(newState))
           }
-          // Guardar días restantes para el banner en el panel admin
-          newState.trialDaysLeft = 3 - (diffDays - 1)
-          localStorage.setItem('sloty_state', JSON.stringify(newState))
+      } else {
+          // Si es ORO, PLATA, BRONCE
+          if (resolvedBuilding.membership_expiry) {
+              const expiry = new Date(resolvedBuilding.membership_expiry);
+              if (new Date() > expiry) isExpired = true;
+          } else {
+              // Si no tiene fecha, lo procesamos como vencido (esperando primer pago)
+              isExpired = true;
+          }
+      }
+
+      if (isExpired && resolvedBuilding.membership_status !== 'SUSPENDED') {
+          // Candado Soft: Permite cargar UI pero bloquea todos los clics y despliega banner.
+          window.__slotyExpired = true;
+          
+          const banner = document.createElement('div');
+          banner.id = 'sloty-expiry-banner';
+          banner.style = "position:fixed; top:0; left:0; width:100%; height:40px; background:#e63946; color:white; font-weight:900; font-size:0.75rem; text-align:center; padding:10px; z-index:99999; display:flex; justify-content:center; align-items:center; gap:10px; font-family:'Montserrat', sans-serif; box-sizing:border-box;";
+          banner.innerHTML = `⚠️ ¡Suscripción Vencida! Operaciones congeladas. 
+             <button style="background:white; color:#e63946; border:none; border-radius:6px; padding:4px 10px; font-weight:900; font-size:0.65rem; cursor:pointer;" onclick="window.slotyGlobalShowPlans('${resolvedBuilding.id}')">RENOVAR PLAN</button>`;
+          document.body.appendChild(banner);
+
+          // Ajustar padding global para evitar que el banner tape el panel
+          document.body.style.paddingTop = '40px';
+
+          window.addEventListener('click', (e) => {
+             // Permitir clicks nativos sobre los módulos de renovación/planes y alert confirm
+             if (e.target.closest('#modal-layer') || e.target.closest('#login-screen') || e.target.closest('#register-screen') || e.target.closest('button[onclick*="slotyGlobalShowPlans"]')) {
+                 return;
+             }
+             e.preventDefault();
+             e.stopPropagation();
+             window.slotyGlobalShowPlans(resolvedBuilding.id);
+          }, true);
       }
 
       // Iniciar panel sin esperar syncDown
