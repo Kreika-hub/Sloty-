@@ -829,6 +829,28 @@ export const initMaster = (container) => {
       if (error) { alert('Error al eliminar: ' + error.message); return; }
       render();
     },
+    ACTIVATE_CASH: async (btn) => {
+      const buildingId = typeof btn === 'string' ? btn : btn?.dataset?.id;
+      if (!buildingId) return;
+      const durations = { TRIAL: 15, BRONCE: 30, PLATA: 30, ORO: 30 };
+      const { data: bld } = await supabase.from('buildings').select('plan').eq('id', buildingId).single();
+      const days = durations[bld?.plan] || 30;
+      const expiry = new Date();
+      expiry.setDate(expiry.getDate() + days);
+      await supabase.from('buildings').update({
+        membership_status: 'ACTIVE',
+        membership_expiry: expiry.toISOString()
+      }).eq('id', buildingId);
+      await supabase.from('sloty_memberships').insert({
+        building_id:    buildingId,
+        plan:           bld?.plan || 'TRIAL',
+        amount:         0,
+        payment_method: 'CASH',
+        status:         'CONFIRMED',
+        paid_at:        new Date().toISOString()
+      });
+      render();
+    },
     SEND_ACCESS_LINK: async (id) => {
       if (!id) return
       const { data: bld } = await supabase.from('buildings').select('name, phone, code, admin_email').eq('id', id).single()
@@ -1188,14 +1210,13 @@ export const initMaster = (container) => {
     </div>`
   }
 
-  const renderMemberships = (buildings = []) => {
+  const renderMemberships = (buildings = [], eco = {}, pendingCash = []) => {
     const today = new Date();
     const in7days = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
 
     const expiredCount = buildings.filter(b => getExpiryStatus(b.last_expiry) === 'expired' && b.membership_status === 'ACTIVE').length;
     const soonCount    = buildings.filter(b => getExpiryStatus(b.last_expiry) === 'soon' && b.membership_status === 'ACTIVE').length;
 
-    const pendingCash = buildings.filter(b => b.membership_status === 'PENDING_CASH');
     const pendingProofs = eco.proofs || [];
 
     const sorted = [...buildings].filter(b => b.membership_status === 'ACTIVE' || b.membership_status === 'SUSPENDED').sort((a, b) => {
@@ -1634,7 +1655,7 @@ export const initMaster = (container) => {
         { data: mems },
         { data: proofs }
       ] = await Promise.all([
-        supabase.from('buildings').select('*'),
+        supabase.from('buildings').select('*').order('created_at', { ascending: false }),
         supabase.from('sloty_memberships').select('*').order('expiry_date', { ascending: false }),
         supabase.from('building_payment_proofs').select('*, buildings(name)').eq('status', 'PENDING')
       ])
@@ -1644,7 +1665,8 @@ export const initMaster = (container) => {
          b.last_expiry = bMems.length > 0 ? bMems[0].expiry_date : null;
          return b;
       })
-      html = renderMemberships(enrichedBld, { proofs: proofs || [] })
+      const pendingCash = (bld || []).filter(b => b.membership_status === 'PENDING_CASH')
+      html = renderMemberships(enrichedBld, { proofs: proofs || [] }, pendingCash)
     }
     else if (activeTab === 'ADS') {
       const [ { data: ads }, { data: bld } ] = await Promise.all([

@@ -1059,7 +1059,7 @@ const renderRegister = () => {
 
   // ─── PENDING SCREEN ────────────────────────────────────────────
   const renderPendingScreen = (type, plan) => {
-    const WA_NUMBER = '584120770776'
+    const WA_NUMBER = '584129135799'
     const waMsg = encodeURIComponent('Hola, acabo de registrar mi edificio en Sloty y seleccioné el plan ' + plan.label + '. Quedo pendiente de la activación. Gracias.')
     screens.register.innerHTML = `
       <div style="min-height:100vh;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;text-align:center;">
