@@ -1,3 +1,3 @@
 git add .
-git commit -m "Implementacion de incidentes, detalles de vehiculos en residentes y mejoras en el panel Master"
+git commit -m "Finalizacion SaaS: Tasa BCV dinamica, gestion PENDING_CASH y ajustes de soporte"
 git push

@@ -907,7 +907,12 @@ const renderRegister = () => {
             <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.05);">
               <div>
                 <div style="font-size:0.55rem;color:rgba(255,255,255,0.35);font-weight:700;text-transform:uppercase;margin-bottom:3px;">Monto en Bs.</div>
-                <div style="font-size:0.9rem;font-weight:900;color:white;">A la tasa BCV del día</div>
+                <div id="bcv-rate-display" style="font-size:0.9rem;font-weight:900;color:white;">A la tasa BCV del día</div>
+                <div id="bcv-source-indicator"
+                     style="font-size:0.6rem; color:#999; font-weight:700;
+                            text-align:center; margin-top:2px; padding: 0 16px;">
+                  Cargando tasa BCV...
+                </div>
               </div>
               <button data-copy="A la tasa BCV del dia" class="copy-pay-btn" style="background:rgba(245,197,24,0.1);border:1px solid rgba(245,197,24,0.2);color:#F5C518;width:36px;height:36px;border-radius:10px;cursor:pointer;font-size:0.85rem;flex-shrink:0;">📋</button>
             </div>
@@ -1488,6 +1493,7 @@ async function init() {
   if (session) await redirectByRole(session.user.id)
   
   initUpdateBanner()
+  loadBCVRate()
 }
 
 init()
@@ -1513,3 +1519,33 @@ const renderSupportBubble = () => {
     document.body.appendChild(bubble);
 };
 document.addEventListener('DOMContentLoaded', renderSupportBubble);
+
+let bcvRate = 607.39;
+const updateBCVDisplay = () => {
+    // Helper to update any element that needs the rate
+};
+
+const loadBCVRate = async () => {
+  try {
+    const { getExchangeRate } = await import('./db.js');
+    const result = await getExchangeRate();
+    if (result?.rate) {
+      bcvRate = result.rate;
+      updateBCVDisplay();
+      const sourceEl = document.getElementById('bcv-source-indicator');
+      if (sourceEl) {
+        sourceEl.textContent = result.source === 'auto'
+          ? `✓ Tasa BCV oficial · ${result.fecha}`
+          : result.source === 'manual'
+          ? `⚠️ Tasa manual · ${result.fecha}`
+          : `⚠️ Tasa de respaldo`;
+        sourceEl.style.color = result.source === 'auto' ? '#22c55e' : '#F5C518';
+      }
+    }
+  } catch(e) {
+    console.warn('BCV rate unavailable:', e);
+  }
+};
+
+// Expose for init flows
+window.loadBCVRate = loadBCVRate;

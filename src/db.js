@@ -522,3 +522,57 @@ const renderFallbackToast = (message, type) => {
     setTimeout(() => toast.remove(), 400)
   }, 4000)
 }
+
+let _bcvCache = null;
+let _bcvCacheAt = 0;
+const BCV_CACHE_TTL = 30 * 60 * 1000;
+
+export const getExchangeRate = async () => {
+  if (_bcvCache && Date.now() - _bcvCacheAt < BCV_CACHE_TTL) {
+    return _bcvCache;
+  }
+
+  try {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+    const res = await fetch(`${supabaseUrl}/functions/v1/bcv-rate`, {
+      headers: { 'apikey': supabaseKey },
+      signal: AbortSignal.timeout(5000)
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.rate && data.rate > 100) {
+        _bcvCache = { rate: data.rate, fecha: data.fecha, source: 'auto' };
+        _bcvCacheAt = Date.now();
+        return _bcvCache;
+      }
+    }
+  } catch(e) {
+    console.warn('[Sloty] Edge Function BCV falló, usando respaldo:', e);
+  }
+
+  try {
+    const { data } = await supabase
+      .from('system_config')
+      .select('bcv_rate, bcv_fecha, bcv_source')
+      .eq('id', 'global')
+      .single();
+
+    if (data?.bcv_rate && data.bcv_rate > 100) {
+      _bcvCache = { rate: data.bcv_rate, fecha: data.bcv_fecha, source: 'manual' };
+      _bcvCacheAt = Date.now();
+      return _bcvCache;
+    }
+  } catch(e) {
+    console.warn('[Sloty] Respaldo system_config falló:', e);
+  }
+
+  return { rate: 607.39, fecha: new Date().toISOString().slice(0,10), source: 'fallback' };
+};
+
+export const invalidateBCVCache = () => {
+  _bcvCache = null;
+  _bcvCacheAt = 0;
+};

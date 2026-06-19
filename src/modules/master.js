@@ -296,12 +296,70 @@ export const initMaster = (container) => {
           reference: reason ? `RECHAZADO: ${reason}` : 'RECHAZADO'
         }).eq('id', proofId),
         supabase.from('buildings').update({
-          membership_status: 'SUSPENDED'
+        membership_status: 'SUSPENDED'
         }).eq('id', buildingId)
       ])
 
       document.getElementById('dossier-overlay')?.remove()
-      render()
+      render();
+    },
+    ACTIVATE_CASH: async (buildingId) => {
+      if (!buildingId) return;
+
+      const durations = { TRIAL: 15, BRONCE: 30, PLATA: 30, ORO: 30 };
+      const { data: bld } = await supabase.from('buildings')
+        .select('plan').eq('id', buildingId).single();
+
+      const days = durations[bld?.plan] || 30;
+      const expiry = new Date();
+      expiry.setDate(expiry.getDate() + days);
+
+      await supabase.from('buildings').update({
+        membership_status: 'ACTIVE',
+        membership_expiry: expiry.toISOString()
+      }).eq('id', buildingId);
+
+      await supabase.from('sloty_memberships').insert({
+        building_id:  buildingId,
+        plan_key:     bld?.plan || 'TRIAL',
+        amount:       0,
+        payment_method: 'CASH',
+        status:       'CONFIRMED',
+        paid_at:      new Date().toISOString(),
+        expiry_date:  expiry.toISOString()
+      });
+
+      render();
+    },
+    UPDATE_BCV_RATE: async () => {
+      const input = document.getElementById('bcv-manual-input');
+      const rate  = parseFloat(input?.value);
+
+      if (!rate || rate < 100) {
+        alert('Ingresa una tasa válida mayor a 100');
+        return;
+      }
+
+      const { error } = await supabase.from('system_config').update({
+        bcv_rate:           rate,
+        bcv_fecha:          new Date().toISOString().slice(0, 10),
+        bcv_source:         'manual',
+        last_manual_update: new Date().toISOString()
+      }).eq('id', 'global');
+
+      if (error) {
+        alert('Error al actualizar: ' + error.message);
+        return;
+      }
+
+      const { invalidateBCVCache } = await import('../db.js');
+      invalidateBCVCache();
+
+      const display = document.getElementById('bcv-current-display');
+      if (display) display.textContent =
+        `Bs. ${rate.toLocaleString('es-VE', {minimumFractionDigits:2})} · Manual ⚠️`;
+      if (input) input.value = '';
+      alert(`✓ Tasa actualizada a Bs. ${rate.toLocaleString('es-VE')}`);
     },
     OPEN_DOSSIER: async (btn) => {
       const buildingId = typeof btn === 'string' ? btn : btn.dataset.id
@@ -829,28 +887,6 @@ export const initMaster = (container) => {
       if (error) { alert('Error al eliminar: ' + error.message); return; }
       render();
     },
-    ACTIVATE_CASH: async (btn) => {
-      const buildingId = typeof btn === 'string' ? btn : btn?.dataset?.id;
-      if (!buildingId) return;
-      const durations = { TRIAL: 15, BRONCE: 30, PLATA: 30, ORO: 30 };
-      const { data: bld } = await supabase.from('buildings').select('plan').eq('id', buildingId).single();
-      const days = durations[bld?.plan] || 30;
-      const expiry = new Date();
-      expiry.setDate(expiry.getDate() + days);
-      await supabase.from('buildings').update({
-        membership_status: 'ACTIVE',
-        membership_expiry: expiry.toISOString()
-      }).eq('id', buildingId);
-      await supabase.from('sloty_memberships').insert({
-        building_id:    buildingId,
-        plan:           bld?.plan || 'TRIAL',
-        amount:         0,
-        payment_method: 'CASH',
-        status:         'CONFIRMED',
-        paid_at:        new Date().toISOString()
-      });
-      render();
-    },
     SEND_ACCESS_LINK: async (id) => {
       if (!id) return
       const { data: bld } = await supabase.from('buildings').select('name, phone, code, admin_email').eq('id', id).single()
@@ -1282,22 +1318,41 @@ export const initMaster = (container) => {
         ` : ''}
 
         <!-- 💵 SECCIÓN: PAGOS EN EFECTIVO (NEW) -->
-        ${pendingCash.length > 0 ? `
-        <div style="margin-bottom:24px;">
-            <div style="font-size:0.6rem; font-weight:900; color:#F5C518; margin-bottom:10px; text-transform:uppercase; letter-spacing:1px;">Efectivo por Confirmar (${pendingCash.length})</div>
-            <div style="display:grid; gap:10px;">
-                ${pendingCash.map(b => `
-                    <div style="background:rgba(255,197,24,0.05); border:1px solid rgba(255,197,24,0.2); border-radius:16px; padding:15px; display:flex; justify-content:space-between; align-items:center;">
-                        <div>
-                            <div style="font-size:0.85rem; font-weight:900; color:white;">${b.name}</div>
-                            <div style="font-size:0.65rem; color:#F5C518; font-weight:700; margin-top:2px;">ESPERANDO PAGO EN CASH</div>
-                        </div>
-                        <button data-action="ACTIVATE_CASH" data-id="${b.id}" style="background:#22c55e; color:white; border:none; border-radius:10px; padding:8px 12px; font-size:0.65rem; font-weight:900; cursor:pointer;">ACTIVAR</button>
-                    </div>
-                `).join('')}
+        ${pendingCash && pendingCash.length > 0 ? `
+          <div style="margin-bottom:20px;">
+            <div style="font-size:0.65rem; font-weight:900; color:#22c55e;
+                        text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">
+              💵 ${pendingCash.length} Pago${pendingCash.length > 1 ? 's' : ''} en Efectivo Pendiente${pendingCash.length > 1 ? 's' : ''}
             </div>
-        </div>
-        ` : ''}
+            ${pendingCash.map(b => `
+              <div style="background:rgba(34,197,94,0.06); border:1px solid rgba(34,197,94,0.2);
+                          border-radius:14px; padding:14px 16px; margin-bottom:10px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                  <div>
+                    <div style="font-size:0.9rem; font-weight:900; color:white;">${b.name}</div>
+                    <div style="font-size:0.65rem; color:#999; font-weight:700;">
+                      ${b.code || '—'} · Plan ${b.plan || 'TRIAL'} · Espera confirmación de pago en efectivo
+                    </div>
+                  </div>
+                </div>
+                <div style="display:flex; gap:8px;">
+                  <button onclick="window.handleMasterAction('ACTIVATE_CASH','${b.id}')"
+                    style="flex:1; background:#22c55e; color:white; border:none;
+                           border-radius:10px; padding:10px; font-size:0.7rem;
+                           font-weight:900; cursor:pointer;">
+                    ✓ CONFIRMAR PAGO
+                  </button>
+                  ${b.phone ? `
+                    <a href="https://wa.me/${(b.phone||'').replace(/\D/g,'')}?text=${encodeURIComponent('Hola, coordinemos el pago en efectivo de tu plan ' + (b.plan||'') + ' en Sloty.')}"
+                       target="_blank"
+                       style="background:rgba(255,255,255,0.06); color:white; border:none;
+                              border-radius:10px; padding:10px 14px; font-size:0.75rem;
+                              font-weight:900; text-decoration:none; display:flex; align-items:center;">
+                      💬
+                    </a>` : ''}
+                </div>
+              </div>`).join('')}
+          </div>` : ''}
 
         ${expiredCount > 0 ? `
           <div style="background:rgba(230,57,70,0.15); border:1px solid #e63946;
@@ -1431,6 +1486,32 @@ export const initMaster = (container) => {
         <div style="font-size:0.7rem; font-weight:900; color:#F5C518;
                     letter-spacing:2px; text-transform:uppercase; margin-bottom:12px;">
           Tracción de la Plataforma
+        </div>
+        <div style="background:rgba(245,197,24,0.06); border:1px solid rgba(245,197,24,0.2);
+                    border-radius:16px; padding:16px; margin-bottom:20px;">
+          <div style="font-size:0.65rem; font-weight:900; color:#F5C518;
+                      text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">
+            Tasa BCV
+          </div>
+          <div id="bcv-current-display"
+               style="font-size:1.4rem; font-weight:900; color:white; margin-bottom:12px;">
+            Cargando...
+          </div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input id="bcv-manual-input" type="number" step="0.01" min="1"
+                   placeholder="Ej: 607.39"
+                   style="flex:1; padding:10px 14px; background:rgba(255,255,255,0.06);
+                          border:1px solid rgba(255,255,255,0.15); border-radius:10px;
+                          color:white; font-size:0.9rem; font-weight:700; outline:none;" />
+            <button onclick="window.handleMasterAction('UPDATE_BCV_RATE')"
+              style="background:#F5C518; color:#1a1a2e; border:none; border-radius:10px;
+                     padding:10px 16px; font-size:0.75rem; font-weight:900; cursor:pointer;">
+              ACTUALIZAR
+            </button>
+          </div>
+          <div style="font-size:0.6rem; color:rgba(255,255,255,0.3); font-weight:700; margin-top:8px;">
+            Si la tasa automática falla, actualízala aquí. Todos los paneles la verán al instante.
+          </div>
         </div>
         <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; margin-bottom:24px;">
           <div style="background:rgba(245,197,24,0.1); padding:16px; border:1px solid #F5C518; border-radius:14px; text-align:center;">
@@ -1626,7 +1707,31 @@ export const initMaster = (container) => {
     }
     
     let html = ''
-    if (activeTab === 'NOTIFICATIONS') {
+    if (activeTab === 'SYSTEM') {
+      const [
+         { data: bld },
+         { data: mems },
+         { data: ecoData }
+      ] = await Promise.all([
+         supabase.from('buildings').select('*'),
+         supabase.from('sloty_memberships').select('*').order('paid_at', { ascending: false }),
+         supabase.rpc('get_global_stats')
+      ])
+      html = renderSystem(bld || [], mems || [], ecoData || {})
+      
+      // Mostrar tasa BCV actual
+      import('../db.js').then(({ getExchangeRate }) => {
+        getExchangeRate().then(bcv => {
+          const el = document.getElementById('bcv-current-display');
+          if (el && bcv?.rate) {
+            el.textContent = `Bs. ${Number(bcv.rate).toLocaleString('es-VE', {
+              minimumFractionDigits:2, maximumFractionDigits:2
+            })} · ${bcv.source === 'auto' ? 'Automática ✓' : 'Manual ⚠️'}`;
+          }
+        });
+      });
+    }
+    else if (activeTab === 'NOTIFICATIONS') {
       notifCount = 0  // reset badge
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
       const [
@@ -1651,7 +1756,7 @@ export const initMaster = (container) => {
     else if (activeTab === 'MEMBERSHIPS') {
       pendingProofsCount = 0  // reset badge al abrir la pestaña
       const [
-        { data: bld },
+        { data: bldRaw },
         { data: mems },
         { data: proofs }
       ] = await Promise.all([
@@ -1660,12 +1765,12 @@ export const initMaster = (container) => {
         supabase.from('building_payment_proofs').select('*, buildings(name)').eq('status', 'PENDING')
       ])
 
-      const enrichedBld = (bld || []).map(b => {
+      const pendingCash = (bldRaw || []).filter(b => b.membership_status === 'PENDING_CASH')
+      const enrichedBld = (bldRaw || []).map(b => {
          const bMems = (mems || []).filter(m => m.building_id === b.id && m.status === 'CONFIRMED');
          b.last_expiry = bMems.length > 0 ? bMems[0].expiry_date : null;
          return b;
       })
-      const pendingCash = (bld || []).filter(b => b.membership_status === 'PENDING_CASH')
       html = renderMemberships(enrichedBld, { proofs: proofs || [] }, pendingCash)
     }
     else if (activeTab === 'ADS') {
