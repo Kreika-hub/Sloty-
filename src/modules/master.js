@@ -9,6 +9,7 @@ export const initMaster = (container) => {
   let masterChannel = null
   let pendingProofsCount = 0
   let notifCount = 0
+  let masterNotifyFilter = 'PENDING' // PENDING, CONFIRMED, REJECTED, ALL
   
   // DOM Cache
   let elContent = null
@@ -33,6 +34,7 @@ export const initMaster = (container) => {
 
   const actions = {
     TAB: (btn) => { activeTab = btn.dataset.tab; selectedBuilding = null; render() },
+    SET_NOTIFY_FILTER: (id) => { masterNotifyFilter = id; render() },
     BACK: () => { selectedBuilding = null; render() },
     SELECT_BUILDING: async (btn) => { 
       const id = btn.dataset.id;
@@ -969,8 +971,35 @@ export const initMaster = (container) => {
     const planColors = { TRIAL:'#888', BRONCE:'#cd7f32', PLATA:'#aaa', ORO:'#F5C518' }
     const planPrices = { TRIAL:'Gratis', BRONCE:'$29/mes', PLATA:'$59/mes', ORO:'$99/mes' }
 
-    const pendingProofs = proofs.filter(p => !p.status || p.status === 'PENDING')
-    const historyProofs = proofs.filter(p => p.status && p.status !== 'PENDING')
+    const filteredProofs = proofs.filter(p => {
+      if (masterNotifyFilter === 'ALL') return true;
+      if (masterNotifyFilter === 'PENDING') return !p.status || p.status === 'PENDING';
+      return p.status === masterNotifyFilter;
+    });
+
+    const pendingCount = proofs.filter(p => !p.status || p.status === 'PENDING').length;
+    const approvedCount = proofs.filter(p => p.status === 'CONFIRMED').length;
+    const rejectedCount = proofs.filter(p => p.status === 'REJECTED').length;
+
+    // Filters UI
+    const filterHtml = `
+      <div style="display:flex; gap:8px; margin-bottom:20px; overflow-x:auto; padding-bottom:4px;">
+        ${[
+          {id:'PENDING', label:'Pendientes', count:pendingCount},
+          {id:'CONFIRMED', label:'Aprobados', count:approvedCount},
+          {id:'REJECTED', label:'Rechazados', count:rejectedCount},
+          {id:'ALL', label:'Todos', count:proofs.length}
+        ].map(f => `
+          <button onclick="window.handleMasterAction('SET_NOTIFY_FILTER','${f.id}')"
+            style="padding:10px 16px; border-radius:12px; border:none; font-weight:900; font-size:0.7rem; white-space:nowrap; cursor:pointer;
+            transition:all 0.2s;
+            background:${masterNotifyFilter === f.id ? '#F5C518' : 'rgba(255,255,255,0.05)'};
+            color:${masterNotifyFilter === f.id ? '#1a1a2e' : 'rgba(255,255,255,0.4)'};">
+            ${f.label} (${f.count})
+          </button>
+        `).join('')}
+      </div>
+    `;
 
     if (proofs.length === 0) return `
       <div style="padding:40px 20px; text-align:center;">
@@ -981,8 +1010,27 @@ export const initMaster = (container) => {
         </div>
       </div>`;
 
-    const renderProofCard = (p, isPending) => {
-          const bld = p.buildings || {}
+    let html = `<div style="padding:16px; padding-bottom:100px;">
+      ${filterHtml}
+      ${filteredProofs.length > 0 ? filteredProofs.map(p => {
+        const isPending = !p.status || p.status === 'PENDING';
+        return renderProofCard(p, isPending);
+      }).join('') : `
+        <div style="padding:60px 20px; text-align:center; background:rgba(255,255,255,0.02); border-radius:24px;">
+          <div style="font-size:2rem; margin-bottom:10px;">🔍</div>
+          <div style="font-size:0.75rem; font-weight:900; color:rgba(255,255,255,0.3); text-transform:uppercase;">Sin resultados para este filtro</div>
+        </div>
+      `}
+    </div>`;
+
+    return html;
+  }
+
+  // Helper hidden from loop to avoid being redefined
+  const renderProofCard = (p, isPending) => {
+    const planColors = { TRIAL:'#888', BRONCE:'#cd7f32', PLATA:'#aaa', ORO:'#F5C518' }
+    const planPrices = { TRIAL:'Gratis', BRONCE:'$29/mes', PLATA:'$59/mes', ORO:'$99/mes' }
+
           const submitted = p.created_at
             ? new Date(p.created_at).toLocaleString('es-VE', { dateStyle:'medium', timeStyle:'short' })
             : 'Fecha desconocida'
@@ -1155,63 +1203,6 @@ export const initMaster = (container) => {
             </div>`
     };
 
-    return `
-      <div style="padding:16px; padding-bottom:100px;">
-        ${pendingProofs.length > 0 ? `
-        <div style="font-size:0.65rem; font-weight:900; color:#F5C518;
-                    letter-spacing:2px; text-transform:uppercase; margin-bottom:14px;">
-          ${pendingProofs.length} solicitud${pendingProofs.length > 1 ? 'es' : ''} pendiente${pendingProofs.length > 1 ? 's' : ''}
-        </div>
-        ${pendingProofs.map(p => renderProofCard(p, true)).join('')}
-        ` : `
-        <div style="padding:40px 20px; text-align:center; background:rgba(255,255,255,0.02); border-radius:20px; margin-bottom:20px;">
-          <div style="font-size:3rem; margin-bottom:12px;">✅</div>
-          <div style="font-size:0.8rem; font-weight:900; color:rgba(255,255,255,0.4);
-                      text-transform:uppercase; letter-spacing:2px;">
-            Al día
-          </div>
-          <div style="font-size:0.7rem; color:rgba(255,255,255,0.25); margin-top:8px;">
-            No hay solicitudes pendientes por revisar.
-          </div>
-        </div>
-        `}
-
-        ${historyProofs.length > 0 ? `
-        <div style="font-size:0.65rem; font-weight:900; color:#999;
-                    letter-spacing:2px; text-transform:uppercase; margin-top:30px; margin-bottom:14px; border-top:1px solid rgba(255,255,255,0.1); padding-top:20px;">
-          Historial (${historyProofs.length}) <span style="font-size:0.55rem; font-weight:600; color:rgba(255,255,255,0.3);">— toca para expandir</span>
-        </div>
-        ${historyProofs.map((p, idx) => {
-          const bld = p.buildings || {};
-          const sColor = p.status === 'CONFIRMED' ? '#22c55e' : '#e63946';
-          const sLabel = p.status === 'CONFIRMED' ? 'APROBADO' : 'RECHAZADO';
-          const sEmoji = p.status === 'CONFIRMED' ? '\u2705' : '\u274c';
-          const planColor = { TRIAL:'#888', BRONCE:'#cd7f32', PLATA:'#aaa', ORO:'#F5C518' }[p.plan_key] || '#888';
-          const submitted = p.created_at
-            ? new Date(p.created_at).toLocaleString('es-VE', { dateStyle:'short', timeStyle:'short' })
-            : '---';
-          const hId = 'hist-card-' + idx;
-          return `
-          <div style="background:#0f1127; border:1px solid rgba(255,255,255,0.08); border-radius:16px; overflow:hidden; margin-bottom:10px; opacity:0.85;">
-            <div onclick="(function(){var b=document.getElementById('${hId}');b.style.display=b.style.display==='none'?'block':'none';})();"
-                 style="padding:14px 16px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
-              <div style="flex:1;">
-                <div style="font-size:0.85rem; font-weight:900; color:white;">${bld.name || 'Edificio'}</div>
-                <div style="font-size:0.6rem; color:#999; margin-top:2px;">${submitted} &nbsp;&middot;&nbsp; $${Number(p.amount||0).toFixed(2)}</div>
-              </div>
-              <div style="display:flex; align-items:center; gap:8px;">
-                <span style="background:${planColor}; color:${p.plan_key==='ORO'?'#1a1a2e':'white'}; padding:2px 8px; border-radius:6px; font-size:0.6rem; font-weight:900;">${p.plan_key||'?'}</span>
-                <span style="font-size:0.75rem; font-weight:900; color:${sColor};">${sEmoji} ${sLabel}</span>
-                <span style="color:rgba(255,255,255,0.3); font-size:0.8rem;">&#8250;</span>
-              </div>
-            </div>
-            <div id="${hId}" style="display:none;">
-              ${renderProofCard(p, false)}
-            </div>
-          </div>`;
-        }).join('')}
-        ` : ''}
-      </div>`;
   }
 
 

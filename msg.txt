@@ -1,0 +1,1 @@
+Update guard.js exchange rate logic and UI

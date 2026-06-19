@@ -1,4 +1,4 @@
-import { getParkingState, updateParkingState, logMovement, logNotification, saveClosure, supabase, hasFeature, showToast, logAudit } from '../db.js'
+import { getParkingState, updateParkingState, logMovement, logNotification, saveClosure, supabase, hasFeature, showToast, logAudit, getExchangeRate } from '../db.js'
 import { searchVisitorByPlate, saveVisitor, logAccess } from '../visitors.js'
 // Html5Qrcode is loaded via CDN in index.html, accessible globally
 
@@ -387,6 +387,15 @@ export const initGuard = (container, guardName = 'Guardia') => {
            entryData: entryData // Save to update slot after payment
          }
          currentView = 'PAYMENT'; render()
+getExchangeRate().then(bcv => {
+  if (!bcv?.rate) return;
+  const amount = pendingPayment?.amount || 0;
+  const bs = Math.round(amount * bcv.rate);
+  const elBs  = document.getElementById('bs-equivalent');
+  const elRate = document.getElementById('bcv-rate-guard');
+  if (elBs)  elBs.textContent  = `Bs. ${bs.toLocaleString('es-VE')}`;
+  if (elRate) elRate.textContent = `Tasa BCV: ${Number(bcv.rate).toLocaleString('es-VE', {minimumFractionDigits:2})} · ${bcv.source === 'auto' ? '✓ Oficial' : '⚠️ Manual'}`;
+});
       } else {
          currentView='TICKET'; render()
       }
@@ -430,6 +439,15 @@ export const initGuard = (container, guardName = 'Guardia') => {
           targetStatus: 'FREE'
         }
         currentView = 'PAYMENT'; render()
+getExchangeRate().then(bcv => {
+  if (!bcv?.rate) return;
+  const amount = pendingPayment?.amount || 0;
+  const bs = Math.round(amount * bcv.rate);
+  const elBs  = document.getElementById('bs-equivalent');
+  const elRate = document.getElementById('bcv-rate-guard');
+  if (elBs)  elBs.textContent  = `Bs. ${bs.toLocaleString('es-VE')}`;
+  if (elRate) elRate.textContent = `Tasa BCV: ${Number(bcv.rate).toLocaleString('es-VE', {minimumFractionDigits:2})} · ${bcv.source === 'auto' ? '✓ Oficial' : '⚠️ Manual'}`;
+});
       } else {
         processExit('FREE')
       }
@@ -1082,11 +1100,13 @@ export const initGuard = (container, guardName = 'Guardia') => {
          </div>
 
          <div style="display:grid; gap:20px; margin-bottom:30px;">
-            <div style="text-align:left;">
-               <label style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:8px; display:block;">CANTIDAD RECIBIDA</label>
-               <input id="pay-amount" type="number" step="0.01" value="${pendingPayment?.amount || 0}" placeholder="0.00" 
-                  style="width:100%; border:2px solid #eee; border-radius:18px; padding:18px; font-size:1.4rem; font-weight:900; outline:none; font-family:'Montserrat';">
-            </div>
+             <div style="text-align:left;">
+                <label style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:8px; display:block;">CANTIDAD RECIBIDA</label>
+                <input id="pay-amount" type="number" step="0.01" value="${pendingPayment?.amount || 0}" placeholder="0.00" 
+                   style="width:100%; border:2px solid #eee; border-radius:18px; padding:18px; font-size:1.4rem; font-weight:900; outline:none; font-family:'Montserrat';">
+             </div>
+
+
 
             ${pendingPayment?.method === 'PAGO_MOVIL' ? `
               <div style="text-align:left;">
@@ -1094,9 +1114,18 @@ export const initGuard = (container, guardName = 'Guardia') => {
                  <input id="pay-ref" type="text" placeholder="Ej: 4522" 
                     style="width:100%; border:2px solid #eee; border-radius:18px; padding:18px; font-size:1.4rem; font-weight:900; outline:none; font-family:'Montserrat';">
               </div>
-               <div style="background:rgba(245,197,24,0.1); border:1.5px solid #F5C518; border-radius:14px; padding:12px; font-size:0.65rem; color:#D97706; font-weight:700; margin-top:12px; line-height:1.3; text-align:left;">
-                  ⚠️ Nota: Recuerda colocar el valor equivalente en Bolívares (Bs.)
-               </div>
+<div style="background:rgba(245,197,24,0.1); border:1.5px solid #F5C518;
+            border-radius:14px; padding:12px; margin-top:12px; text-align:left;">
+  <div style="font-size:0.65rem; font-weight:900; color:#D97706; margin-bottom:6px;">
+    ⚠️ Equivalente en Bolívares
+  </div>
+  <div id="bs-equivalent" style="font-size:1.2rem; font-weight:900; color:#1a1a2e;">
+    Calculando...
+  </div>
+  <div id="bcv-rate-guard" style="font-size:0.6rem; color:#999; font-weight:700; margin-top:2px;">
+    Cargando tasa BCV...
+  </div>
+</div>
              ` : ''}
          </div>
 

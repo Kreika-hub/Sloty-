@@ -433,6 +433,19 @@ export const initAdmin = (container) => {
       state.buildingCode = newCode
       state.logo_url = logo
 
+      // Script to load BCV rate in Finance UI
+      setTimeout(() => {
+        getExchangeRate().then(bcv => {
+          const el = document.getElementById('finance-bcv-rate');
+          if (el && bcv?.rate) {
+            el.innerHTML = `
+               <div style="font-size:1rem; font-weight:900; color:#1a1a2e;">Bs. ${bcv.rate.toLocaleString('es-VE', {minimumFractionDigits:2})}</div>
+               <div style="font-size:0.55rem; color:${bcv.source==='auto'?'#22c55e':'#D97706'}; font-weight:800;">${bcv.source==='auto'?'OFICIAL BCV':'OVERRIDE MANUAL'}</div>
+            `;
+          }
+        });
+      }, 100);
+
       await supabase
         .from('buildings')
         .update({ name: newName, code: newCode, logo_url: logo })
@@ -1382,6 +1395,34 @@ export const initAdmin = (container) => {
     const vencidos = subs.filter(s => new Date(s.expiry_date) < now).length
     const activos = subs.filter(s => new Date(s.expiry_date) >= now).length
 
+    // Alertas de suscripción proximas a vencer (Master requirement)
+    const alertSus = subs.filter(s => {
+      const exp = new Date(s.expiry_date);
+      const diff = (exp - now) / 86400000;
+      return diff <= 3; // Vencidos o por vencer en 3 días
+    }).sort((a,b) => new Date(a.expiry_date) - new Date(b.expiry_date)).slice(0, 3);
+
+    const alertHtml = alertSus.length > 0 ? `
+      <div style="margin-bottom:25px;">
+        <div style="font-size:0.6rem; font-weight:900; color:#e63946; letter-spacing:1px; margin-bottom:10px;">🔴 ALERTAS DE VENCIMIENTO</div>
+        <div style="display:grid; gap:10px;">
+          ${alertSus.map(s => {
+            const exp = new Date(s.expiry_date);
+            const diff = Math.ceil((exp - now) / 86400000);
+            return `
+              <div data-action="TAB" data-tab="SUBS" style="background:rgba(230,57,70,0.05); border:1.5px solid rgba(230,57,70,0.2); border-radius:18px; padding:15px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
+                <div style="flex:1;">
+                   <div style="font-size:0.8rem; font-weight:900; color:#1a1a2e; text-transform:uppercase;">${s.resident_name || 'Residente'}</div>
+                   <div style="font-size:0.6rem; color:#e63946; font-weight:700;">${diff < 0 ? `Vencido hace ${Math.abs(diff)} días` : diff === 0 ? 'Vence hoy' : `Vence en ${diff} días`}</div>
+                </div>
+                <div style="background:#e63946; color:white; font-size:0.55rem; font-weight:900; padding:4px 10px; border-radius:8px;">COBRAR</div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    ` : '';
+
     const statCard = (label, value, sub, color, tab = 'SUBS') => `
       <div data-action="TAB" data-tab="${tab}" style="background:white;padding:18px;border-radius:22px;border:1px solid #f0f0f0;cursor:pointer;box-shadow:0 4px 15px rgba(0,0,0,0.03);">
         <div style="font-size:0.5rem;font-weight:800;color:#bbb;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">${label}</div>
@@ -1391,6 +1432,7 @@ export const initAdmin = (container) => {
 
     return `
       <div style="padding:20px; padding-bottom:100px; background:#f8f9fa;">
+        ${alertHtml}
 
         <!-- STATS DASHBOARD -->
         <div class="stats-dashboard">
@@ -1684,6 +1726,14 @@ export const initAdmin = (container) => {
         </div>
 
         <!-- REVENUE CARDS -->
+        <div style="background:white; padding:15px 20px; border-radius:24px; margin-bottom:20px; border:1px solid #eee; display:flex; justify-content:space-between; align-items:center;">
+           <div style="font-size:0.65rem; font-weight:900; color:#999; text-transform:uppercase;">Tasa BCV del día</div>
+           <div id="finance-bcv-rate" style="text-align:right;">
+             <div style="font-size:0.9rem; font-weight:900; color:#1a1a2e;">Cargando...</div>
+             <div style="font-size:0.5rem; color:#bbb; font-weight:700;">Fuente: Oficial</div>
+           </div>
+        </div>
+
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:15px;">
            <div style="background:#1a1a2e; color:white; padding:25px 15px; border-radius:28px; text-align:center; box-shadow:0 10px 25px rgba(26,26,46,0.2);">
               <div style="font-size:1.8rem; font-weight:900;">$${(revToday + subsRevToday).toFixed(2)}</div>
