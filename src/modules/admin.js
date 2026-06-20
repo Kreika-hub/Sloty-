@@ -147,11 +147,6 @@ export const initAdmin = (container) => {
 
   // --- ACTIONS ---
   const actions = {
-    GO_TO_SUBS: () => {
-      activeTab = 'SUBS';
-      document.getElementById('expiry-alert-banner')?.remove();
-      render();
-    },
     ACTIVATE_PUSH: async () => {
       const { subscribeToPushNotifications } = await import('./push.js');
       const s = getParkingState()
@@ -1208,6 +1203,11 @@ export const initAdmin = (container) => {
       await logAudit('RESOLVE_INCIDENT', { incident_id: id });
       showToast('Incidente marcado como resuelto', 'success');
       await render();
+    },
+    GO_TO_SUBS: () => {
+      activeTab = 'SUBS';
+      document.getElementById('expiry-alert-banner')?.remove();
+      render();
     }
   }
 
