@@ -1753,7 +1753,7 @@ export const initMaster = (container) => {
       ] = await Promise.all([
         supabase.from('buildings').select('*').order('created_at', { ascending: false }),
         supabase.from('sloty_memberships').select('*').order('expiry_date', { ascending: false }),
-        supabase.from('building_payment_proofs').select('*, buildings(name)').eq('status', 'PENDING')
+        supabase.from('building_payment_proofs').select('*, buildings(name)').in('status', ['PENDING', 'CONFIRMED', 'REJECTED'])
       ])
 
       const pendingCash = (bldRaw || []).filter(b => b.membership_status === 'PENDING_CASH')
