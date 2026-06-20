@@ -1,4 +1,51 @@
-import { getParkingState, saveParkingState, logAudit, getCleanPrefix, supabase, logMovement, syncDown, hasFeature, getBuildingPlan, showToast } from '../db.js'
+import { getParkingState, saveParkingState, logAudit, getCleanPrefix, supabase, logMovement, syncDown, hasFeature, getBuildingPlan, showToast, getExchangeRate } from '../db.js'
+
+const checkExpiringSubscriptions = async (buildingId) => {
+  const today   = new Date();
+  const in3days = new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000);
+
+  const [{ data: expired }, { data: expiring }] = await Promise.all([
+    supabase.from('subscriptions')
+      .select('id, resident_name, expiry_date, phone')
+      .eq('building_id', buildingId)
+      .lt('expiry_date', today.toISOString())
+      .eq('status', 'ACTIVE'),
+    supabase.from('subscriptions')
+      .select('id, resident_name, expiry_date, phone')
+      .eq('building_id', buildingId)
+      .lte('expiry_date', in3days.toISOString())
+      .gte('expiry_date', today.toISOString())
+  ]);
+
+  const expiredCount  = (expired  || []).length;
+  const expiringCount = (expiring || []).length;
+  if (expiredCount === 0 && expiringCount === 0) return;
+
+  const existing = document.getElementById('expiry-alert-banner');
+  if (existing) existing.remove();
+
+  const banner = document.createElement('div');
+  banner.id = 'expiry-alert-banner';
+  banner.style.cssText = `position:fixed;top:0;left:0;right:0;z-index:9999;
+    background:#e63946;color:white;padding:10px 16px;font-size:0.75rem;
+    font-weight:900;display:flex;justify-content:space-between;align-items:center;`;
+  banner.innerHTML = `
+    <span>
+      ${expiredCount  > 0 ? `🚨 ${expiredCount} vencida${expiredCount  !== 1 ? 's' : ''}` : ''}
+      ${expiringCount > 0 ? `⚠️ ${expiringCount} vence${expiringCount !== 1 ? 'n' : ''} en 3 días` : ''}
+    </span>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button onclick="handleAction('GO_TO_SUBS')"
+        style="background:white;color:#e63946;border:none;border-radius:6px;
+               padding:4px 10px;font-size:0.65rem;font-weight:900;cursor:pointer;">
+        VER
+      </button>
+      <button onclick="document.getElementById('expiry-alert-banner').remove()"
+        style="background:transparent;color:white;border:none;
+               font-size:1.2rem;cursor:pointer;line-height:1;">×</button>
+    </div>`;
+  document.body.appendChild(banner);
+};
 
 export const initAdmin = (container) => {
   console.log('[Sloty] Inicializando Panel Admin...')
@@ -100,6 +147,11 @@ export const initAdmin = (container) => {
 
   // --- ACTIONS ---
   const actions = {
+    GO_TO_SUBS: () => {
+      activeTab = 'SUBS';
+      document.getElementById('expiry-alert-banner')?.remove();
+      render();
+    },
     ACTIVATE_PUSH: async () => {
       const { subscribeToPushNotifications } = await import('./push.js');
       const s = getParkingState()
@@ -1632,6 +1684,10 @@ export const initAdmin = (container) => {
     cachedFinanceAt = Date.now();
   }
 
+  const bcv = await getExchangeRate();
+  const bcvRate  = bcv?.rate  || null;
+  const bcvFecha = bcv?.fecha || null;
+
   const { data: shifts } = await supabase
     .from('guard_shifts')
     .select('id, guard_name, started_at, ended_at, total_cash, total_mobile, total_bs, entries, exits, absences')
@@ -1751,6 +1807,14 @@ export const initAdmin = (container) => {
              </div>
              <div style="font-size:0.6rem; font-weight:700; text-transform:uppercase; 
                margin-top:5px; opacity:0.9;">MENSUALIDADES DEL MES</div>
+             ${bcvRate ? `
+               <div style="font-size:0.65rem; color:#999; font-weight:700;
+                           margin-top:6px; padding:8px 12px;
+                           background:rgba(245,197,24,0.06); border-radius:8px;">
+                 Tasa BCV: Bs. ${Number(bcvRate).toLocaleString('es-VE', {minimumFractionDigits:2})}
+                 ${bcv.source === 'manual' ? '· ⚠️ Manual' : '· ✓ Oficial'}
+                 · ${bcvFecha || ''}
+               </div>` : ''}
            </div>
         </div>
 
@@ -2876,6 +2940,7 @@ export const initAdmin = (container) => {
   loadHomeMetrics().then(() => {
     render()
     const st = getParkingState()
+    setTimeout(() => checkExpiringSubscriptions(st.buildingId), 2000);
     if (st.plan === 'TRIAL' && st.trialDaysLeft !== undefined && st.trialDaysLeft <= 1) {
       setTimeout(() => showToast('⚠️ Tu prueba gratuita está por vencer. Evita la suspensión activando un plan hoy.', 'error'), 1500)
     }
