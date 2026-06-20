@@ -2937,11 +2937,11 @@ export const initAdmin = (container) => {
     unsubscribeFinanceRealtime();
   }
 
-  loadHomeMetrics().then(() => {
-    render()
-    const st = getParkingState()
-    setTimeout(() => checkExpiringSubscriptions(st.buildingId), 2000);
-    if (st.plan === 'TRIAL' && st.trialDaysLeft !== undefined && st.trialDaysLeft <= 1) {
+  loadHomeMetrics().then(async () => {
+    await render()
+    const state = getParkingState()
+    setTimeout(() => checkExpiringSubscriptions(state.buildingId), 2000);
+    if (state.plan === 'TRIAL' && state.trialDaysLeft !== undefined && state.trialDaysLeft <= 1) {
       setTimeout(() => showToast('⚠️ Tu prueba gratuita está por vencer. Evita la suspensión activando un plan hoy.', 'error'), 1500)
     }
   })
