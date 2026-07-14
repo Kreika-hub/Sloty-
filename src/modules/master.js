@@ -1787,27 +1787,7 @@ export const initMaster = (container) => {
         }
       }, 100);
     }
-    else if (activeTab === 'SYSTEM') {
-      const [
-        { data: bld }, 
-        { data: mems },
-        { count: resCount },
-        { count: persCount },
-        { count: movCount }
-      ] = await Promise.all([
-        supabase.from('buildings').select('*'),
-        supabase.from('sloty_memberships').select('amount, paid_at'),
-        supabase.from('subscriptions').select('*', { count: 'exact', head: true }),
-        supabase.from('personnel').select('*', { count: 'exact', head: true }),
-        supabase.from('access_logs').select('*', { count: 'exact', head: true })
-      ])
-      
-      html = renderSystem(bld || [], mems || [], {
-          residents: resCount || 0,
-          personnel: persCount || 0,
-          movements: movCount || 0
-      })
-    }
+
     
     elContent.innerHTML = html
   }
