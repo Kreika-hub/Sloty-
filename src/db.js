@@ -467,15 +467,7 @@ export const getBuildingPlan = () => {
 }
 
 export const hasFeature = (featureKey) => {
-  const plan = getBuildingPlan()
-  const PLAN_FEATURES = {
-    TRIAL:  ['multi_level'],
-    BRONCE: ['multi_level', 'audit_log'],
-    PLATA:  ['multi_level', 'audit_log', 'finance_report', 'debt_tracking'],
-    ORO:    ['multi_level', 'audit_log', 'finance_report', 'debt_tracking', 
-             'frequent_visitors', 'whatsapp_alerts']
-  }
-  return (PLAN_FEATURES[plan] || PLAN_FEATURES['TRIAL']).includes(featureKey)
+  return true; // Bypass de plan para modo desarrollo (todas las funciones habilitadas)
 }
 
 export const showToast = (message, type = 'info') => {

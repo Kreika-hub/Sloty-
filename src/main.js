@@ -1342,8 +1342,8 @@ const checkInvitationLink = async () => {
   let guardIdDecoded = null;
   if (guardId) {
     const rawDecoded = decodeURIComponent(guardId);
-    if (/^\d+$/.test(rawDecoded)) {
-      // It's a plain numeric ID — use as-is
+    if (/^[0-9a-fA-F-]{36}$/.test(rawDecoded) || /^\d+$/.test(rawDecoded)) {
+      // It's a plain UUID or numeric ID — use as-is
       guardIdDecoded = rawDecoded;
     } else {
       try {
@@ -1390,20 +1390,32 @@ const checkInvitationLink = async () => {
       const guardIdToUse = guardIdDecoded || guardId;
 
       document.getElementById('btn-save-guard-pin').textContent = 'Activando...';
-      const { data: bld } = await supabase.from('buildings').select('id, name, code').eq('code', bldCode).single();
-      if (!bld) return renderAlert('Error: Edificio no encontrado', true);
+      const { data: bld } = await supabase.from('buildings').select('id, name, code').eq('code', bldCode.toUpperCase()).single();
+      
+      let buildingData = bld;
+      if (!buildingData) {
+        const stateStr = localStorage.getItem('sloty_state');
+        if (stateStr) {
+           const lst = JSON.parse(stateStr);
+           if (lst.buildingCode === bldCode.toUpperCase()) {
+              buildingData = { id: lst.buildingId, name: lst.buildingName, code: lst.buildingCode };
+           }
+        }
+      }
+      
+      if (!buildingData) return renderAlert('Error: Edificio no encontrado', true);
 
       const { data: guard, error } = await supabase.from('personnel').update({ pin: pin1 }).eq('id', guardIdToUse).select('name').single();
       if (!error && guard) {
-        localStorage.setItem('sloty_active_building', bld.code);
-        localStorage.setItem('sloty_building_id', bld.id);
-        localStorage.setItem('sloty_building_name', bld.name);
+        localStorage.setItem('sloty_active_building', buildingData.code);
+        localStorage.setItem('sloty_building_id', buildingData.id);
+        localStorage.setItem('sloty_building_name', buildingData.name);
         
         window.history.replaceState({}, document.title, '/');
         renderAlert('¡Cuenta activada con éxito! Iniciando sesión...');
         setTimeout(async () => {
           showOnly('main');
-          await syncDown(bld.code);
+          await syncDown(buildingData.code);
           initGuard(screens.main, guard.name);
         }, 1500);
       } else {
@@ -1527,8 +1539,45 @@ const renderSupportBubble = () => {
     bubble.style.cssText = 'position:fixed; bottom:20px; right:20px; background:#25D366; color:white; width:50px; height:50px; border-radius:50%; display:flex; align-items:center; justify-content:center; text-decoration:none; font-size:1.6rem; z-index:99999; box-shadow:0 4px 10px rgba(0,0,0,0.3); transition:transform 0.2s;';
     bubble.innerHTML = '💬';
     bubble.title = 'Contactar a Soporte';
-    bubble.onmouseover = () => bubble.style.transform = 'scale(1.1)';
+    bubble.onmouseover = () => { if(bubble.style.transition !== 'none') bubble.style.transform = 'scale(1.1)'; };
     bubble.onmouseout = () => bubble.style.transform = 'scale(1)';
+    
+    let isDragging = false, startX, startY, origX, origY;
+    bubble.onmousedown = bubble.ontouchstart = (e) => {
+      isDragging = false;
+      const t = e.touches ? e.touches[0] : e;
+      startX = t.clientX; startY = t.clientY;
+      const rect = bubble.getBoundingClientRect();
+      origX = rect.left; origY = rect.top;
+      bubble.style.transition = 'none';
+      bubble.style.bottom = 'auto';
+      bubble.style.right = 'auto';
+      bubble.style.left = origX + 'px';
+      bubble.style.top = origY + 'px';
+    };
+    const onMove = (e) => {
+      if (startX === undefined) return;
+      const t = e.touches ? e.touches[0] : e;
+      const dx = t.clientX - startX;
+      const dy = t.clientY - startY;
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) isDragging = true;
+      if (isDragging) {
+        e.preventDefault();
+        bubble.style.left = (origX + dx) + 'px';
+        bubble.style.top = (origY + dy) + 'px';
+      }
+    };
+    const onEnd = (e) => {
+      startX = undefined;
+      bubble.style.transition = 'transform 0.2s';
+    };
+    bubble.onclick = (e) => { if (isDragging) e.preventDefault(); };
+    
+    document.addEventListener('mousemove', onMove, {passive:false});
+    document.addEventListener('touchmove', onMove, {passive:false});
+    document.addEventListener('mouseup', onEnd);
+    document.addEventListener('touchend', onEnd);
+
     document.body.appendChild(bubble);
 };
 document.addEventListener('DOMContentLoaded', renderSupportBubble);

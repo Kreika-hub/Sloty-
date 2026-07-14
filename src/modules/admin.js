@@ -2245,7 +2245,7 @@ export const initAdmin = (container) => {
         </div>
         
         <div style="display:flex; justify-content:center; margin-bottom:30px;">
-          <div id="photo-dropzone" style="width:120px; height:120px; border-radius:50%; background:#f9f9f9; border:2.5px dashed #ddd; display:flex; align-items:center; justify-content:center; cursor:pointer; overflow:hidden; position:relative; transition:all 0.3s ease;">
+          <div id="photo-dropzone" style="width:120px; height:120px; flex-shrink:0; border-radius:50%; background:#f9f9f9; border:2.5px dashed #ddd; display:flex; align-items:center; justify-content:center; cursor:pointer; overflow:hidden; position:relative; transition:all 0.3s ease;">
             <img id="guard-photo-preview" src="${editG?.photo || ''}" style="width:100%; height:100%; object-fit:cover; display:${editG?.photo ? 'block' : 'none'};">
             <div id="photo-placeholder" style="text-align:center; color:#ccc; display:${editG?.photo ? 'none' : 'block'};">
               <div style="font-size:2rem; line-height:1;">+</div>
