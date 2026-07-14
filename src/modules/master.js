@@ -1203,8 +1203,6 @@ export const initMaster = (container) => {
             </div>`
     };
 
-  }
-
 
   const renderBuildings = (buildings = []) => {
     return `<div style="padding:20px 20px 0;">
