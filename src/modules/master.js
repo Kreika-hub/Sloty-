@@ -1014,8 +1014,7 @@ export const initMaster = (container) => {
       ${filterHtml}
       ${filteredProofs.length > 0 ? filteredProofs.map(p => {
         const isPending = !p.status || p.status === 'PENDING';
-        const proofBld = (p.buildings) || {};
-        return renderProofCard(p, isPending, proofBld);
+        return renderProofCard(p, isPending);
       }).join('') : `
         <div style="padding:60px 20px; text-align:center; background:rgba(255,255,255,0.02); border-radius:24px;">
           <div style="font-size:2rem; margin-bottom:10px;">🔍</div>
@@ -1028,7 +1027,7 @@ export const initMaster = (container) => {
   }
 
   // Helper hidden from loop to avoid being redefined
-  const renderProofCard = (p, isPending, bldData = {}) => {
+  const renderProofCard = (p, isPending) => {
     const planColors = { TRIAL:'#888', BRONCE:'#cd7f32', PLATA:'#aaa', ORO:'#F5C518' }
     const planPrices = { TRIAL:'Gratis', BRONCE:'$29/mes', PLATA:'$59/mes', ORO:'$99/mes' }
 
@@ -1038,13 +1037,13 @@ export const initMaster = (container) => {
           const planColor = planColors[p.plan_key] || '#888'
           const planPrice = planPrices[p.plan_key] || ''
           const raw = `${p.id}|${p.building_id}|${p.plan_key}`
-          const phone = (bldData.phone || '').replace(/\D/g, '')
+          const phone = (bld.phone || '').replace(/\D/g, '')
           const loginUrl = window.location.origin + window.location.pathname
           const welcomeMsg = encodeURIComponent(
             '\u2705 *\u00a1Bienvenido a Sloty!*\n\n' +
-            'Hola, tu comprobante fue aprobado y tu edificio *' + (bldData.name || 'tu edificio') + '* ya est\u00e1 activo en la plataforma.\n\n' +
+            'Hola, tu comprobante fue aprobado y tu edificio *' + (bld.name || 'tu edificio') + '* ya est\u00e1 activo en la plataforma.\n\n' +
             '\ud83d\udcf1 *Accede aqu\u00ed:* ' + loginUrl + '\n' +
-            '\ud83d\udd11 *C\u00f3digo de edificio:* ' + (bldData.code || '\u2014') + '\n' +
+            '\ud83d\udd11 *C\u00f3digo de edificio:* ' + (bld.code || '\u2014') + '\n' +
             '\ud83d\udce6 *Plan activado:* ' + (p.plan_key || '') + ' (' + planPrice + ')\n\n' +
             'Si tienes alguna duda estamos aqu\u00ed para ayudarte. \u00a1\u00c9xito con tu gesti\u00f3n! \ud83d\ude80'
           )
@@ -1122,10 +1121,10 @@ export const initMaster = (container) => {
                 <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                   <div>
                     <div style="font-size:1rem; font-weight:900; color:white; margin-bottom:2px;">
-                      ${bldData.name || 'Edificio sin nombre'}
+                      ${bld.name || 'Edificio sin nombre'}
                     </div>
                     <div style="font-size:0.65rem; color:#999; font-weight:700;">
-                      ${bldData.code || '\u2014'} \u00b7 ${bldData.city || 'Ciudad no registrada'}
+                      ${bld.code || '\u2014'} \u00b7 ${bld.city || 'Ciudad no registrada'}
                     </div>
                   </div>
                   <span style="background:${planColor}; color:${p.plan_key === 'ORO' ? '#1a1a2e' : 'white'};
@@ -1138,15 +1137,15 @@ export const initMaster = (container) => {
               <!-- DATOS DE CONTACTO -->
               <div style="padding:12px 18px; border-bottom:1px solid rgba(255,255,255,0.06);
                           display:flex; gap:16px; flex-wrap:wrap;">
-                ${bldData.admin_email ? `
+                ${bld.admin_email ? `
                   <div style="display:flex; align-items:center; gap:6px;">
                     <span>\u2709\ufe0f</span>
-                    <span style="font-size:0.7rem; color:rgba(255,255,255,0.6); font-weight:700;">${bldData.admin_email}</span>
+                    <span style="font-size:0.7rem; color:rgba(255,255,255,0.6); font-weight:700;">${bld.admin_email}</span>
                   </div>` : ''}
-                ${bldData.phone ? `
+                ${bld.phone ? `
                   <div style="display:flex; align-items:center; gap:6px;">
                     <span>\ud83d\udcf1</span>
-                    <span style="font-size:0.7rem; color:rgba(255,255,255,0.6); font-weight:700;">${bldData.phone}</span>
+                    <span style="font-size:0.7rem; color:rgba(255,255,255,0.6); font-weight:700;">${bld.phone}</span>
                   </div>` : ''}
               </div>
 
@@ -1700,11 +1699,11 @@ export const initMaster = (container) => {
     
     let html = ''
     if (activeTab === 'SYSTEM') {
-      let rpcData = {};
+      let ecoData = {}
       try {
-         const rpcRes = await supabase.rpc('get_global_stats');
-         if (!rpcRes.error) rpcData = rpcRes.data;
-      } catch(e) {}
+        const rpcRes = await supabase.rpc('get_global_stats')
+        if (!rpcRes.error) ecoData = rpcRes.data || {}
+      } catch(e) { console.warn('get_global_stats unavailable:', e) }
 
       const [
          { data: bld },
@@ -1713,7 +1712,7 @@ export const initMaster = (container) => {
          supabase.from('buildings').select('*'),
          supabase.from('sloty_memberships').select('*').order('paid_at', { ascending: false })
       ])
-      html = renderSystem(bld || [], mems || [], rpcData || {})
+      html = renderSystem(bld || [], mems || [], ecoData)
       
       // Mostrar tasa BCV actual
       import('../db.js').then(({ getExchangeRate }) => {
@@ -1788,7 +1787,27 @@ export const initMaster = (container) => {
         }
       }, 100);
     }
-
+    else if (activeTab === 'SYSTEM') {
+      const [
+        { data: bld }, 
+        { data: mems },
+        { count: resCount },
+        { count: persCount },
+        { count: movCount }
+      ] = await Promise.all([
+        supabase.from('buildings').select('*'),
+        supabase.from('sloty_memberships').select('amount, paid_at'),
+        supabase.from('subscriptions').select('*', { count: 'exact', head: true }),
+        supabase.from('personnel').select('*', { count: 'exact', head: true }),
+        supabase.from('access_logs').select('*', { count: 'exact', head: true })
+      ])
+      
+      html = renderSystem(bld || [], mems || [], {
+          residents: resCount || 0,
+          personnel: persCount || 0,
+          movements: movCount || 0
+      })
+    }
     
     elContent.innerHTML = html
   }
