@@ -1295,10 +1295,8 @@ export const initAdmin = (container) => {
     const isHome = activeTab === 'HOME'
 
     const sState = getParkingState()
-    const trialBanner = (sState.plan === 'TRIAL' && sState.trialDaysLeft !== undefined) ? `
-      <div style="background:linear-gradient(90deg, #F5C518, #f39c12); color:#1a1a2e; padding:10px 20px; text-align:center; font-size:0.75rem; font-weight:900; letter-spacing:0.5px; display:flex; align-items:center; justify-content:center; gap:8px; border-bottom:1px solid rgba(0,0,0,0.1);">
-        <span>🎁 ESTÁS EN PRUEBA GRATUITA: Quedan ${sState.trialDaysLeft} días</span>
-      </div>` : ''
+    // BYPASS DESARROLLO: Ocultar banner de prueba gratuita
+    const trialBanner = '';
 
     header.innerHTML = `
       ${trialBanner}
@@ -2941,8 +2939,6 @@ export const initAdmin = (container) => {
     await render()
     const state = getParkingState()
     setTimeout(() => checkExpiringSubscriptions(state.buildingId), 2000);
-    if (state.plan === 'TRIAL' && state.trialDaysLeft !== undefined && state.trialDaysLeft <= 1) {
-      setTimeout(() => showToast('⚠️ Tu prueba gratuita está por vencer. Evita la suspensión activando un plan hoy.', 'error'), 1500)
-    }
+    // Eliminado el aviso toast de prueba gratuita por vencer
   })
 }

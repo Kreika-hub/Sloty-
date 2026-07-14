@@ -1699,16 +1699,20 @@ export const initMaster = (container) => {
     
     let html = ''
     if (activeTab === 'SYSTEM') {
+      let rpcData = {};
+      try {
+         const rpcRes = await supabase.rpc('get_global_stats');
+         if (!rpcRes.error) rpcData = rpcRes.data;
+      } catch(e) {}
+
       const [
          { data: bld },
-         { data: mems },
-         { data: ecoData }
+         { data: mems }
       ] = await Promise.all([
          supabase.from('buildings').select('*'),
-         supabase.from('sloty_memberships').select('*').order('paid_at', { ascending: false }),
-         supabase.rpc('get_global_stats')
+         supabase.from('sloty_memberships').select('*').order('paid_at', { ascending: false })
       ])
-      html = renderSystem(bld || [], mems || [], ecoData || {})
+      html = renderSystem(bld || [], mems || [], rpcData || {})
       
       // Mostrar tasa BCV actual
       import('../db.js').then(({ getExchangeRate }) => {

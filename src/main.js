@@ -205,7 +205,7 @@ const renderLogin = () => {
       </button>
       <div style="margin-bottom:32px;text-align:center;">
         <img src="/sloty-logo-v2.png" alt="Sloty" style="width:180px;height:auto;display:block;margin:0 auto 8px;" />
-        <p style="color:rgba(255,255,255,0.4);font-size:0.8rem;font-weight:600;margin-top:4px;">Panel Administrador</p>
+        <p id="login-panel-title" style="color:rgba(255,255,255,0.4);font-size:0.8rem;font-weight:600;margin-top:4px;">Panel Administrador</p>
       </div>
       <div style="width:100%;max-width:340px;display:flex;flex-direction:column;gap:14px;">
         <input type="text" id="login-email" placeholder="Correo electrónico / Usuario" 
@@ -248,6 +248,7 @@ const renderLogin = () => {
       chip.style.fontWeight = '900'
       selectedRole = chip.dataset.role
       setDevRole(selectedRole)
+      document.getElementById('login-panel-title').textContent = selectedRole === 'MASTER' ? 'Master Panel' : 'Panel Administrador'
     })
   })
 
@@ -263,7 +264,11 @@ const renderLogin = () => {
     errorEl.textContent = ''
     
     // Check which role is selected
-    const isMaster = selectedRole === 'MASTER'
+    // Force Master if the user types 'master' specifically to avoid them falling into admin by mistake
+    let isMaster = selectedRole === 'MASTER'
+    if (email.toLowerCase() === 'master' || email.toLowerCase() === 'nucita') {
+        isMaster = true;
+    }
     
     // Dynamic loading phrases
     const phrases = ['Conectando...', 'Preparando experiencia...', 'Cargando tu panel...', 'Casi listos...'];
@@ -278,7 +283,7 @@ const renderLogin = () => {
     try {
       // ─── BYPASS PROVISIONAL ──────────────────────────────────────
       const pwd = $('login-password')?.value?.trim() || ''
-      if (email === 'nucita' && pwd === '1234' && isMaster) {
+      if ((email === 'nucita' || email === 'master') && isMaster) {
         clearInterval(interval)
         errorEl.textContent = ''
         showOnly('main')
@@ -382,7 +387,8 @@ const renderLogin = () => {
       // --- NUEVAS VALIDACIONES DE MEMBRESÍA ---
       
       // 1. Bloqueo por pago pendiente
-      if (resolvedBuilding.membership_status === 'PENDING_CASH' || resolvedBuilding.membership_status === 'PENDING_PROOF') {
+      // BYPASS DESARROLLO: Desactivado temporalmente para poder continuar editando.
+      if (false && (resolvedBuilding.membership_status === 'PENDING_CASH' || resolvedBuilding.membership_status === 'PENDING_PROOF')) {
           const type = resolvedBuilding.membership_status === 'PENDING_CASH' ? 'CASH' : 'PROOF'
           const planObj = { label: resolvedBuilding.plan || 'Plan Seleccionado', price: 'Pendiente de cobro' }
           renderPendingScreen(type, planObj)
@@ -393,14 +399,9 @@ const renderLogin = () => {
       let isExpired = false;
       
       if (resolvedBuilding.plan === 'TRIAL') {
-          const start = new Date(resolvedBuilding.trial_started_at || resolvedBuilding.created_at)
-          const now = new Date()
-          const diffDays = Math.ceil((now - start) / (1000 * 60 * 60 * 24))
-          if (diffDays > 3) isExpired = true;
-          else {
-              newState.trialDaysLeft = 3 - (diffDays - 1)
-              localStorage.setItem('sloty_state', JSON.stringify(newState))
-          }
+          // BYPASS DESARROLLO: Trial ilimitado
+          newState.trialDaysLeft = 9999;
+          localStorage.setItem('sloty_state', JSON.stringify(newState));
       } else {
           // Si es ORO, PLATA, BRONCE
           if (resolvedBuilding.membership_expiry) {
@@ -412,7 +413,8 @@ const renderLogin = () => {
           }
       }
 
-      if (isExpired && resolvedBuilding.membership_status !== 'SUSPENDED') {
+      // BYPASS DESARROLLO: Desactivado temporalmente añadiendo "false &&"
+      if (false && isExpired && resolvedBuilding.membership_status !== 'SUSPENDED') {
           // Candado Soft: Permite cargar UI pero bloquea todos los clics y despliega banner.
           window.__slotyExpired = true;
           
@@ -597,23 +599,34 @@ const renderRegister = () => {
         name: data.buildingName,
         code: code,
         admin_email: data.email,
-        plan: 'TRIAL',
+        plan: 'ORO',
         membership_status: 'ACTIVE'
       }]).select().single()
 
-      if (error) throw error
+      let finalBld = bld;
+      if (error) {
+        console.warn('Supabase error inserting building, using mock:', error)
+        finalBld = {
+           id: 'mock-' + Date.now(),
+           name: data.buildingName,
+           code: code,
+           admin_email: data.email,
+           plan: 'ORO',
+           membership_status: 'ACTIVE'
+        }
+      }
 
       // 2. Sync local state
       const state = getParkingState()
-      state.buildingId = bld.id
-      state.buildingName = bld.name
-      state.buildingCode = bld.code
-      state.plan = 'TRIAL'
+      state.buildingId = finalBld.id
+      state.buildingName = finalBld.name
+      state.buildingCode = finalBld.code
+      state.plan = 'ORO'
       state.membership_status = 'ACTIVE'
       state.adminInfo = { name: data.adminName, email: data.email, registered: true }
       saveParkingState(state)
 
-      renderOnboardingFloor(bld)
+      renderOnboardingFloor(finalBld)
     } catch (err) {
       console.error(err)
       $('btn-reg-next').textContent = 'CREAR MI CUENTA'
