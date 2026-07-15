@@ -901,65 +901,65 @@ getExchangeRate().then(bcv => {
     <div style="padding:20px;padding-bottom:100px;">
       
       <!-- PREMIUM TICKET HEADER -->
-      <div style="background:#1a1a2e; color:white; border-radius:32px 32px 0 0; padding:30px 24px; position:relative; overflow:hidden;">
-        <div style="font-size:0.6rem; font-weight:800; color:var(--accent); letter-spacing:2px; margin-bottom:5px;">TICKET DE INGRESO</div>
+      <div style="background:#1a1a2e; color:white; border-radius:24px 24px 0 0; padding:30px 24px; position:relative; overflow:hidden;">
+        <div style="font-size:0.6rem; font-weight:500; color:var(--accent); letter-spacing:2px; margin-bottom:5px;">TICKET DE INGRESO</div>
         <div style="display:flex; justify-content:space-between; align-items:flex-end;">
           <div>
-            <div style="font-size:2rem; font-weight:900; letter-spacing:-1px; color:var(--accent);">${state.buildingName.toUpperCase()}</div>
+            <div style="font-size:2rem; font-weight:700; letter-spacing:-1px; color:var(--accent);">${state.buildingName.toUpperCase()}</div>
             <div style="display:flex; gap:15px; margin-top:8px;">
                <div>
-                 <div style="font-size:0.55rem; font-weight:800; color:rgba(255,255,255,0.4); text-transform:uppercase;">INGRESO</div>
+                 <div style="font-size:0.55rem; font-weight:500; color:rgba(255,255,255,0.4); text-transform:uppercase;">INGRESO</div>
                  <div style="font-size:0.9rem; font-weight:900;">${now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}).toLowerCase()}</div>
                </div>
                <div>
-                 <div style="font-size:0.55rem; font-weight:800; color:#F5C518; text-transform:uppercase;">VENCE LÍMITE (${freeHours}h)</div>
+                 <div style="font-size:0.55rem; font-weight:500; color:#F5C518; text-transform:uppercase;">VENCE LÍMITE (${freeHours}h)</div>
                  <div style="font-size:0.9rem; font-weight:900; color:#F5C518;">${limit.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}).toLowerCase()}</div>
                </div>
             </div>
           </div>
           <div style="text-align:right;">
-             <div style="font-size:0.6rem; font-weight:800; color:rgba(255,255,255,0.4); margin-bottom:4px;">ASIGNADO A</div>
+             <div style="font-size:0.6rem; font-weight:500; color:rgba(255,255,255,0.4); margin-bottom:4px;">ASIGNADO A</div>
              <div style="font-size:2.4rem; font-weight:900; color:#22c55e; line-height:0.8;">${selectedSlot.label}</div>
           </div>
         </div>
         <div style="position:absolute; top:-20px; right:-20px; width:100px; height:100px; background:rgba(34,197,94,0.05); border-radius:50%; pointer-events:none;"></div>
       </div>
 
-        <input type="text" id="entry-plate" placeholder="PLACA" style="width:100%;padding:18px;border:2px solid #eee;border-radius:16px;font-size:1.8rem;font-weight:900;text-align:center;margin-bottom:15px;">
-        <input type="tel" id="entry-phone" placeholder="WHATSAPP (Opcional)" style="width:100%;padding:14px;border:2px solid #eee;border-radius:14px;margin-bottom:15px;">
+        <input type="text" id="entry-plate" placeholder="PLACA" style="width:100%;padding:18px;border:2px solid #eee;border-radius:12px;font-size:1.8rem;font-weight:900;text-align:center;margin-bottom:15px;">
+        <input type="tel" id="entry-phone" placeholder="WHATSAPP (Opcional)" style="width:100%;padding:14px;border:2px solid #eee;border-radius:12px;margin-bottom:15px;">
         
         <!-- DYNAMIC CUSTOM FIELDS -->
         <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:20px;">
           ${(state.settings?.customFields || []).map(f => `
             <div>
-              <label style="font-size:0.6rem; font-weight:900; color:#999; margin-left:12px; text-transform:uppercase;">${f.label} *</label>
+              <label style="font-size:0.6rem; font-weight:500; color:#999; margin-left:12px; text-transform:uppercase;">${f.label} *</label>
               <input type="text" id="custom-${f.id}" placeholder="Ingresar ${f.label.toLowerCase()}" required
-                style="width:100%; padding:14px; border:2px solid #eee; border-radius:14px; font-weight:700;">
+                style="width:100%; padding:14px; border:2px solid #eee; border-radius:12px; font-weight:700;">
             </div>
           `).join('')}
         </div>
 
         <div style="grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:20px; display: ${state.settings?.categories?.length ? 'grid' : 'none'};">
-          ${(state.settings?.categories || CAT).map((c,i)=>`<button class="cat-chip ${i===0?'cat-active':''}" data-cat="${c.id || c.cat}" data-color="${c.color}" style="padding:10px;border-radius:10px;border:2px solid #eee;background:white;font-size:0.7rem;font-weight:900;">${c.label}</button>`).join('')}
+          ${(state.settings?.categories || CAT).map((c,i)=>`<button class="cat-chip ${i===0?'cat-active':''}" data-cat="${c.id || c.cat}" data-color="${c.color}" style="padding:10px;border-radius:12px;border:2px solid #eee;background:white;font-size:0.7rem;font-weight:700;">${c.label}</button>`).join('')}
         </div>
         
         <div style="background:#f8f9fa;padding:15px;border-radius:16px;margin-bottom:20px;text-align:center;">
-          <div style="font-size:0.6rem;font-weight:900;color:#999;margin-bottom:10px;">¿CUÁNDO PAGARÁ?</div>
+          <div style="font-size:0.6rem;font-weight:500;color:#999;margin-bottom:10px;">¿CUÁNDO PAGARÁ?</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px; margin-bottom:12px;">
-            <button class="timing-chip timing-active" data-timing="EXIT" style="padding:12px;border-radius:10px;border:none;font-weight:900;">AL SALIR</button>
-            <button class="timing-chip" data-timing="PRE" style="padding:12px;border-radius:10px;border:none;font-weight:900;">PRE-PAGO ($${
+            <button class="timing-chip timing-active" data-timing="EXIT" style="padding:12px;border-radius:12px;border:none;font-weight:700;">AL SALIR</button>
+            <button class="timing-chip" data-timing="PRE" style="padding:12px;border-radius:12px;border:none;font-weight:700;">PRE-PAGO ($${
                (state.settings?.tariffs?.filter(t => t.active).length > 0) ? state.settings.tariffs.filter(t => t.active)[0].baseRate : (state.settings?.baseRate || 1)
             })</button>
           </div>
           
           <div id="prepay-selector" style="display:none; transition: all 0.3s;">
-             <div style="font-size:0.55rem; font-weight:900; color:#bbb; margin:10px 0 8px;">MÉTODO DE PAGO</div>
+             <div style="font-size:0.55rem; font-weight:500; color:#bbb; margin:10px 0 8px;">MÉTODO DE PAGO</div>
              <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px;">
-                ${PAY.map((p,i) => `<button class="pay-chip ${i===0?'pay-active':''}" data-method="${p.m}" style="padding:8px; border-radius:8px; border:1px solid #eee; background:white; font-size:0.55rem; font-weight:900;">${p.label}</button>`).join('')}
+                ${PAY.map((p,i) => `<button class="pay-chip ${i===0?'pay-active':''}" data-method="${p.m}" style="padding:8px; border-radius:12px; border:1px solid #eee; background:white; font-size:0.55rem; font-weight:700;">${p.label}</button>`).join('')}
              </div>
           </div>
         </div>
-        <button data-action="CONFIRM_ENTRY" class="btn-new-entry" style="background:#1a1a2e;color:#F5C518;box-shadow: 0 10px 20px rgba(26,26,46,0.2);">↓ CONFIRMAR INGRESO</button>
+        <button data-action="CONFIRM_ENTRY" class="btn-new-entry" style="width:100%; padding:18px; border:none; border-radius:16px; font-size:0.9rem; font-weight:700; background:#1a1a2e;color:#F5C518;box-shadow: 0 10px 20px rgba(26,26,46,0.2);">↓ CONFIRMAR INGRESO</button>
       </div>
     </div>`
   }

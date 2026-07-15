@@ -1,4 +1,3 @@
-git add .
-git commit -m "feat: bcv rate integration in guard.js"
-git pull --rebase origin main
-git push
+git commit -m "style: refine typeset and shape in guard entry form"
+git push origin main
+git rev-parse HEAD > commit_hash.txt

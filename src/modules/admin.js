@@ -27,7 +27,7 @@ const checkExpiringSubscriptions = async (buildingId) => {
   const banner = document.createElement('div');
   banner.id = 'expiry-alert-banner';
   banner.style.cssText = `position:fixed;top:0;left:0;right:0;z-index:9999;
-    background:#e63946;color:white;padding:10px 16px;font-size:0.75rem;
+    background:#e63946;color:white;padding:calc(env(safe-area-inset-top, 0px) + 10px) 16px 10px 16px;font-size:0.75rem;
     font-weight:900;display:flex;justify-content:space-between;align-items:center;`;
   banner.innerHTML = `
     <span>
@@ -324,6 +324,11 @@ export const initAdmin = (container) => {
       const state = getParkingState();
       state.personnel = state.personnel.filter(p => p.id !== gId);
       saveParkingState(state);
+      render();
+    },
+    EDIT_GUARD: (btn) => {
+      editingGuard = btn.dataset.id;
+      activeTab = 'PERSONAL';
       render();
     },
     CANCEL_EDIT: () => {
@@ -676,7 +681,7 @@ export const initAdmin = (container) => {
           }
         } else {
           const expiry = new Date(); expiry.setDate(expiry.getDate() + 30);
-          const { error: err } = await supabase.from('subscriptions').insert({
+          const { data, error: err } = await supabase.from('subscriptions').insert({
             building_id: state.buildingId,
             resident_name: name,
             plate: plateString,
@@ -807,6 +812,7 @@ export const initAdmin = (container) => {
     CONFIRM_PAYMENT: async (btn) => {
       const pid = btn.dataset.id
       const sid = btn.dataset.sid
+      const s = getParkingState()
       
       // Fetch payment and subscription details
       const { data: pay } = await supabase.from('payments').select('*').eq('id', pid).single()
@@ -1780,11 +1786,11 @@ export const initAdmin = (container) => {
         </div>
 
         <!-- REVENUE CARDS -->
-        <div style="background:white; padding:15px 20px; border-radius:24px; margin-bottom:20px; border:1px solid #eee; display:flex; justify-content:space-between; align-items:center;">
-           <div style="font-size:0.65rem; font-weight:900; color:#999; text-transform:uppercase;">Tasa BCV del día</div>
+        <div style="background:#1a1a2e; padding:16px 20px; border-radius:16px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center;">
+           <div style="font-size:0.65rem; font-weight:700; color:rgba(255,255,255,0.5); text-transform:uppercase; letter-spacing:1px;">Tasa BCV del día</div>
            <div id="finance-bcv-rate" style="text-align:right;">
-             <div style="font-size:0.9rem; font-weight:900; color:#1a1a2e;">Cargando...</div>
-             <div style="font-size:0.5rem; color:#bbb; font-weight:700;">Fuente: Oficial</div>
+             <div style="font-size:0.95rem; font-weight:900; color:#F5C518;">Bs. —</div>
+             <div style="font-size:0.5rem; color:rgba(255,255,255,0.4); font-weight:700;">Cargando...</div>
            </div>
         </div>
 
@@ -1806,11 +1812,11 @@ export const initAdmin = (container) => {
              <div style="font-size:0.6rem; font-weight:700; text-transform:uppercase; 
                margin-top:5px; opacity:0.9;">MENSUALIDADES DEL MES</div>
              ${bcvRate ? `
-               <div style="font-size:0.65rem; color:#999; font-weight:700;
+               <div style="font-size:0.65rem; color:white; font-weight:800;
                            margin-top:6px; padding:8px 12px;
-                           background:rgba(245,197,24,0.06); border-radius:8px;">
-                 Tasa BCV: Bs. ${Number(bcvRate).toLocaleString('es-VE', {minimumFractionDigits:2})}
-                 ${bcv.source === 'manual' ? '· ⚠️ Manual' : '· ✓ Oficial'}
+                           background:rgba(255,255,255,0.2); border-radius:8px;">
+                 Bs. ${Number(bcvRate).toLocaleString('es-VE', {minimumFractionDigits:2})} / USD
+                 ${bcv.source === 'manual' ? '· ⚠️ Manual' : '· ✓ BCV'}
                  · ${bcvFecha || ''}
                </div>` : ''}
            </div>
@@ -2294,14 +2300,14 @@ export const initAdmin = (container) => {
                      <div style="font-size:0.5rem; background:#f0f0f0; padding:2px 8px; border-radius:10px; font-weight:800; color:#999; text-transform:uppercase;">${p.shift}</div>
                   </div>
                   <div style="font-size:0.7rem; color:#bbb; font-weight:700; margin-top:2px;">
-                     ${p.pin ? `PIN: <span style="color:var(--primary);">${p.pin}</span>` : '<span style="color:#e63946;">PENDIENTE ACTIVACIÓN</span>'} · 
+                     ${p.pin ? `PIN: <span style="color:var(--primary); letter-spacing:2px;">●●●●</span>` : '<span style="color:#e63946;">PENDIENTE ACTIVACIÓN</span>'} · 
                      <span style="color:#22c55e; font-weight:800;">${todayCount} movs hoy</span>
                   </div>
                 </div>
               </div>
               
               <div style="display:flex; align-items:center; gap:10px;">
-                 <button data-action="SEND_WHATSAPP_GUARD" data-id="${p.id}" style="background:#22c55e; color:white; border:none; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; font-weight:900; font-size:1rem; box-shadow:0 5px 15px rgba(34,197,94,0.2);">W</button>
+                 <button data-action="SEND_WHATSAPP_GUARD" data-id="${p.id}" style="background:#22c55e; color:white; border:none; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; font-weight:900; font-size:1rem; box-shadow:0 5px 15px rgba(34,197,94,0.2);"><img src="/icons/whatsapp-svgrepo-com.svg" style="width:20px; height:20px;"/></button>
                  <button data-action="EDIT_GUARD" data-id="${p.id}" style="background:#f4f4f4; color:#999; border:none; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:0.8rem;">✎</button>
                  <button data-action="DELETE_GUARD" data-id="${p.id}" style="color:#ffccd5; background:none; border:none; font-weight:900; cursor:pointer; font-size:0.65rem; text-transform:uppercase;">×</button>
               </div>
@@ -2312,12 +2318,44 @@ export const initAdmin = (container) => {
     </div>`;
   }
 
+  // ─── SKELETON LOADERS ─────────────────────────────────────────
+  const SKELETONS = {
+    pulse: `<style>.sk-pulse{animation:skPulse 1.4s ease-in-out infinite}.sk-pulse2{animation:skPulse 1.4s ease-in-out 0.2s infinite}.sk-pulse3{animation:skPulse 1.4s ease-in-out 0.4s infinite}@keyframes skPulse{0%,100%{opacity:1}50%{opacity:0.4}} button { transition: transform 0.1s cubic-bezier(0.4, 0, 0.2, 1); } button:active { transform: scale(0.95); }</style>`,
+    HOME: `<div style="padding:20px;">
+      <div class="sk-pulse" style="height:90px;background:#e8e8e8;border-radius:24px;margin-bottom:12px;"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+        <div class="sk-pulse" style="height:100px;background:#e8e8e8;border-radius:24px;"></div>
+        <div class="sk-pulse" style="height:100px;background:#e8e8e8;border-radius:24px;animation-delay:0.15s;"></div>
+      </div>
+      <div class="sk-pulse" style="height:64px;background:#e8e8e8;border-radius:20px;margin-bottom:12px;animation-delay:0.3s;"></div>
+      <div class="sk-pulse" style="height:64px;background:#e8e8e8;border-radius:20px;margin-bottom:12px;animation-delay:0.45s;"></div>
+      <div class="sk-pulse" style="height:64px;background:#e8e8e8;border-radius:20px;animation-delay:0.6s;"></div>
+    </div>`,
+    SUBS: `<div style="padding:20px;">
+      <div class="sk-pulse" style="height:52px;background:#e8e8e8;border-radius:16px;margin-bottom:16px;"></div>
+      ${[0,1,2,3,4].map(i => `<div class="sk-pulse" style="height:80px;background:#e8e8e8;border-radius:20px;margin-bottom:10px;animation-delay:${i*0.1}s;"></div>`).join('')}
+    </div>`,
+    FINANCE: `<div style="padding:20px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+        <div class="sk-pulse" style="height:100px;background:#e8e8e8;border-radius:28px;"></div>
+        <div class="sk-pulse" style="height:100px;background:#e8e8e8;border-radius:28px;animation-delay:0.15s;"></div>
+      </div>
+      <div class="sk-pulse" style="height:100px;background:#e8e8e8;border-radius:28px;margin-bottom:12px;animation-delay:0.3s;"></div>
+      <div class="sk-pulse" style="height:52px;background:#e8e8e8;border-radius:16px;margin-bottom:12px;animation-delay:0.45s;"></div>
+      ${[0,1,2].map(i => `<div class="sk-pulse" style="height:64px;background:#e8e8e8;border-radius:20px;margin-bottom:10px;animation-delay:${0.6+i*0.1}s;"></div>`).join('')}
+    </div>`,
+    DEFAULT: `<div style="padding:20px;">
+      ${[0,1,2,3].map(i => `<div class="sk-pulse" style="height:72px;background:#e8e8e8;border-radius:20px;margin-bottom:10px;animation-delay:${i*0.12}s;"></div>`).join('')}
+    </div>`
+  }
+
   const renderTabContent = async (state) => {
     if (!elMain) return; let html = ''
     
-    // Non-blocking loading indicator if switching tabs
-    if (!elMain.innerHTML.includes('Cargando...') && elMain.dataset.lastTab !== activeTab) {
-       elMain.innerHTML = `<div style="display:flex; justify-content:center; align-items:center; height:50vh; color:#999; font-weight:900; font-size:0.8rem; letter-spacing:2px;">CARGANDO...</div>`;
+    // Non-blocking skeleton loading indicator if switching tabs
+    if (elMain.dataset.lastTab !== activeTab) {
+       const skeleton = SKELETONS[activeTab] || SKELETONS.DEFAULT;
+       elMain.innerHTML = `<div class="responsive-container" style="padding-bottom:100px;">${SKELETONS.pulse}${skeleton}</div>`;
     }
     elMain.dataset.lastTab = activeTab;
 
@@ -2339,7 +2377,10 @@ export const initAdmin = (container) => {
       case 'PROFILE': html = renderProfile(state); break
       case 'ABONOS': html = await renderAbonos(state); break
     }
-    elMain.innerHTML = `<div class="responsive-container" style="padding-bottom:100px;">${html}</div>`; if(activeTab==='PERSONAL') setupPersonnelHooks()
+    elMain.innerHTML = `<div class="responsive-container" style="padding-bottom:100px;">${html}</div>`; 
+    if(activeTab==='PERSONAL') setupPersonnelHooks()
+    if(activeTab==='ABONOS') setupAbonosHooks()
+
   }
 
   const setupPersonnelHooks = () => {
@@ -2351,6 +2392,17 @@ export const initAdmin = (container) => {
         r.onload = (re) => { p.src = re.target.result; p.style.display = 'block'; s.style.display = 'none' }
         r.readAsDataURL(file)
       }
+    }
+  }
+
+  const setupAbonosHooks = () => {
+    const searchInput = elMain?.querySelector('#abono-search')
+    if (!searchInput) return
+    searchInput.oninput = () => {
+      const term = searchInput.value.toLowerCase()
+      elMain.querySelectorAll('.abono-card').forEach(c => {
+        c.style.display = c.dataset.search.includes(term) ? 'flex' : 'none'
+      })
     }
   }
 
@@ -2613,7 +2665,7 @@ export const initAdmin = (container) => {
                       <div style="width:18px; height:18px;">${ICONS.CARD}</div>
                    </button>
                    <button data-action="SEND_RESIDENT_ACCESS" data-id="${r.id}" data-phone="${r.phone}" data-plate="${r.plate}" style="background:#22c55e; border:none; width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:white; font-weight:900; font-size:1.1rem;">
-                      W
+                      <img src="/icons/whatsapp-svgrepo-com.svg" style="width:22px; height:22px;"/>
                    </button>
                    <button data-action="DELETE_RESIDENT" data-id="${r.id}" style="background:#fff0f0; border:none; width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#e63946;">
                       <div style="width:18px; height:18px;">${ICONS.TRASH}</div>
@@ -2698,8 +2750,8 @@ export const initAdmin = (container) => {
                    Vence: ${exp.toLocaleDateString()} ${isExpired ? '<span style="background:#fee2e2; color:#ef4444; padding:2px 6px; border-radius:6px; margin-left:5px;">VENCIDO</span>' : ''}
                 </div>
                 <div style="display:flex; gap:8px;">
-                   <button data-action="SEND_DEBT_WS" data-id="${r.id}" data-name="${r.resident_name}" data-debt="${pending}" data-phone="${r.phone}" style="background:#22c55e; color:white; border:none; width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer;">W</button>
-                   <button data-action="SHOW_RESIDENT_HISTORY" data-id="${r.id}" data-name="${r.resident_name}" style="background:#f4f4f4; color:#666; border:none; width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer;">H</button>
+                   <button data-action="SEND_DEBT_WS" data-id="${r.id}" data-name="${r.resident_name}" data-debt="${pending}" data-phone="${r.phone}" style="background:#22c55e; color:white; border:none; width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer;"><img src="/icons/whatsapp-svgrepo-com.svg" style="width:22px; height:22px;"/></button>
+                   <button data-action="SHOW_RESIDENT_HISTORY" data-id="${r.id}" data-name="${r.resident_name}" style="background:#f4f4f4; color:#666; border:none; width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer;" title="Historial"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg></button>
                    <button data-action="SHOW_ABONO_FORM" data-id="${r.id}" data-name="${r.resident_name}" data-price="${r.custom_price}" style="background:#1a1a2e; color:var(--accent); border:none; padding:0 15px; border-radius:12px; font-weight:900; font-size:0.65rem; cursor:pointer;">REGISTRAR</button>
                 </div>
              </div>
@@ -2727,15 +2779,7 @@ export const initAdmin = (container) => {
         </div>
       </div>
 
-    </div>
-    <script>
-      window.filterAbonos = (val) => {
-        const term = val.toLowerCase();
-        document.querySelectorAll('.abono-card').forEach(c => {
-          c.style.display = c.dataset.search.includes(term) ? 'flex' : 'none';
-        });
-      }
-    </script>`
+    </div>`
   }
 
   // Add new actions for abonos
