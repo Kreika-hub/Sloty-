@@ -1388,40 +1388,55 @@ const checkInvitationLink = async () => {
       if (pin1 !== pin2) return renderAlert('Los PIN no coinciden', true);
 
       const guardIdToUse = guardIdDecoded || guardId;
+      const btn = document.getElementById('btn-save-guard-pin');
 
-      document.getElementById('btn-save-guard-pin').textContent = 'Activando...';
-      const { data: bld } = await supabase.from('buildings').select('id, name, code').eq('code', bldCode.toUpperCase()).single();
-      
-      let buildingData = bld;
-      if (!buildingData) {
-        const stateStr = localStorage.getItem('sloty_state');
-        if (stateStr) {
-           const lst = JSON.parse(stateStr);
-           if (lst.buildingCode === bldCode.toUpperCase()) {
-              buildingData = { id: lst.buildingId, name: lst.buildingName, code: lst.buildingCode };
-           }
-        }
-      }
-      
-      if (!buildingData) return renderAlert('Error: Edificio no encontrado', true);
+      btn.textContent = 'Activando...';
+      btn.disabled = true;
 
-      const { data: guard, error } = await supabase.from('personnel').update({ pin: pin1 }).eq('id', guardIdToUse).select('name').single();
-      if (!error && guard) {
-        localStorage.setItem('sloty_active_building', buildingData.code);
-        localStorage.setItem('sloty_building_id', buildingData.id);
-        localStorage.setItem('sloty_building_name', buildingData.name);
+      try {
+        const { data: bld } = await supabase.from('buildings').select('id, name, code').eq('code', bldCode.toUpperCase()).single();
         
-        window.history.replaceState({}, document.title, '/');
-        renderAlert('¡Cuenta activada con éxito! Iniciando sesión...');
-        setTimeout(async () => {
-          showOnly('main');
-          await syncDown(buildingData.code);
-          initGuard(screens.main, guard.name);
-        }, 1500);
-      } else {
-        console.error("Error activando guardia:", error, "ID:", guardIdToUse);
-        renderAlert('Error: ' + (error?.message || 'Intenta de nuevo'), true);
-        document.getElementById('btn-save-guard-pin').textContent = 'ACTIVAR MI CUENTA';
+        let buildingData = bld;
+        if (!buildingData) {
+          const stateStr = localStorage.getItem('sloty_state');
+          if (stateStr) {
+             const lst = JSON.parse(stateStr);
+             if (lst.buildingCode === bldCode.toUpperCase()) {
+                buildingData = { id: lst.buildingId, name: lst.buildingName, code: lst.buildingCode };
+             }
+          }
+        }
+        
+        if (!buildingData) {
+          btn.textContent = 'ACTIVAR MI CUENTA';
+          btn.disabled = false;
+          return renderAlert('Error: Edificio no encontrado', true);
+        }
+
+        const { data: guard, error } = await supabase.from('personnel').update({ pin: pin1 }).eq('id', guardIdToUse).select('name').single();
+        if (!error && guard) {
+          localStorage.setItem('sloty_active_building', buildingData.code);
+          localStorage.setItem('sloty_building_id', buildingData.id);
+          localStorage.setItem('sloty_building_name', buildingData.name);
+          
+          window.history.replaceState({}, document.title, '/');
+          renderAlert('¡Cuenta activada con éxito! Iniciando sesión...');
+          setTimeout(async () => {
+            showOnly('main');
+            await syncDown(buildingData.code);
+            initGuard(screens.main, guard.name);
+          }, 1500);
+        } else {
+          console.error("Error activando guardia:", error, "ID:", guardIdToUse);
+          renderAlert('Error: ' + (error?.message || 'Intenta de nuevo'), true);
+          btn.textContent = 'ACTIVAR MI CUENTA';
+          btn.disabled = false;
+        }
+      } catch (err) {
+        console.error("Fetch error activando guardia:", err);
+        btn.textContent = 'ACTIVAR MI CUENTA';
+        btn.disabled = false;
+        renderAlert('No pudimos conectar. Verifica tu internet e intenta de nuevo.', true);
       }
     };
     return true;
