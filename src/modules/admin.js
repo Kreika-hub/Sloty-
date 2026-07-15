@@ -300,7 +300,7 @@ export const initAdmin = (container) => {
       
       render();
     },
-    SEND_WHATSAPP_GUARD: (btn) => {
+    SEND_WHATSAPP_GUARD: async (btn) => {
       const id = btn.dataset.id;
       const state = getParkingState();
       const g = state.personnel.find(p => p.id === id);
@@ -314,10 +314,40 @@ export const initAdmin = (container) => {
         return;
       }
       
-      const url = `${window.location.origin}/?setup_guard=${g.id}&bld=${state.buildingCode}`;
-      const msg = `¡Bienvenido a Sloty, ${g.name}! 🛡️\n\nTu acceso para ${state.buildingName} está listo.\n\nPor favor, ingresa al siguiente enlace para activar tu cuenta y crear tu PIN de acceso:\n\n${url}`;
-      
-      window.open(`https://wa.me/${g.phone.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`, '_blank');
+      const originalText = btn.innerHTML;
+      btn.innerHTML = '<span style="font-size:0.6rem;">Preparando...</span>';
+      btn.disabled = true;
+
+      try {
+        const { error } = await supabase.from('personnel').upsert({
+           id: g.id,
+           building_id: state.buildingId,
+           name: g.name,
+           phone: g.phone,
+           shift: g.shift,
+           photo: g.photo || null,
+           pin: g.pin || null,
+           last_active: new Date().toISOString()
+        }, { onConflict: 'id' });
+
+        if (error) throw error;
+
+        const url = `${window.location.origin}/?setup_guard=${g.id}&bld=${state.buildingCode}`;
+        const msg = `¡Bienvenido a Sloty, ${g.name}! 🛡️\n\nTu acceso para ${state.buildingName} está listo.\n\nPor favor, ingresa al siguiente enlace para activar tu cuenta y crear tu PIN de acceso:\n\n${url}`;
+        
+        window.open(`https://wa.me/${g.phone.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`, '_blank');
+      } catch (err) {
+        console.error('Error sincronizando guardia:', err);
+        pendingAction = {
+          type: 'CUSTOM_MODAL',
+          title: '❌ ERROR DE CONEXIÓN',
+          content: `<p style="color:#666; font-weight:700;">No pudimos sincronizar el guardia. Verifica tu conexión a internet y vuelve a intentar.</p>`
+        };
+        render();
+      } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+      }
     },
     DELETE_GUARD: (btn) => {
       const gId = btn.dataset.id;
@@ -1982,12 +2012,12 @@ export const initAdmin = (container) => {
           
           <div style="background:white; padding:25px; border-radius:32px; box-shadow:0 10px 30px rgba(0,0,0,0.04); border:1.5px solid #f0f0f0; margin-bottom:20px;">
              <div style="font-size:0.7rem; font-weight:900; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">NUEVA TARIFA</div>
-             <div style="display:grid; grid-template-columns:1fr; gap:10px; margin-bottom:15px;">
-                 <input type="text" id="new-tariff-name" placeholder="Nombre (ej. Excedente Nocturno)" style="padding:14px; border:2px solid #eee; border-radius:14px; font-weight:700; outline:none;">
-                 <div style="display:flex; gap:10px;">
-                     <input type="number" id="new-tariff-free" placeholder="Horas Gratis" style="flex:1; padding:14px; border:2px solid #eee; border-radius:14px; font-weight:700; outline:none;">
-                     <input type="number" step="0.5" id="new-tariff-rate" placeholder="Monto $" style="flex:1; padding:14px; border:2px solid #eee; border-radius:14px; font-weight:700; outline:none;">
-                     <button data-action="ADD_TARIFF" style="background:#22c55e; color:white; border:none; padding:0 22px; border-radius:14px; font-weight:900; cursor:pointer; font-size:1.3rem;">+</button>
+             <div style="display:grid; grid-template-columns:1fr; gap:10px; margin-bottom:15px; box-sizing:border-box; width:100%;">
+                 <input type="text" id="new-tariff-name" placeholder="Nombre (ej. Excedente Nocturno)" style="box-sizing:border-box; width:100%; padding:14px; border:2px solid #eee; border-radius:14px; font-weight:700; outline:none;">
+                 <div style="display:grid; grid-template-columns:1fr 1fr auto; gap:10px; box-sizing:border-box; width:100%;">
+                     <input type="number" id="new-tariff-free" placeholder="Horas Gratis" style="box-sizing:border-box; width:100%; min-width:0; padding:14px; border:2px solid #eee; border-radius:14px; font-weight:700; outline:none;">
+                     <input type="number" step="0.5" id="new-tariff-rate" placeholder="Monto $" style="box-sizing:border-box; width:100%; min-width:0; padding:14px; border:2px solid #eee; border-radius:14px; font-weight:700; outline:none;">
+                     <button data-action="ADD_TARIFF" style="background:#22c55e; color:white; border:none; padding:0 22px; border-radius:14px; font-weight:900; cursor:pointer; font-size:1.3rem; box-sizing:border-box;">+</button>
                  </div>
              </div>
              
@@ -2040,9 +2070,9 @@ export const initAdmin = (container) => {
                  </div>
                `).join('') || '<div style="text-align:center; padding:15px; color:#ccc; font-size:0.75rem; border:2px dashed #eee; border-radius:14px;">No hay campos configurados</div>'}
              </div>
-             <div style="display:flex; gap:10px;">
-               <input type="text" id="new-field-label" placeholder="Ej: Apartamento" style="flex:1; padding:14px; border:1.5px solid #eee; border-radius:14px; font-weight:700; font-family:var(--font); outline:none;">
-               <button data-action="ADD_CUSTOM_FIELD" style="background:#22c55e; color:white; border:none; padding:0 22px; border-radius:14px; font-weight:900; cursor:pointer; font-size:1.3rem;">+</button>
+             <div style="display:grid; grid-template-columns:1fr auto; gap:10px; box-sizing:border-box; width:100%;">
+               <input type="text" id="new-field-label" placeholder="Ej: Apartamento" style="box-sizing:border-box; width:100%; min-width:0; padding:14px; border:1.5px solid #eee; border-radius:14px; font-weight:700; font-family:var(--font); outline:none;">
+               <button data-action="ADD_CUSTOM_FIELD" style="background:#22c55e; color:white; border:none; padding:0 22px; border-radius:14px; font-weight:900; cursor:pointer; font-size:1.3rem; box-sizing:border-box;">+</button>
              </div>
           </div>
           
@@ -2060,10 +2090,10 @@ export const initAdmin = (container) => {
                  </div>
                `).join('') || '<div style="text-align:center; padding:15px; color:#ccc; font-size:0.75rem; border:2px dashed #eee; border-radius:14px;">No hay categorías configuradas</div>'}
              </div>
-             <div style="display:flex; gap:10px; align-items:center;">
-               <input type="text" id="new-cat-label" placeholder="Ej: Delivery" style="flex:1; padding:14px; border:1.5px solid #eee; border-radius:14px; font-weight:700; font-family:var(--font); outline:none;">
-               <input type="color" id="new-cat-color" value="#3b82f6" style="width:48px; height:48px; border:none; border-radius:12px; cursor:pointer; padding:2px;">
-               <button data-action="ADD_CATEGORY" style="background:#3b82f6; color:white; border:none; padding:0 20px; border-radius:14px; font-weight:900; cursor:pointer; height:48px; font-size:1.3rem;">+</button>
+             <div style="display:grid; grid-template-columns:1fr auto auto; gap:10px; align-items:center; box-sizing:border-box; width:100%;">
+               <input type="text" id="new-cat-label" placeholder="Ej: Delivery" style="box-sizing:border-box; width:100%; min-width:0; padding:14px; border:1.5px solid #eee; border-radius:14px; font-weight:700; font-family:var(--font); outline:none;">
+               <input type="color" id="new-cat-color" value="#3b82f6" style="box-sizing:border-box; width:48px; height:48px; border:none; border-radius:12px; cursor:pointer; padding:2px;">
+               <button data-action="ADD_CATEGORY" style="background:#3b82f6; color:white; border:none; padding:0 20px; border-radius:14px; font-weight:900; cursor:pointer; height:48px; font-size:1.3rem; box-sizing:border-box;">+</button>
              </div>
           </div>
        </div>`
@@ -2608,7 +2638,7 @@ export const initAdmin = (container) => {
                </div>
             </div>
             <div style="display:flex; gap:10px;">
-               <button data-action="ADD_RESIDENT" style="flex:2; padding:18px; background:var(--accent); color:var(--primary); border:none; border-radius:14px; font-weight:900; font-size:0.8rem; cursor:pointer; margin-top:5px; text-transform:uppercase;">${editingResident ? 'GUARDAR CAMBIOS' : 'REGISTRAR Y ACTIVAR'}</button>
+               <button data-action="ADD_RESIDENT" style="flex:2; padding:18px; background:#1a1a2e; color:var(--accent); border:none; border-radius:14px; font-weight:900; font-size:0.8rem; cursor:pointer; margin-top:5px; text-transform:uppercase;">${editingResident ? 'GUARDAR CAMBIOS' : 'REGISTRAR Y ACTIVAR'}</button>
                ${editingResident ? `<button data-action="CANCEL_EDIT_RESIDENT" style="flex:1; padding:18px; background:rgba(255,255,255,0.1); color:white; border:none; border-radius:14px; font-weight:700; font-size:0.8rem; cursor:pointer; margin-top:5px;">CANCELAR</button>` : ''}
             </div>
          </div>
