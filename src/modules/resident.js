@@ -40,11 +40,16 @@ const SVG = {
 }
 
 export async function initResident(container, subscription) {
+  setTimeout(() => {
+    import('./push.js').then(m => m.subscribeToPushNotifications(subscription.building_id, 'RESIDENT', subscription.id));
+  }, 3000);
   let subData = subscription
   let activeTab = 'PANEL'
   let payments = []
   let reportMode = false
+  let createPassMode = false
   let dataLoaded = false
+  let visitorPasses = []
 
   const fetchData = async () => {
     const { data: latest } = await supabase.from('subscriptions').select('*').eq('id', subData.id).single()
@@ -53,7 +58,71 @@ export async function initResident(container, subscription) {
       .select('*').eq('subscription_id', subData.id)
       .order('payment_date', { ascending: false })
     payments = pays || []
+
+    const { data: vpasses } = await supabase.from('visitor_passes')
+      .select('*').eq('resident_id', subData.id)
+      .order('created_at', { ascending: false })
+    visitorPasses = vpasses || []
+
     dataLoaded = true
+  }
+
+  window.downloadPassTicket = function(passId, visitorName, expectedDate) {
+     const qrContainer = document.getElementById('qr-pass-' + passId)
+     if (!qrContainer) return;
+     const img = qrContainer.querySelector('img')
+     if (!img) return showInlineAlert('QR aún generándose, intenta de nuevo...', false)
+     
+     const canvas = document.createElement('canvas');
+     canvas.width = 600;
+     canvas.height = 900;
+     const ctx = canvas.getContext('2d');
+     
+     // Ticket background
+     ctx.fillStyle = '#1a1a2e';
+     ctx.fillRect(0, 0, canvas.width, canvas.height);
+     ctx.fillStyle = '#16213e';
+     ctx.fillRect(20, 20, canvas.width - 40, canvas.height - 40);
+     
+     // Decorate
+     ctx.fillStyle = '#F5C518';
+     ctx.fillRect(20, 20, canvas.width - 40, 8);
+     
+     ctx.fillStyle = '#ffffff';
+     ctx.font = 'bold 36px sans-serif';
+     ctx.textAlign = 'center';
+     ctx.fillText('PASE DE INVITADO', 300, 100);
+     
+     ctx.font = '24px sans-serif';
+     ctx.fillStyle = '#bbbbbb';
+     ctx.fillText('Sloty Access', 300, 140);
+     
+     // Info
+     ctx.fillStyle = '#F5C518';
+     ctx.font = 'bold 42px sans-serif';
+     ctx.fillText(visitorName.toUpperCase(), 300, 250);
+     
+     ctx.fillStyle = '#ffffff';
+     ctx.font = '28px sans-serif';
+     ctx.fillText(new Date(expectedDate + 'T12:00:00').toLocaleDateString('es-VE', {weekday:'long', month:'long', day:'numeric'}), 300, 310);
+     
+     ctx.fillStyle = '#bbbbbb';
+     ctx.font = '20px sans-serif';
+     ctx.fillText('Destino: Torre ' + (subData.tower||'-') + ' / Apto ' + (subData.apt||'-'), 300, 360);
+     
+     // Dibuja imagen QR
+     ctx.fillStyle = 'white';
+     ctx.fillRect(140, 420, 320, 320);
+     ctx.drawImage(img, 150, 430, 300, 300);
+     
+     ctx.fillStyle = '#bbbbbb';
+     ctx.font = 'bold 18px sans-serif';
+     ctx.fillText('Muestra este código al Guardia al llegar', 300, 800);
+     
+     const link = document.createElement('a');
+     link.download = 'Pase-' + visitorName.replace(/\\s+/g, '') + '.png';
+     link.href = canvas.toDataURL('image/png');
+     link.click();
   }
 
   const showInlineAlert = (msg, ok = true) => {
@@ -265,6 +334,81 @@ export async function initResident(container, subscription) {
             </div>
           </div>
         </div>`
+    } else if (activeTab === 'VISITAS') {
+      contentHtml = `
+        <div style="padding:0 24px;margin-top:20px;">
+          <div style="background:#1a1a2e;border-radius:28px;padding:25px;text-align:center;margin-bottom:20px;">
+            <div style="font-size:0.6rem;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;margin-bottom:5px;">CONTROL DE ACCESOS</div>
+            <div style="font-size:1.8rem;font-weight:900;color:#F5C518;">PASES TEMPORALES</div>
+            <div style="font-size:0.65rem;font-weight:700;color:#ccc;margin-top:8px;">
+              Genera invitaciones rápidas para tus amigos o familiares.
+            </div>
+          </div>
+          
+          <div id="res-inline-alert" style="display:none;padding:12px 16px;border-radius:12px;font-weight:700;font-size:0.8rem;margin-bottom:15px;text-align:center;"></div>
+
+          ${createPassMode ? `
+            <div style="background:white;border-radius:24px;padding:25px;border:1px solid #f0f0f0;margin-bottom:20px;">
+              <div style="font-size:0.7rem;font-weight:900;color:#1a1a2e;text-transform:uppercase;letter-spacing:1px;margin-bottom:20px;">NUEVO PASE</div>
+              <div style="display:grid;gap:14px;">
+                <div>
+                  <label style="font-size:0.6rem;font-weight:800;color:#999;text-transform:uppercase;display:block;margin-bottom:6px;">NOMBRE DEL INVITADO</label>
+                  <input type="text" id="pass-name" placeholder="Ej: Juan Pérez"
+                    style="width:100%;padding:14px;border-radius:14px;border:1.5px solid #e5e7eb;font-family:'Montserrat',sans-serif;font-size:0.85rem;font-weight:700;color:#1a1a2e;outline:none;">
+                </div>
+                <div>
+                  <label style="font-size:0.6rem;font-weight:800;color:#999;text-transform:uppercase;display:block;margin-bottom:6px;">PLACA (OPCIONAL)</label>
+                  <input type="text" id="pass-plate" placeholder="Ej: ABC-123"
+                    style="width:100%;padding:14px;border-radius:14px;border:1.5px solid #e5e7eb;font-family:'Montserrat',sans-serif;font-size:0.85rem;font-weight:700;color:#1a1a2e;outline:none;text-transform:uppercase;">
+                </div>
+                <div>
+                  <label style="font-size:0.6rem;font-weight:800;color:#999;text-transform:uppercase;display:block;margin-bottom:6px;">FECHA DE LA VISITA</label>
+                  <input type="date" id="pass-date" value="${new Date().toISOString().split('T')[0]}" min="${new Date().toISOString().split('T')[0]}"
+                    style="width:100%;padding:14px;border-radius:14px;border:1.5px solid #e5e7eb;font-family:'Montserrat',sans-serif;font-size:0.85rem;font-weight:700;color:#1a1a2e;outline:none;">
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:5px;">
+                  <button id="btn-cancel-pass" style="padding:16px;border-radius:16px;border:none;background:#f4f4f4;color:#666;font-weight:900;font-size:0.75rem;cursor:pointer;">CANCELAR</button>
+                  <button id="btn-submit-pass" style="padding:16px;border-radius:16px;border:none;background:#22c55e;color:white;font-weight:900;font-size:0.75rem;cursor:pointer;letter-spacing:0.5px;">CREAR PASE</button>
+                </div>
+              </div>
+            </div>
+          ` : `
+            <button id="btn-start-pass" style="width:100%;padding:18px;background:white;color:#22c55e;border:2px dashed #22c55e;border-radius:20px;font-weight:900;font-size:0.85rem;cursor:pointer;margin-bottom:20px;letter-spacing:0.5px;">
+              + CREAR INVITACIÓN
+            </button>
+          `}
+
+          <div style="font-size:0.7rem;font-weight:900;color:#1a1a2e;text-transform:uppercase;letter-spacing:1px;margin-bottom:15px;">MIS INVITADOS / PASES</div>
+          <div style="display:grid;gap:15px;padding-bottom:20px;">
+            ${visitorPasses.length === 0 ? '<div style="text-align:center;padding:30px;color:#bbb;font-size:0.8rem;font-weight:700;">Sin pases registrados</div>' :
+              visitorPasses.map(vp => `
+                <div style="background:white;padding:25px;border-radius:24px;border:1px solid #f0f0f0;display:flex;flex-direction:column;align-items:center;box-shadow:0 10px 30px rgba(0,0,0,0.02);position:relative;overflow:hidden;">
+                  <div style="position:absolute;top:15px;right:15px;font-size:0.55rem;font-weight:900;padding:4px 10px;border-radius:20px;
+                    ${vp.is_used ? 'background:#f0f0f0;color:#999' : 'background:#e0f2fe;color:#0284c7'}">
+                    ${vp.is_used ? 'UTILIZADO ✓' : 'VÁLIDO'}
+                  </div>
+                  <div style="font-weight:900;font-size:1.4rem;color:#1a1a2e;text-align:center;margin-top:10px;">${vp.visitor_name}</div>
+                  <div style="font-size:0.75rem;font-weight:700;color:#999;text-align:center;margin-bottom:15px;">
+                    Para el: ${new Date(vp.expected_date + 'T12:00:00').toLocaleDateString('es-VE', {weekday:'long', day:'2-digit', month:'long'})}
+                  </div>
+                  
+                  <div id="qr-pass-${vp.id}" style="padding:15px;background:#f9f9f9;border-radius:20px;margin-bottom:15px;opacity:${vp.is_used ? '0.3' : '1'};"></div>
+                  
+                  ${vp.is_used ? `
+                    <div style="font-size:0.7rem;color:#999;font-weight:800;">El visitante ya ingresó.</div>
+                  ` : `
+                    <button onclick="downloadPassTicket('${vp.id}', '${vp.visitor_name}', '${vp.expected_date}')"
+                      style="background:#3b82f6;color:white;border:none;padding:12px 20px;border-radius:12px;font-weight:900;font-size:0.7rem;cursor:pointer;display:flex;align-items:center;gap:8px;">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:16px;height:16px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                      ENVIAR POR WHATSAPP (IMAGEN)
+                    </button>
+                    <button id="btn-del-pass-${vp.id}" style="background:none;color:#e63946;border:none;padding:8px;font-weight:700;font-size:0.6rem;margin-top:10px;text-decoration:underline;cursor:pointer;">ELIMINAR PASE</button>
+                  `}
+                </div>
+              `).join('')
+            }
+          </div>
+        </div>`
     }
 
     container.innerHTML = `
@@ -287,6 +431,9 @@ export async function initResident(container, subscription) {
           </button>
           <button class="res-nav-btn" data-tab="PERFIL" style="background:none;border:none;color:${activeTab==='PERFIL'?'#F5C518':'rgba(255,255,255,0.4)'};display:flex;flex-direction:column;align-items:center;gap:4px;font-weight:800;font-size:0.55rem;cursor:pointer;letter-spacing:0.5px;">
             ${SVG.USER}<span>PERFIL</span>
+          </button>
+          <button class="res-nav-btn" data-tab="VISITAS" style="background:none;border:none;color:${activeTab==='VISITAS'?'#F5C518':'rgba(255,255,255,0.4)'};display:flex;flex-direction:column;align-items:center;gap:4px;font-weight:800;font-size:0.55rem;cursor:pointer;letter-spacing:0.5px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg><span>VISITAS</span>
           </button>
         </div>
       </div>`
@@ -399,6 +546,70 @@ export async function initResident(container, subscription) {
           }
         }
       }
+    }
+
+    if (activeTab === 'VISITAS') {
+      const btnStart = document.getElementById('btn-start-pass')
+      if (btnStart) btnStart.onclick = () => { createPassMode = true; render() }
+
+      const btnCancel = document.getElementById('btn-cancel-pass')
+      if (btnCancel) btnCancel.onclick = () => { createPassMode = false; render() }
+
+      const btnSubmit = document.getElementById('btn-submit-pass')
+      if (btnSubmit) {
+        btnSubmit.onclick = async () => {
+          const name = document.getElementById('pass-name').value.trim()
+          const plate = document.getElementById('pass-plate')?.value.trim() || null
+          const date = document.getElementById('pass-date').value
+          
+          if (!name || !date) return showInlineAlert('Completa nombre y fecha', false)
+          
+          btnSubmit.textContent = 'Guardando...'
+          btnSubmit.disabled = true
+          
+          const { error } = await supabase.from('visitor_passes').insert({
+            building_id: subData.building_id,
+            resident_id: subData.id,
+            visitor_name: name,
+            visitor_plate: plate,
+            expected_date: date
+          });
+          
+          if (!error) {
+            createPassMode = false
+            dataLoaded = false
+            render()
+          } else {
+            showInlineAlert('Error de red al crear pase. Intenta de nuevo', false)
+            btnSubmit.textContent = 'CREAR PASE'
+            btnSubmit.disabled = false
+          }
+        }
+      }
+      
+      // Render QRs and listeners
+      setTimeout(() => {
+        visitorPasses.forEach(vp => {
+          const qrEl = document.getElementById('qr-pass-' + vp.id)
+          if (qrEl && typeof QRCode !== 'undefined') {
+            qrEl.innerHTML = ''
+            new QRCode(qrEl, { 
+              text: JSON.stringify({ pass_id: vp.id }), 
+              width: 160, height: 160, colorDark: vp.is_used ? '#999' : '#1a1a2e', colorLight: '#f9f9f9', correctLevel: QRCode.CorrectLevel.H 
+            })
+          }
+          const delBtn = document.getElementById('btn-del-pass-' + vp.id)
+          if (delBtn) {
+            delBtn.onclick = async () => {
+              delBtn.textContent = '...'
+              delBtn.disabled = true
+              await supabase.from('visitor_passes').delete().eq('id', vp.id)
+              dataLoaded = false
+              render()
+            }
+          }
+        })
+      }, 150)
     }
 
     document.getElementById('res-logout').onclick = () => location.reload()

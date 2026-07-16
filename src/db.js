@@ -409,13 +409,13 @@ export const saveClosure = async (closure) => {
     try {
       await supabase.from('guard_shifts').insert({
         building_id:  state.buildingId,
-        guard_name:   closure.guardName  || 'Guardia',
+        guard_name:   closure.guardName || closure.guard || 'Guardia',
         guard_id:     closure.guardId    || null,
         started_at:   closure.startedAt  || new Date().toISOString(),
         ended_at:     new Date().toISOString(),
-        total_cash:   closure.totals?.cash   || 0,
-        total_mobile: closure.totals?.mobile || 0,
-        total_bs:     closure.totals?.bs     || 0,
+        total_cash:   closure.methods?.EFECTIVO_USD || closure.totals?.cash || 0,
+        total_mobile: closure.methods?.PAGO_MOVIL || closure.totals?.mobile || 0,
+        total_bs:     closure.methods?.EFECTIVO_BS || closure.totals?.bs || 0,
         entries:      closure.movements.filter(m => m.type === 'ENTRY').length,
         exits:        closure.movements.filter(m => m.type === 'EXIT').length,
         absences:     closure.absences  || [],

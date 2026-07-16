@@ -923,7 +923,14 @@ export const initAdmin = (container) => {
           .eq('payment_id', p.id)
           .limit(1);
 
-        if (proofs && proofs.length > 0) {
+        if (p.evidence_b64) {
+          proofHtml = `
+            <div style="margin-top:8px;">
+               <div style="font-size:0.55rem; font-weight:800; color:#666; margin-bottom:4px;">EVIDENCIA ADJUNTA (Toque para agrandar)</div>
+               <img src="${p.evidence_b64}" style="width:100%; max-width:180px; border-radius:10px; border:1px solid #eee; object-fit:cover; cursor:pointer;" onclick="const w=window.open('','_blank');w.document.write('<img src=\\'${p.evidence_b64}\\' style=\\'width:100%\\' />');"/>
+            </div>
+          `;
+        } else if (proofs && proofs.length > 0) {
           const { data: urlData } = await supabase.storage
             .from('payment-proofs')
             .createSignedUrl(proofs[0].file_path, 3600);
@@ -1338,6 +1345,87 @@ export const initAdmin = (container) => {
       document.getElementById('expiry-alert-banner')?.remove();
       render();
     },
+    DOWNLOAD_REPORT: async (btn) => {
+      const type = btn.dataset.type;
+      const state = getParkingState();
+      btn.textContent = '...';
+      
+      try {
+        if (type === 'CSV') {
+          const { data: logs } = await supabase.from('access_logs')
+            .select('type, created_at, guard_name, plate, is_resident, custom_price, visitors(resident_name, company, destination, tower, apt)')
+            .eq('building_id', state.buildingId)
+            .order('created_at', { ascending: false })
+            .limit(1000);
+            
+          let csv = 'Fecha,Tipo,Placa,Residente,Monto,Guardia,Torre,Apto\\n';
+          (logs || []).forEach(l => {
+            csv += `"${new Date(l.created_at).toLocaleString()}","${l.type}","${l.plate || ''}","${l.is_resident ? 'SI' : 'NO'}","${l.custom_price||0}","${l.guard_name||''}","${l.visitors?.tower||''}","${l.visitors?.apt||''}"\\n`;
+          });
+          const uri = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+          const link = document.createElement('a');
+          link.href = uri;
+          link.download = `Sloty_Trace_${Date.now()}.csv`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+        } else if (type === 'PDF') {
+          const { data: shifts } = await supabase.from('guard_shifts').select('*').eq('building_id', state.buildingId).order('ended_at', { ascending: false }).limit(50);
+          
+          let shiftHtml = '<table style="width:100%; border-collapse:collapse; margin-top:20px; font-size:12px;">' +
+             '<tr style="background:#1a1a2e; color:white;"><th style="padding:10px; text-align:left;">FECHA DE CIERRE</th><th style="padding:10px; text-align:left;">GUARDIA</th><th style="padding:10px; text-align:left;">DETALLE COBROS (Movimientos)</th><th style="padding:10px; text-align:right;">TOTAL CIERRE</th></tr>';
+             
+          (shifts || []).forEach(s => {
+             const m = s.movements || [];
+             const e = m.filter(x=>x.type==='ENTRY').length;
+             const x = m.filter(x=>x.type==='EXIT').length;
+             const sum = (s.total_cash||0) + (s.total_mobile||0) + (s.total_bs||0);
+             shiftHtml += `<tr style="border-bottom:1px solid #eee;">
+               <td style="padding:10px;">${s.ended_at ? new Date(s.ended_at).toLocaleString() : new Date(s.started_at).toLocaleString()}</td>
+               <td style="padding:10px; font-weight:bold;">${s.guard_name}</td>
+               <td style="padding:10px;">
+                 <div style="font-weight:bold; margin-bottom:4px;">${e} Entradas / ${x} Salidas</div>
+                 <div style="font-size:10px; color:#555;">
+                   USD Efec: $${(s.total_cash||0).toFixed(2)} | BS Efec: $${(s.total_bs||0).toFixed(2)} | PagoMóvil: $${(s.total_mobile||0).toFixed(2)}
+                 </div>
+               </td>
+               <td style="padding:10px; text-align:right;">
+                 <div style="font-weight:bold; font-size:16px; color:#22c55e;">$${sum.toFixed(2)}</div>
+               </td>
+             </tr>`;
+          });
+          shiftHtml += '</table>';
+          
+          const win = window.open('', '_blank');
+          win.document.write(`
+            <html><head><title>Reporte Contable - Sloty</title>
+            <style>body{font-family:'Montserrat', sans-serif; color:#333; padding:40px; margin:0;} @media print{ @page {margin: 1cm;} }</style>
+            </head><body>
+               <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:3px solid #F5C518; padding-bottom:15px; margin-bottom:30px;">
+                  <div>
+                     <h1 style="color:#1a1a2e; margin:0; font-size:24px;">REPORTE CONTABLE</h1>
+                     <div style="color:#666; font-size:14px; margin-top:5px;">Generado el ${new Date().toLocaleString()}</div>
+                  </div>
+                  <h2 style="color:#1a1a2e; text-transform:uppercase; margin:0;">${state.buildingName}</h2>
+               </div>
+               
+               <h3 style="color:#1a1a2e; border-bottom:1px solid #ccc; padding-bottom:5px;">Auditoría de Cierres de Turno (Últimos 50)</h3>
+               ${shiftHtml}
+               
+               <div style="margin-top:50px; font-size:10px; color:#999; text-align:center; border-top:1px dashed #ccc; padding-top:20px;">
+                  Generado automáticamente por el motor analítico de Sloty Access.<br>Este documento sirve para cruzar ingresos manuales reportados contra ingresos calculados por el parqueo temporal.
+               </div>
+               <script>setTimeout(() => { window.print(); }, 500);</script>
+            </body></html>
+          `);
+          win.document.close();
+        }
+      } catch (e) {
+         console.error(e);
+      } finally {
+        btn.textContent = type === 'CSV' ? '↓ CSV' : '↓ REPORTE PDF';
+      }
+    },
     SEARCH_PLATE: async (btn) => {
       const plateInput = document.getElementById('trace-plate-input');
       const plate = plateInput?.value?.trim().toUpperCase();
@@ -1695,9 +1783,44 @@ export const initAdmin = (container) => {
         <div style="font-size:0.55rem;font-weight:700;color:#bbb;margin-top:4px;">${sub}</div>
       </div>`
 
+    // CAJA EN VIVO
+    const liveUsd = movements.filter(m => !m.closed && m.payMethod === 'EFECTIVO_USD').reduce((a,m)=>a+(m.amount||0),0);
+    const liveBs = movements.filter(m => !m.closed && m.payMethod === 'EFECTIVO_BS').reduce((a,m)=>a+(m.amount||0),0);
+    const livePm = movements.filter(m => !m.closed && m.payMethod === 'PAGO_MOVIL').reduce((a,m)=>a+(m.amount||0),0);
+    const liveZelle = movements.filter(m => !m.closed && m.payMethod === 'ZELLE').reduce((a,m)=>a+(m.amount||0),0);
+
+    const liveTotalUsd = liveUsd + livePm + liveZelle; // BS is separate
+
+    const cajaEnVivoHtml = `
+      <div data-action="TAB" data-tab="FINANCE" style="cursor:pointer; background:linear-gradient(135deg, #1a1a2e 0%, #2a2a4e 100%); border-radius:24px; padding:22px; margin-bottom:25px; box-shadow:0 10px 30px rgba(0,0,0,0.15); display:flex; justify-content:space-between; align-items:center; position:relative; overflow:hidden;">
+        <div style="position:absolute; right:-20px; top:-20px; width:120px; height:120px; background:rgba(255,255,255,0.03); border-radius:50%;"></div>
+        <div style="position:absolute; right:40px; bottom:-40px; width:80px; height:80px; background:rgba(34,197,94,0.05); border-radius:50%;"></div>
+        <div style="z-index:1;">
+           <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+             <div style="width:8px; height:8px; background:#22c55e; border-radius:50%; box-shadow:0 0 10px #22c55e; animation:skPulse 1.5s infinite;"></div>
+             <div style="font-size:0.65rem; font-weight:900; color:white; letter-spacing:1px; text-transform:uppercase;">CAJA EN VIVO (Garita)</div>
+           </div>
+           <div style="display:flex; align-items:baseline; gap:10px;">
+             <div style="font-size:2.2rem; font-weight:900; color:#22c55e; line-height:1;">$${liveTotalUsd.toFixed(0)}</div>
+             ${liveBs > 0 ? `<div style="font-size:1rem; font-weight:700; color:#bbb;">+ Bs.${liveBs.toFixed(0)}</div>` : ''}
+           </div>
+           <div style="font-size:0.55rem; font-weight:700; color:rgba(255,255,255,0.5); margin-top:8px; display:flex; gap:10px;">
+             <span>USD: $${liveUsd.toFixed(0)}</span>
+             <span>ZELLE: $${liveZelle.toFixed(0)}</span>
+             <span>P. MÓVIL: $${livePm.toFixed(0)}</span>
+           </div>
+        </div>
+        <div style="background:rgba(255,255,255,0.1); width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; z-index:1;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:20px; height:20px;"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
+      </div>
+    `;
+
     return `
       <div style="padding:20px; padding-bottom:100px; background:#f8f9fa;">
+        ${cajaEnVivoHtml}
         ${alertHtml}
+
 
         <!-- STATS DASHBOARD -->
         <div class="stats-dashboard">
@@ -2345,7 +2468,10 @@ export const initAdmin = (container) => {
       <div style="padding:20px; padding-bottom:100px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
           <h3 style="font-weight:900; margin:0;">HISTORIAL Y REPORTES</h3>
-          <button data-action="DOWNLOAD_CSV" style="background:#1a1a2e; color:#F5C518; border:none; padding:8px 16px; border-radius:10px; font-weight:700; font-size:0.75rem; cursor:pointer;">EXCEL (CSV)</button>
+          <div style="display:flex; gap:8px;">
+            <button data-action="DOWNLOAD_REPORT" data-type="CSV" style="background:#f4f4f4; color:#666; border:none; padding:8px 12px; border-radius:10px; font-weight:900; font-size:0.6rem; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.05);">↓ CSV</button>
+            <button data-action="DOWNLOAD_REPORT" data-type="PDF" style="background:#1a1a2e; color:#F5C518; border:none; padding:8px 12px; border-radius:10px; font-weight:900; font-size:0.65rem; cursor:pointer; box-shadow:0 4px 10px rgba(26,26,46,0.2);">↓ REPORTE PDF</button>
+          </div>
         </div>
 
         <!-- BUSCADOR TRAZABILIDAD -->

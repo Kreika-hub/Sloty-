@@ -100,6 +100,8 @@ export const initGuard = (container, guardName = 'Guardia') => {
     { m:'EFECTIVO_USD', label:'Efectivo $'  },
     { m:'EFECTIVO_BS',  label:'Efectivo Bs' },
     { m:'PAGO_MOVIL',   label:'Pago Móvil'  },
+    { m:'ZELLE',        label:'Zelle'       },
+    { m:'OTRO',         label:'Otro'        }
   ]
   
   const getCatColor = cat => CAT.find(c=>c.cat===cat)?.color || '#1a1a2e'
@@ -146,7 +148,34 @@ export const initGuard = (container, guardName = 'Guardia') => {
           (text) => {
             try {
               const data = JSON.parse(text)
-              if (data.plate && data.slot) {
+              if (data.pass_id) {
+                stopScanner()
+                supabase.from('visitor_passes')
+                  .select('*, subscriptions(tower, apt, resident_name)')
+                  .eq('id', data.pass_id)
+                  .eq('is_used', false)
+                  .single().then(({ data: pass }) => {
+                    if (!pass) {
+                      return showToast("Pase inválido o ya utilizado", "error");
+                    }
+                    window.scannedPassData = pass;
+                    showToast("Pase Válido. Selecciona un puesto libre.", "success");
+                    scannerActive = false;
+                    currentView = 'MAP';
+                    render();
+                    
+                    // Notificar al residente que su invitado llegó
+                    supabase.functions.invoke('send-push', { 
+                      body: { 
+                        building_id: state.buildingId, 
+                        role: 'RESIDENT',
+                        identifier: pass.resident_id,
+                        title: '👋 Tu invitado ha llegado', 
+                        body: El pase de ${pass.visitor_name} fue verificado en la garita. 
+                      } 
+                    });
+                  });
+              } else if (data.plate && data.slot) {
                 stopScanner()
                 state.levels.forEach(lvl => {
                   const sIdx = lvl.slots.findIndex(s => s.label === data.slot)
@@ -260,7 +289,9 @@ export const initGuard = (container, guardName = 'Guardia') => {
       const date = document.getElementById('sub-pay-date')?.value || new Date().toISOString().split('T')[0]
       const method = subPaymentMethod
 
-      if (['PAGO_MOVIL', 'TRANSFERENCIA'].includes(method) && !ref) return showToast('Introduce la referencia', 'error')
+      if (['PAGO_MOVIL', 'TRANSFERENCIA', 'ZELLE', 'OTRO'].includes(method) && !ref) return showToast('Introduce la referencia o detalles del pago', 'error')
+
+      const evidence_b64 = window.subPaymentPhotoBase64 || null;
 
       const { data: existing } = await supabase
         .from('payments')
@@ -282,10 +313,13 @@ export const initGuard = (container, guardName = 'Guardia') => {
          reference: ref,
          status: 'PENDING',
          payment_date: date,
-         bank: bank
+         bank: bank,
+         evidence_b64: evidence_b64
       })
 
-      // IMPORTANTE: NO actualizamos expiry_date aquí. Eso lo hace el admin al aprobar.
+      // IMPORTANTE: NO actualizamos expiry_date aquí.
+      window.subPaymentPhotoBase64 = null;
+
 
       logMovement({
          type: 'MENSUALIDAD',
@@ -370,6 +404,11 @@ export const initGuard = (container, guardName = 'Guardia') => {
           type: 'ENTRY'
         })
       })
+      
+      if (window.scannedPassData) {
+        supabase.from('visitor_passes').update({ is_used: true }).eq('id', window.scannedPassData.id).then(()=>{});
+        window.scannedPassData = null;
+      }
       
       if (timing === 'PRE') {
          const activeTariffs = state.settings?.tariffs?.filter(t => t.active) || [];
@@ -963,18 +1002,35 @@ getExchangeRate().then(bcv => {
         <div style="position:absolute; top:-20px; right:-20px; width:100px; height:100px; background:rgba(34,197,94,0.05); border-radius:50%; pointer-events:none;"></div>
       </div>
 
-        <input type="text" id="entry-plate" placeholder="PLACA" style="width:100%;padding:18px;border:2px solid #eee;border-radius:12px;font-size:1.8rem;font-weight:900;text-align:center;margin-bottom:15px;">
+        ${window.scannedPassData ? `
+          <div style="background:#e0f2fe; border:2px solid #3b82f6; border-radius:16px; padding:15px; margin-bottom:15px;">
+            <div style="font-size:0.6rem; font-weight:900; color:#0284c7; text-transform:uppercase; margin-bottom:4px;">PASE VERIFICADO</div>
+            <div style="font-size:1.1rem; font-weight:900; color:#1a1a2e;">${window.scannedPassData.visitor_name}</div>
+            <div style="font-size:0.75rem; font-weight:700; color:#0284c7;">A Torre ${window.scannedPassData.subscriptions?.tower || '-'} Apto ${window.scannedPassData.subscriptions?.apt || '-'}</div>
+            <button onclick="window.scannedPassData=null; handleAction('BACK_MAP')" style="font-size:0.6rem; margin-top:8px; background:none; border:none; text-decoration:underline; color:#e63946; cursor:pointer;">Cancelar Pase</button>
+          </div>
+        ` : ''}
+
+        <input type="text" id="entry-plate" placeholder="PLACA" value="${window.scannedPassData?.visitor_plate || ''}" style="width:100%;padding:18px;border:2px solid #eee;border-radius:12px;font-size:1.8rem;font-weight:900;text-align:center;margin-bottom:15px;">
         <input type="tel" id="entry-phone" placeholder="WHATSAPP (Opcional)" style="width:100%;padding:14px;border:2px solid #eee;border-radius:12px;margin-bottom:15px;">
         
         <!-- DYNAMIC CUSTOM FIELDS -->
         <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:20px;">
-          ${(state.settings?.customFields || []).map(f => `
+          ${(state.settings?.customFields || []).map(f => {
+            const fid = f.id.toLowerCase();
+            let defVal = '';
+            if (window.scannedPassData) {
+               if (fid === 'nombre' || fid === 'nombre completo') defVal = window.scannedPassData.visitor_name;
+               else if (fid === 'torre' || fid === 'edificio') defVal = window.scannedPassData.subscriptions?.tower || '';
+               else if (fid.includes('apto') || fid.includes('piso')) defVal = window.scannedPassData.subscriptions?.apt || '';
+            }
+            return `
             <div>
               <label style="font-size:0.6rem; font-weight:500; color:#999; margin-left:12px; text-transform:uppercase;">${f.label} *</label>
-              <input type="text" id="custom-${f.id}" placeholder="Ingresar ${f.label.toLowerCase()}" required
+              <input type="text" id="custom-${f.id}" placeholder="Ingresar ${f.label.toLowerCase()}" value="${defVal}" required
                 style="width:100%; padding:14px; border:2px solid #eee; border-radius:12px; font-weight:700;">
             </div>
-          `).join('')}
+          `}).join('')}
         </div>
 
         <div style="grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:20px; display: ${state.settings?.categories?.length ? 'grid' : 'none'};">
@@ -1222,28 +1278,73 @@ getExchangeRate().then(bcv => {
      </div>`
   }
 
-  const renderSubPaymentForm = () => `
+  const renderSubPaymentForm = () => {
+     // Calculo de deuda
+     const exp = new Date(selectedResident.expiry_date || Date.now());
+     let monthsOwed = (new Date() - exp) / (1000 * 60 * 60 * 24 * 30);
+     monthsOwed = monthsOwed > 0 ? Math.ceil(monthsOwed) : 0;
+     const debt = monthsOwed * (selectedResident.custom_price || 0);
+
+     return `
      <div style="padding:20px; padding-bottom:120px;">
         <div style="background:white; border-radius:32px; padding:30px; box-shadow:0 15px 45px rgba(0,0,0,0.1);">
            <h2 style="font-weight:900; color:var(--primary); margin-bottom:5px; text-align:center;">PAGO DE MENSUALIDAD</h2>
            <div style="font-size:0.8rem; font-weight:700; color:#666; text-align:center; margin-bottom:20px;">${selectedResident.resident_name}</div>
 
+           <div style="background:${debt>0?'#FCEBEB':'#EAF3DE'}; padding:15px; border-radius:15px; text-align:center; margin-bottom:20px; border:1.5px solid ${debt>0?'#fca5a5':'#bbf7d0'};">
+             <div style="font-size:0.6rem; font-weight:900; color:${debt>0?'#e63946':'#16a34a'}; text-transform:uppercase;">DEUDA ESTIMADA</div>
+             <div style="font-size:1.8rem; font-weight:950; color:${debt>0?'#e63946':'#16a34a'};">$${debt.toFixed(2)}</div>
+             <div style="font-size:0.65rem; color:${debt>0?'#991b1b':'#166534'}; font-weight:700;">${monthsOwed} Mes(es) Vencido(s)</div>
+           </div>
+
            <div style="margin-bottom:20px;">
-              <label style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:8px; display:block;">MONTO A COBRAR</label>
+              <label style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:8px; display:block;">ABONO A REGISTRAR</label>
               <input id="sub-pay-amount" type="number" step="0.01" value="${subPaymentAmount}" style="width:100%; border:2px solid #eee; border-radius:18px; padding:18px; font-size:1.4rem; font-weight:900; outline:none; font-family:'Montserrat';">
            </div>
 
            <div style="margin-bottom:20px;">
               <label style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:8px; display:block;">MÉTODO DE PAGO</label>
-              <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px;">
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
                  ${PAY.map(p => `<button data-action="SET_SUB_METHOD" data-method="${p.m}" style="padding:10px; border-radius:10px; border:2px solid ${subPaymentMethod === p.m ? '#1a1a2e' : '#eee'}; background:${subPaymentMethod === p.m ? '#1a1a2e' : 'white'}; color:${subPaymentMethod === p.m ? 'white' : '#1a1a2e'}; font-size:0.65rem; font-weight:900;">${p.label}</button>`).join('')}
               </div>
            </div>
 
-           ${subPaymentMethod === 'PAGO_MOVIL' ? `
+           ${['PAGO_MOVIL', 'ZELLE', 'OTRO'].includes(subPaymentMethod) ? `
               <div style="margin-bottom:20px;">
-                 <label style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:8px; display:block;">REFERENCIA (Últimos 4-6)</label>
-                 <input id="sub-pay-ref" type="text" placeholder="Ej: 4522" style="width:100%; border:2px solid #eee; border-radius:18px; padding:18px; font-size:1.4rem; font-weight:900; outline:none; font-family:'Montserrat';"></div><div style="background:rgba(245,197,24,0.1); border:1.5px solid #F5C518; border-radius:14px; padding:12px; font-size:0.65rem; color:#D97706; font-weight:700; margin-top:12px; line-height:1.3; text-align:left;">⚠️ Nota: Recuerda colocar el valor equivalente en Bolívares (Bs.)</div><div style="display:none;"
+                 <label style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:8px; display:block;">REFERENCIA ${subPaymentMethod==='OTRO'?'/ ESPECIFICAR':''}</label>
+                 <input id="sub-pay-ref" type="text" placeholder="Ej: 4522..." style="width:100%; border:2px solid #eee; border-radius:18px; padding:18px; font-size:1.4rem; font-weight:900; outline:none; font-family:'Montserrat';">
+                 
+                 <div style="margin-top:15px;">
+                    <label style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:10px; display:block;">EVIDENCIA FOTOGRÁFICA</label>
+                    <input type="file" id="sub-pay-photo" accept="image/*" capture="environment" style="display:none;" onchange="
+                        const f = this.files[0];
+                        if(!f) return;
+                        const reader = new FileReader();
+                        reader.onload = e => {
+                           const img = new Image();
+                           img.onload = () => {
+                              const canvas = document.createElement('canvas');
+                              const max = 500;
+                              let w = img.width; let h = img.height;
+                              if (w > h) { if (w > max) { h *= max / w; w = max; } }
+                              else { if (h > max) { w *= max / h; h = max; } }
+                              canvas.width = w; canvas.height = h;
+                              const ctx = canvas.getContext('2d');
+                              ctx.drawImage(img, 0, 0, w, h);
+                              window.subPaymentPhotoBase64 = canvas.toDataURL('image/jpeg', 0.6);
+                              document.getElementById('sub-photo-preview').src = window.subPaymentPhotoBase64;
+                              document.getElementById('sub-photo-preview').style.display = 'block';
+                           };
+                           img.src = e.target.result;
+                        };
+                        reader.readAsDataURL(f);
+                    ">
+                    <button onclick="document.getElementById('sub-pay-photo').click()" style="background:#f4f4f4; color:#666; border:2px dashed #ccc; border-radius:14px; width:100%; padding:15px; font-weight:900; cursor:pointer;">
+                      📷 ADJUNTAR CAPTURA / FOTO
+                    </button>
+                    <img id="sub-photo-preview" style="display:none; width:100%; object-fit:cover; border-radius:14px; margin-top:10px; max-height:200px; border:2px solid #eee;">
+                 </div>
+              </div>
               </div>
            ` : ''}
 
@@ -1253,6 +1354,7 @@ getExchangeRate().then(bcv => {
         </div>
      </div>
   `
+}
 
   const renderClosureSummary = () => {
     const openMovs = state.movements.filter(m => !m.closed && m.guardName === guardName)
