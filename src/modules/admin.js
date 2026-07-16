@@ -2413,7 +2413,7 @@ export const initAdmin = (container) => {
       case 'SUBS': html = await renderMonthlySystem(state); break
       case 'PERSONAL': html = renderPersonnel(state); break
       case 'STRUCTURE': html = renderLevels(state); break
-      case 'REPORTES': html = renderReports(state); break
+      case 'REPORTES': html = await renderReports(state); break
       case 'FINANCE': html = await renderFinanceSummary(state); break
       case 'SETTINGS': html = renderSettings(state); break
       case 'NOTIFICATIONS': html = renderNotifications(state); break
