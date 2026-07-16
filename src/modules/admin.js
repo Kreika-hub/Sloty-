@@ -1349,29 +1349,29 @@ export const initAdmin = (container) => {
             <!-- LOGO CENTERED VERTICAL -->
             <div data-action="TAB" data-tab="HOME" style="position:absolute; left:50%; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:2px; cursor:pointer; z-index:5;">
               <div style="display:flex; align-items:center; gap:8px;">
-                <img src="/icons/Sloty logo negro.png" style="height:55px; filter:brightness(0) invert(1); object-fit:contain; transform:translateY(2px);" onerror="this.style.display='none'">
-                ${sState.logo_url ? `<img src="${sState.logo_url}" style="height:35px; width:auto; max-width:55px; border-radius:6px; object-fit:contain;">` : ''}
+                <img src="/icons/Sloty logo negro.png" style="height:70px; filter:brightness(0) invert(1); object-fit:contain; transform:translateY(2px);" onerror="this.style.display='none'">
+                ${sState.logo_url ? `<img src="${sState.logo_url}" style="height:45px; width:auto; max-width:70px; border-radius:6px; object-fit:contain;">` : ''}
               </div>
-              <div style="font-size:0.55rem; font-weight:900; color:var(--accent); letter-spacing:1.5px; text-transform:uppercase; margin-top:2px;">${isHome ? 'PANEL PRINCIPAL' : titles[activeTab].toUpperCase()}</div>
+              <div style="font-size:0.75rem; font-weight:900; color:var(--accent); letter-spacing:1.5px; text-transform:uppercase; margin-top:2px;">${isHome ? 'PANEL PRINCIPAL' : titles[activeTab].toUpperCase()}</div>
             </div>
 
             <!-- RIGHT ACTIONS -->
             <div style="display:flex; align-items:center; gap:12px; z-index:10; padding-top:6px;">
               <button data-action="SYNC" style="background:none; border:none; cursor:pointer; color:rgba(255,255,255,0.6); width:32px; height:32px; display:flex; align-items:center; justify-content:center; padding:0; transition:transform 0.5s;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:18px; height:18px;"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:16px; height:16px;"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
               </button>
-              <button data-action="TAB" data-tab="NOTIFICATIONS" style="position:relative; cursor:pointer; color:white; width:32px; height:32px; background:none; border:none; padding:0; display:flex; align-items:center; justify-content:center;">
-                ${ICONS.BELL}
-                ${unread ? `<div style="position:absolute; top:2px; right:2px; width:8px; height:8px; background:#e63946; border-radius:50%; border:2px solid #1a1a2e;"></div>` : ''}
+              <button data-action="TAB" data-tab="NOTIFICATIONS" style="position:relative; cursor:pointer; color:${unread ? '#F5C518' : 'white'}; width:32px; height:32px; background:none; border:none; padding:0; display:flex; align-items:center; justify-content:center;">
+                <div style="transform: scale(0.85); display:flex;">${ICONS.BELL}</div>
+                ${unread ? `<div style="position:absolute; top:4px; right:4px; width:8px; height:8px; background:#e63946; border-radius:50%; border:2px solid #1a1a2e;"></div>` : ''}
               </button>
               <button data-action="LOGOUT" style="background:none; border:none; cursor:pointer; color:rgba(255,255,255,0.6); width:32px; height:32px; display:flex; align-items:center; justify-content:center; padding:0;">
-                ${ICONS.LOGOUT}
+                <div style="transform: scale(0.85); display:flex;">${ICONS.LOGOUT}</div>
               </button>
             </div>
           </div>
 
           <!-- BOTTOM ROW: Status Badges Escalonados -->
-          <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:8px; margin-top:10px;">
+          <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:18px; margin-top:20px;">
              ${(() => {
                const plan = getParkingState().plan || 'TRIAL'
                const planColors = { TRIAL:'#888', BRONCE:'#cd7f32', PLATA:'#aaa', ORO:'#F5C518' }
@@ -1380,7 +1380,7 @@ export const initAdmin = (container) => {
                  upgradeBtn = `<button data-action="SHOW_PLANS" class="gold-btn" style="padding:4px 10px; flex-shrink:0;"><span>🚀 UPGRADE</span></button>`
                }
                return `
-                 <div style="font-size:0.5rem; font-weight:900; color:${planColors[plan] || '#888'}; letter-spacing:0.5px; background:rgba(255,255,255,0.1); padding:4px 10px; border-radius:10px; flex-shrink:0;">PLAN ${plan}</div>
+                 <div style="font-size:0.55rem; font-weight:900; color:${planColors[plan] || '#888'}; letter-spacing:0.5px; background:rgba(255,255,255,0.1); padding:4px 10px; border-radius:10px; flex-shrink:0;">PLAN ${plan}</div>
                  ${upgradeBtn}
                `
              })()}
