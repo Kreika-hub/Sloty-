@@ -1336,55 +1336,57 @@ export const initAdmin = (container) => {
     header.innerHTML = `
       ${trialBanner}
       <div style="background:#1a1a2e; padding:calc(env(safe-area-inset-top, 0px) + 15px) 20px 20px; color:white; position:sticky; top:0; z-index:1100; box-shadow:0 10px 30px rgba(0,0,0,0.2); box-sizing:border-box; width:100%;">
-        <!-- HEADER STRUCTURE WITH CENTERED LOGO ESCALONADO -->
-        <div style="display:flex; flex-direction:column; align-items:center; gap:16px;">
-          <!-- TOP ROW: Actions Only -->
-          <div style="display:flex; justify-content:space-between; align-items:flex-start; width:100%;">
-            <div style="display:flex; align-items:center;">
-              ${!isHome ? `<div data-action="TAB" data-tab="HOME" style="cursor:pointer; color:white; width:28px; height:28px; display:flex; align-items:center; justify-content:center;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" style="width:22px; height:22px; transform:translateX(-2px);"><path d="m15 18-6-6 6-6"/></svg>
-              </div>` : '<div style="width:28px;"></div>'}
+        <!-- HEADER STRUCTURE COMPACT -->
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <!-- TOP ROW: LOGO + ACTIONS -->
+          <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+            <!-- LOGO AREA (LEFT) -->
+            <div data-action="TAB" data-tab="HOME" style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+              ${!isHome ? `<div style="color:white; width:28px; height:28px; display:flex; align-items:center; justify-content:center;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" style="width:22px; height:22px; transform:translateX(-4px);"><path d="m15 18-6-6 6-6"/></svg>
+              </div>` : ''}
+              <div style="display:flex; align-items:center; gap:8px;">
+                <img src="/icons/Sloty logo negro.png" style="height:45px; filter:brightness(0) invert(1); object-fit:contain;" onerror="this.style.display='none'">
+                ${sState.logo_url ? `<img src="${sState.logo_url}" style="height:32px; width:auto; max-width:60px; border-radius:6px; object-fit:contain;">` : ''}
+              </div>
             </div>
-            
+
             <!-- RIGHT ACTIONS -->
             <div style="display:flex; align-items:center; gap:12px;">
-              <button data-action="SYNC" style="background:none; border:none; cursor:pointer; color:rgba(255,255,255,0.6); width:32px; height:32px; display:flex; align-items:center; justify-content:center; padding:0; transition:transform 0.5s;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:16px; height:16px;"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+              <button data-action="SYNC" style="background:none; border:none; cursor:pointer; color:rgba(255,255,255,0.6); padding:0; display:flex; align-items:center; justify-content:center; transition:transform 0.5s;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:20px; height:20px;"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
               </button>
-              <button data-action="TAB" data-tab="NOTIFICATIONS" style="position:relative; cursor:pointer; color:${unread ? '#F5C518' : 'white'}; width:32px; height:32px; background:none; border:none; padding:0; display:flex; align-items:center; justify-content:center;">
-                <div style="transform: scale(0.85); display:flex;">${ICONS.BELL}</div>
-                ${unread ? `<div style="position:absolute; top:4px; right:4px; width:8px; height:8px; background:#e63946; border-radius:50%; border:2px solid #1a1a2e;"></div>` : ''}
+              <button data-action="TAB" data-tab="NOTIFICATIONS" style="position:relative; cursor:pointer; color:${unread ? '#F5C518' : 'white'}; background:none; border:none; padding:0; display:flex; align-items:center; justify-content:center;">
+                <div style="transform: scale(0.95); display:flex;">${ICONS.BELL}</div>
+                ${unread ? `<div style="position:absolute; top:-2px; right:-2px; width:8px; height:8px; background:#e63946; border-radius:50%; border:2px solid #1a1a2e;"></div>` : ''}
               </button>
-              <button data-action="LOGOUT" style="background:none; border:none; cursor:pointer; color:rgba(255,255,255,0.6); width:32px; height:32px; display:flex; align-items:center; justify-content:center; padding:0;">
-                <div style="transform: scale(0.85); display:flex;">${ICONS.LOGOUT}</div>
+              <button data-action="LOGOUT" style="background:none; border:none; cursor:pointer; color:rgba(255,255,255,0.6); padding:0; display:flex; align-items:center; justify-content:center;">
+                <div style="transform: scale(0.95); display:flex;">${ICONS.LOGOUT}</div>
               </button>
             </div>
           </div>
 
-          <!-- LOGO AND TITLE -->
-          <div data-action="TAB" data-tab="HOME" style="display:flex; flex-direction:column; align-items:center; gap:6px; cursor:pointer;">
+          <!-- BOTTOM ROW: TITLE AND TAGS -->
+          <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+            <div style="font-size:0.75rem; font-weight:900; color:var(--accent); letter-spacing:1px; text-transform:uppercase;">
+              ${isHome ? 'PANEL PRINCIPAL' : titles[activeTab].toUpperCase()}
+            </div>
+            
             <div style="display:flex; align-items:center; gap:8px;">
-              <img src="/icons/Sloty logo negro.png" style="height:70px; filter:brightness(0) invert(1); object-fit:contain;" onerror="this.style.display='none'">
-              ${sState.logo_url ? `<img src="${sState.logo_url}" style="height:45px; width:auto; max-width:70px; border-radius:6px; object-fit:contain;">` : ''}
+              ${(() => {
+                const plan = getParkingState().plan || 'TRIAL'
+                const planColors = { TRIAL:'#888', BRONCE:'#cd7f32', PLATA:'#aaa', ORO:'#F5C518' }
+                let upgradeBtn = ''
+                if (plan !== 'ORO') {
+                  upgradeBtn = `<button data-action="SHOW_PLANS" class="gold-btn" style="padding:4px 10px; flex-shrink:0;"><span>🚀 UPGRADE</span></button>`
+                }
+                return `
+                  <div style="font-size:0.55rem; font-weight:900; color:${planColors[plan] || '#888'}; letter-spacing:0.5px; background:rgba(255,255,255,0.1); padding:4px 10px; border-radius:8px; flex-shrink:0;">PLAN ${plan}</div>
+                  ${upgradeBtn}
+                `
+              })()}
+              ${metricHtml ? `<div style="flex-shrink:0; margin-left:4px;">${metricHtml}</div>` : ''}
             </div>
-            <div style="font-size:0.75rem; font-weight:900; color:var(--accent); letter-spacing:1.5px; text-transform:uppercase;">${isHome ? 'PANEL PRINCIPAL' : titles[activeTab].toUpperCase()}</div>
-          </div>
-
-          <!-- BOTTOM ROW: Status Badges -->
-          <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:18px;">
-             ${(() => {
-               const plan = getParkingState().plan || 'TRIAL'
-               const planColors = { TRIAL:'#888', BRONCE:'#cd7f32', PLATA:'#aaa', ORO:'#F5C518' }
-               let upgradeBtn = ''
-               if (plan !== 'ORO') {
-                 upgradeBtn = `<button data-action="SHOW_PLANS" class="gold-btn" style="padding:4px 12px; flex-shrink:0;"><span>🚀 UPGRADE</span></button>`
-               }
-               return `
-                 <div style="font-size:0.55rem; font-weight:900; color:${planColors[plan] || '#888'}; letter-spacing:0.5px; background:rgba(255,255,255,0.1); padding:4px 12px; border-radius:10px; flex-shrink:0;">PLAN ${plan}</div>
-                 ${upgradeBtn}
-               `
-             })()}
-             ${metricHtml ? `<div style="flex-shrink:0;">${metricHtml}</div>` : ''}
           </div>
         </div>
 
