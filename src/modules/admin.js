@@ -326,8 +326,7 @@ export const initAdmin = (container) => {
            phone: g.phone,
            shift: g.shift,
            photo: g.photo || null,
-           pin: g.pin || null,
-           last_active: new Date().toISOString()
+           pin: g.pin || null
         }, { onConflict: 'id' });
 
         if (error) throw error;
@@ -1322,9 +1321,9 @@ export const initAdmin = (container) => {
           if(badge) badge.innerHTML = `<span>${count || 0} RESIDENTES</span>`
         })
     } else if (activeTab === 'HOME') {
-      metricHtml = `<div class="header-status"><span>ADMIN</span></div>`
+      metricHtml = ``
     } else {
-      metricHtml = `<div class="header-status"><span>ACTIVO</span></div>`
+      metricHtml = ``
     }
 
     const titles = { STRUCTURE:'Pisos', SUBS:'Mensuales', FINANCE:'Caja', PERSONAL:'Personal', REPORTES:'Reportes', SETTINGS:'Auditoría', NOTIFICATIONS:'Notificaciones', PROFILE:'Perfil' }
@@ -1337,24 +1336,27 @@ export const initAdmin = (container) => {
     header.innerHTML = `
       ${trialBanner}
       <div style="background:#1a1a2e; padding:calc(env(safe-area-inset-top, 0px) + 15px) 20px 20px; color:white; position:sticky; top:0; z-index:1100; box-shadow:0 10px 30px rgba(0,0,0,0.2); box-sizing:border-box; width:100%;">
-        <!-- HEADER STRUCTURE WITH CENTERED LOGO -->
-        <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:${isHome ? '15px' : '0'};">
+        <!-- HEADER STRUCTURE WITH CENTERED LOGO ESCALONADO -->
+        <div style="display:flex; flex-direction:column; align-items:center; gap:8px;">
           <!-- TOP ROW: Action icons and Centered Logo -->
-          <div style="display:flex; justify-content:space-between; align-items:center; position:relative; min-height:45px;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; position:relative; width:100%; min-height:45px; margin-bottom:5px;">
             <div style="display:flex; align-items:center; z-index:10;">
               ${!isHome ? `<div data-action="TAB" data-tab="HOME" style="cursor:pointer; color:white; width:28px; height:28px; display:flex; align-items:center; justify-content:center;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" style="width:22px; height:22px; transform:translateX(-2px);"><path d="m15 18-6-6 6-6"/></svg>
               </div>` : '<div style="width:28px;"></div>'}
             </div>
             
-            <!-- LOGO CENTERED -->
-            <div data-action="TAB" data-tab="HOME" style="position:absolute; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:8px; cursor:pointer; z-index:5;">
-              <img src="/icons/Sloty logo negro.png" style="height:70px; filter:brightness(0) invert(1); object-fit:contain; transform:translateY(2px);" onerror="this.style.display='none'">
-              ${sState.logo_url ? `<img src="${sState.logo_url}" style="height:35px; width:auto; max-width:70px; border-radius:6px; object-fit:contain;">` : ''}
+            <!-- LOGO CENTERED VERTICAL -->
+            <div data-action="TAB" data-tab="HOME" style="position:absolute; left:50%; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:2px; cursor:pointer; z-index:5;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <img src="/icons/Sloty logo negro.png" style="height:55px; filter:brightness(0) invert(1); object-fit:contain; transform:translateY(2px);" onerror="this.style.display='none'">
+                ${sState.logo_url ? `<img src="${sState.logo_url}" style="height:35px; width:auto; max-width:55px; border-radius:6px; object-fit:contain;">` : ''}
+              </div>
+              <div style="font-size:0.55rem; font-weight:900; color:var(--accent); letter-spacing:1.5px; text-transform:uppercase; margin-top:2px;">${isHome ? 'PANEL PRINCIPAL' : titles[activeTab].toUpperCase()}</div>
             </div>
 
             <!-- RIGHT ACTIONS -->
-            <div style="display:flex; align-items:center; gap:12px; z-index:10;">
+            <div style="display:flex; align-items:center; gap:12px; z-index:10; padding-top:6px;">
               <button data-action="SYNC" style="background:none; border:none; cursor:pointer; color:rgba(255,255,255,0.6); width:32px; height:32px; display:flex; align-items:center; justify-content:center; padding:0; transition:transform 0.5s;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:18px; height:18px;"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
               </button>
@@ -1368,28 +1370,21 @@ export const initAdmin = (container) => {
             </div>
           </div>
 
-          <!-- BOTTOM ROW: Status Badges -->
-          <div style="display:flex; align-items:center; justify-content:space-between;">
-            <div style="display:flex; align-items:center; gap:6px; overflow-x:auto; padding-bottom:4px; max-width:80%;" class="hide-scrollbar">
-               <div style="font-size:0.55rem; font-weight:800; color:rgba(255,255,255,0.7); letter-spacing:1px; text-transform:uppercase; white-space:nowrap; margin-right:4px;">${isHome ? 'PANEL PRINCIPAL' : titles[activeTab].toUpperCase()}</div>
-               <div style="display:flex; align-items:center; gap:4px; background:rgba(34,197,94,0.1); padding:3px 8px; border-radius:8px; border:1px solid rgba(34,197,94,0.2); flex-shrink:0;">
-                  <div style="width:4px; height:4px; background:#22c55e; border-radius:50%; animation: pulse 2s infinite;"></div>
-                  <div style="font-size:0.45rem; font-weight:900; color:#22c55e; letter-spacing:0.5px;">LIVE</div>
-               </div>
-               ${(() => {
-                 const plan = getParkingState().plan || 'TRIAL'
-                 const planColors = { TRIAL:'#888', BRONCE:'#cd7f32', PLATA:'#aaa', ORO:'#F5C518' }
-                 let upgradeBtn = ''
-                 if (plan !== 'ORO') {
-                   upgradeBtn = `<button data-action="SHOW_PLANS" class="gold-btn" style="margin-left:6px; padding:3px 8px; flex-shrink:0;"><span>🚀 UPGRADE</span></button>`
-                 }
-                 return `
-                   <div style="font-size:0.45rem; font-weight:900; color:${planColors[plan] || '#888'}; letter-spacing:0.5px; background:rgba(255,255,255,0.1); padding:3px 8px; border-radius:8px; flex-shrink:0;">${plan}</div>
-                   ${upgradeBtn}
-                 `
-               })()}
-            </div>
-            <div style="flex-shrink:0;">${metricHtml}</div>
+          <!-- BOTTOM ROW: Status Badges Escalonados -->
+          <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:8px; margin-top:10px;">
+             ${(() => {
+               const plan = getParkingState().plan || 'TRIAL'
+               const planColors = { TRIAL:'#888', BRONCE:'#cd7f32', PLATA:'#aaa', ORO:'#F5C518' }
+               let upgradeBtn = ''
+               if (plan !== 'ORO') {
+                 upgradeBtn = `<button data-action="SHOW_PLANS" class="gold-btn" style="padding:4px 10px; flex-shrink:0;"><span>🚀 UPGRADE</span></button>`
+               }
+               return `
+                 <div style="font-size:0.5rem; font-weight:900; color:${planColors[plan] || '#888'}; letter-spacing:0.5px; background:rgba(255,255,255,0.1); padding:4px 10px; border-radius:10px; flex-shrink:0;">PLAN ${plan}</div>
+                 ${upgradeBtn}
+               `
+             })()}
+             ${metricHtml ? `<div style="flex-shrink:0;">${metricHtml}</div>` : ''}
           </div>
         </div>
 
@@ -2702,8 +2697,8 @@ export const initAdmin = (container) => {
                    <button data-action="GEN_CREDENTIAL" data-id="${r.id}" style="background:#f4f4f4; border:none; width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#666;">
                       <div style="width:18px; height:18px;">${ICONS.CARD}</div>
                    </button>
-                   <button data-action="SEND_RESIDENT_ACCESS" data-id="${r.id}" data-phone="${r.phone}" data-plate="${r.plate}" style="background:#22c55e; border:none; width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:white; font-weight:900; font-size:1.1rem;">
-                      <img src="/icons/whatsapp-svgrepo-com.svg" style="width:22px; height:22px;"/>
+                   <button data-action="SEND_RESIDENT_ACCESS" data-id="${r.id}" data-phone="${r.phone}" data-plate="${r.plate}" style="background:none; border:none; padding:0; width:38px; height:38px; display:flex; align-items:center; justify-content:center; cursor:pointer;" title="Enviar Acceso">
+                      <img src="/icons/whatsapp-svgrepo-com.svg" style="width:28px; height:28px; filter:drop-shadow(0 2px 4px rgba(34,197,94,0.3));"/>
                    </button>
                    <button data-action="DELETE_RESIDENT" data-id="${r.id}" style="background:#fff0f0; border:none; width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#e63946;">
                       <div style="width:18px; height:18px;">${ICONS.TRASH}</div>
@@ -2788,7 +2783,9 @@ export const initAdmin = (container) => {
                    Vence: ${exp.toLocaleDateString()} ${isExpired ? '<span style="background:#fee2e2; color:#ef4444; padding:2px 6px; border-radius:6px; margin-left:5px;">VENCIDO</span>' : ''}
                 </div>
                 <div style="display:flex; gap:8px;">
-                   <button data-action="SEND_DEBT_WS" data-id="${r.id}" data-name="${r.resident_name}" data-debt="${pending}" data-phone="${r.phone}" style="background:#22c55e; color:white; border:none; width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer;"><img src="/icons/whatsapp-svgrepo-com.svg" style="width:22px; height:22px;"/></button>
+                   <button data-action="SEND_DEBT_WS" data-id="${r.id}" data-name="${r.resident_name}" data-debt="${pending}" data-phone="${r.phone}" style="background:none; border:none; padding:0; width:38px; height:38px; display:flex; align-items:center; justify-content:center; cursor:pointer;" title="Notificar Deuda">
+                      <img src="/icons/whatsapp-svgrepo-com.svg" style="width:28px; height:28px; filter:drop-shadow(0 2px 4px rgba(34,197,94,0.3));"/>
+                   </button>
                    <button data-action="SHOW_RESIDENT_HISTORY" data-id="${r.id}" data-name="${r.resident_name}" style="background:#f4f4f4; color:#666; border:none; width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer;" title="Historial"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg></button>
                    <button data-action="SHOW_ABONO_FORM" data-id="${r.id}" data-name="${r.resident_name}" data-price="${r.custom_price}" style="background:#1a1a2e; color:var(--accent); border:none; padding:0 15px; border-radius:12px; font-weight:900; font-size:0.65rem; cursor:pointer;">REGISTRAR</button>
                 </div>
