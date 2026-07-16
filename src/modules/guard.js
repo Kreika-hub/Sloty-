@@ -1548,12 +1548,48 @@ getExchangeRate().then(bcv => {
            window.cachedVisitor = null;
            const resultList = await searchVisitorByPlate(plate);
            const found = resultList && resultList.length > 0 ? resultList[0] : null;
-           if (!found) return
-            <div style="font-size:0.7rem;opacity:0.7;">${found.visit_count} visitas anteriores · ${found.r_visits_to || ''}</div>
-          </div>
-          <div style="font-size:1.5rem;">✓</div>
-        `
-        plateEl.parentNode.insertBefore(banner, plateEl.nextSibling)
+           if (!found) return;
+           
+           window.cachedVisitor = found;
+
+           const banner = document.createElement('div');
+           banner.id = 'visitor-freq-banner';
+           banner.style.cssText = 'background:linear-gradient(135deg, #1a1a2e, #16213e); color:white; padding:12px; border-radius:12px; margin-top:8px; display:flex; justify-content:space-between; align-items:center; border:1px solid #F5C518;';
+           banner.innerHTML = `
+             <div>
+               <div style="color:#F5C518;font-size:0.6rem;font-weight:900;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">⭐ VISITANTE FRECUENTE</div>
+               <div style="font-size:1rem;font-weight:900;">${found.name || found.company}</div>
+               <div style="font-size:0.7rem;opacity:0.7;">${found.visit_count || 1} visitas anteriores · ${found.r_visits_to || ''}</div>
+             </div>
+             <div style="display:flex; gap:8px;">
+                <button id="btn-use-freq" style="background:#22c55e; color:white; border:none; padding:8px 12px; border-radius:8px; font-weight:900; font-size:0.7rem; cursor:pointer;">SÍ, MISMO DESTINO</button>
+                <button id="btn-edit-freq" style="background:#444; color:white; border:none; padding:8px 12px; border-radius:8px; font-weight:900; font-size:0.7rem; cursor:pointer;">EDITAR</button>
+             </div>
+           `;
+           plateEl.parentNode.insertBefore(banner, plateEl.nextSibling);
+
+           setTimeout(() => {
+              document.getElementById('btn-use-freq').onclick = () => {
+                 document.getElementById('movement-name').value = found.name || '';
+                 document.getElementById('movement-company').value = found.company || '';
+                 document.getElementById('movement-ci').value = found.ci || '';
+                 
+                 const fields = found.last_custom_fields || {};
+                 if (fields['torre'] && document.getElementById('cf-torre')) document.getElementById('cf-torre').value = fields['torre'];
+                 if (fields['piso'] && document.getElementById('cf-piso')) document.getElementById('cf-piso').value = fields['piso'];
+                 if (fields['apartamento'] && document.getElementById('cf-apartamento')) document.getElementById('cf-apartamento').value = fields['apartamento'];
+                 if (fields['destino_final'] && document.getElementById('cf-destino_final')) document.getElementById('cf-destino_final').value = fields['destino_final'];
+                 
+                 banner.remove();
+                 document.querySelector('.cat-chip[data-cat="VISITA"]')?.click();
+              };
+              document.getElementById('btn-edit-freq').onclick = () => {
+                 document.getElementById('movement-name').value = found.name || '';
+                 document.getElementById('movement-ci').value = found.ci || '';
+                 banner.remove();
+                 document.querySelector('.cat-chip[data-cat="VISITA"]')?.click();
+              };
+           }, 0);
         }
       }
     }

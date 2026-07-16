@@ -1,7 +1,8 @@
-const fs = require('fs');
+import fs from 'fs';
+
 let code = fs.readFileSync('c:/Users/HP/Desktop/Sloty/Sloty-/src/modules/guard.js', 'utf8');
 
-const target = `           window.cachedVisitor = null;
+const target1 = `           window.cachedVisitor = null;
            const resultList = await searchVisitorByPlate(plate);
            const found = resultList && resultList.length > 0 ? resultList[0] : null;
            if (!found) return
@@ -73,10 +74,14 @@ const replacement = `           window.cachedVisitor = null;
            plateEl.parentNode.insertBefore(banner, plateEl.nextSibling)
          }`;
 
-code = code.replace(target, replacement);
+if (code.includes('if (!found) return\n            <div style="font-size:0.7rem')) {
+    code = code.replace(target1, replacement);
+}
 
-// Alternative try if exact whitespace matching fails
-code = code.replace(/window\.cachedVisitor = null;[\s\S]*?plateEl\.parentNode\.insertBefore\(banner, plateEl\.nextSibling\)\n\s*\}/m, replacement);
+// Fallback search
+if (!code.includes('background:#F5C518') && code.includes('const found = resultList && resultList.length > 0')) {
+    code = code.replace(/window\.cachedVisitor = null;[\s\S]*?plateEl\.parentNode\.insertBefore\(banner, plateEl\.nextSibling\)\n\s*\}/, replacement);
+}
 
 fs.writeFileSync('c:/Users/HP/Desktop/Sloty/Sloty-/src/modules/guard.js', code, 'utf8');
-console.log('Fixed guard.js!');
+console.log('Fixed guard.js syntax seamlessly!');

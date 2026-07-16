@@ -1128,7 +1128,8 @@ export const initAdmin = (container) => {
       }
       render()
     },
-    VIEW_GUARD_DETAIL: async (guardName) => {
+    VIEW_GUARD_DETAIL: async (btn) => {
+      const guardName = btn.dataset.guard;
       const { data: gShifts } = await supabase
         .from('guard_shifts')
         .select('*')
@@ -1136,11 +1137,19 @@ export const initAdmin = (container) => {
         .eq('guard_name', guardName)
         .order('ended_at', { ascending: false });
 
+      const { data: incs } = await supabase
+        .from('incidents')
+        .select('type,description,resolved,created_at')
+        .eq('building_id', state.buildingId)
+        .eq('guard_name', guardName);
+
       const shifts = gShifts || [];
       const totalEarned = shifts.reduce((a, s) => a + (s.total_cash||0) + (s.total_mobile||0) + (s.total_bs||0), 0);
       const totalEntries = shifts.reduce((a, s) => a + (s.entries||0), 0);
       const totalExits = shifts.reduce((a, s) => a + (s.exits||0), 0);
       const totalAbsMin = shifts.reduce((a, s) => a + (s.absences||[]).reduce((b, ab) => b + (ab.duration_min||0), 0), 0);
+      
+      const totalIncidents = (incs||[]).length;
 
       const html = `
         <div style="padding:20px; padding-bottom:120px; background:#f8f9fa; min-height:100vh;">
@@ -1171,6 +1180,10 @@ export const initAdmin = (container) => {
             <div style="background:white; padding:16px; border-radius:20px; text-align:center; border:1px solid #eee;">
               <div style="font-size:1.3rem; font-weight:900; color:#e63946;">${totalAbsMin}</div>
               <div style="font-size:0.6rem; color:#999; font-weight:700; margin-top:2px;">MIN AUSENTE</div>
+            </div>
+            <div style="background:white; padding:16px; border-radius:20px; text-align:center; border:1px solid #eee; grid-column:1/-1;">
+              <div style="font-size:1.3rem; font-weight:900; color:#1a1a2e;">${totalIncidents}</div>
+              <div style="font-size:0.6rem; color:#999; font-weight:700; margin-top:2px;">INCIDENTES REPORTADOS</div>
             </div>
           </div>
 
@@ -1217,6 +1230,24 @@ export const initAdmin = (container) => {
                         (${ab.duration_min} min)
                       </div>`).join('')}
                   </div>` : ''}
+                ${(()=>{
+                   const shiftIncs = (incs||[]).filter(i => new Date(i.created_at) >= new Date(s.started_at) && (!s.ended_at || new Date(i.created_at) <= new Date(s.ended_at)));
+                   if (shiftIncs.length === 0) return '';
+                   return `
+                    <div style="margin-top:10px; padding-top:10px; border-top:1px dashed #f0f0f0;">
+                       <div style="font-size:0.65rem; font-weight:900; color:#999; margin-bottom:6px;">EVENTUALIDADES REPORTADAS</div>
+                       ${shiftIncs.map(i => `
+                          <div style="background:#f8f9fa; border-radius:8px; padding:8px; margin-bottom:6px; border-left:3px solid ${i.resolved ? '#22c55e' : '#e63946'};">
+                             <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <span style="font-size:0.65rem; font-weight:900; color:#1a1a2e;">${i.type}</span>
+                                <span style="font-size:0.55rem; font-weight:800; color:${i.resolved ? '#22c55e' : '#e63946'};">${i.resolved ? 'RESUELTO' : 'PENDIENTE'}</span>
+                             </div>
+                             <div style="font-size:0.65rem; font-weight:700; color:#666; margin-top:3px;">${i.description}</div>
+                          </div>
+                       `).join('')}
+                    </div>
+                   `;
+                })()}
               </div>`;
           }).join('')}
         </div>`;
@@ -1306,6 +1337,91 @@ export const initAdmin = (container) => {
       activeTab = 'SUBS';
       document.getElementById('expiry-alert-banner')?.remove();
       render();
+    },
+    SEARCH_PLATE: async (btn) => {
+      const plateInput = document.getElementById('trace-plate-input');
+      const plate = plateInput?.value?.trim().toUpperCase();
+      if (!plate) return;
+      
+      const container = document.getElementById('trace-results-container');
+      if (!container) return;
+      
+      btn.textContent = '...';
+      container.style.display = 'block';
+      container.innerHTML = '<div style="color:#666; font-size:0.8rem; font-weight:700; text-align:center; padding:10px;">Buscando...</div>';
+      
+      const state = getParkingState();
+      
+      try {
+        const { data: logs, error: logErr } = await supabase
+          .from('access_logs')
+          .select('id, type, created_at, guard_name, plate, is_resident, custom_price, visitors(resident_name, company, destination, tower, apt)')
+          .eq('building_id', state.buildingId)
+          .ilike('plate', `%${plate}%`)
+          .order('created_at', { ascending: false })
+          .limit(20);
+          
+        const { data: subs } = await supabase
+          .from('subscriptions')
+          .select('*')
+          .eq('building_id', state.buildingId)
+          .ilike('plate', `%${plate}%`)
+          .limit(1);
+
+        const sub = subs && subs.length > 0 ? subs[0] : null;
+
+        let resHtml = '';
+        if (sub) {
+          const daysLeft = Math.ceil((new Date(sub.expiry_date) - new Date()) / 86400000);
+          resHtml += `
+            <div style="background:linear-gradient(135deg, rgba(245,197,24,0.1) 0%, rgba(245,197,24,0.05) 100%); border:1px solid rgba(245,197,24,0.2); border-radius:16px; padding:15px; margin-bottom:15px;">
+              <div style="font-size:0.6rem; color:#D97706; font-weight:900; margin-bottom:5px; text-transform:uppercase;">⭐ RESIDENTE ENCONTRADO</div>
+              <div style="font-size:1.1rem; color:#1a1a2e; font-weight:900; margin-bottom:6px;">${sub.resident_name}</div>
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <span style="font-size:0.6rem; background:white; color:#666; padding:3px 8px; border-radius:6px; font-weight:800;">Apto: ${sub.apt||'-'}</span>
+                <span style="font-size:0.6rem; background:white; color:#666; padding:3px 8px; border-radius:6px; font-weight:800;">Torre: ${sub.tower||'-'}</span>
+                <span style="font-size:0.6rem; background:${daysLeft>=0?'#EAF3DE':'#FCEBEB'}; color:${daysLeft>=0?'#3B6D11':'#A32D2D'}; padding:3px 8px; border-radius:6px; font-weight:900;">${daysLeft>=0?'ACTIVO':'VENCIDO'}</span>
+              </div>
+            </div>`;
+        }
+
+        if (!logs || logs.length === 0) {
+          resHtml += '<div style="color:#999; font-size:0.75rem; text-align:center; padding:10px;">No hay registros de acceso en la bitácora.</div>';
+        } else {
+          resHtml += '<div style="font-size:0.65rem; color:#bbb; font-weight:900; margin-bottom:10px; letter-spacing:1px;">TIMELINE DE ACCESOS</div>';
+          resHtml += logs.map(l => {
+            const visitorName = l.visitors?.resident_name || l.visitors?.company || 'Visitante';
+            const dest = l.visitors ? `${l.visitors.tower||''} ${l.visitors.apt||''} ${l.visitors.destination||''}`.trim() : '';
+            return `
+              <div style="background:white; border-radius:12px; padding:12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:flex-start; border:1px solid #f0f0f0;">
+                <div>
+                  <div style="font-weight:900; color:${l.type==='ENTRY'?'#22c55e':'#e63946'}; font-size:0.75rem;">
+                    ${l.type==='ENTRY' ? 'ENTRADA' : 'SALIDA'}
+                  </div>
+                  <div style="font-size:0.65rem; color:#666; font-weight:700; margin-top:3px;">
+                    ${new Date(l.created_at).toLocaleString('es-VE')}
+                  </div>
+                  <div style="font-size:0.65rem; color:#1a1a2e; font-weight:900; margin-top:4px;">
+                    ${l.is_resident ? '⭐ Residente' : `${visitorName}`}
+                  </div>
+                  ${dest ? `<div style="font-size:0.55rem; color:#999; font-weight:700; margin-top:2px;">Destino: ${dest}</div>` : ''}
+                </div>
+                <div style="text-align:right;">
+                  <div style="font-size:0.6rem; color:#999; font-weight:700; text-transform:uppercase;">Guardia</div>
+                  <div style="font-size:0.7rem; font-weight:900; color:#1a1a2e;">${l.guard_name || 'Desconocido'}</div>
+                  ${l.custom_price !== undefined && l.custom_price !== null ? `<div style="font-size:0.6rem; color:#22c55e; font-weight:900; margin-top:2px;">Cobro: $${l.custom_price}</div>` : ''}
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+        container.innerHTML = resHtml;
+      } catch (e) {
+        console.error(e);
+        container.innerHTML = '<div style="color:#e63946; font-size:0.8rem; font-weight:700; text-align:center; padding:10px;">Error al buscar. Verifica la conexión.</div>';
+      } finally {
+        btn.textContent = 'BUSCAR';
+      }
     }
   }
 
@@ -1865,7 +1981,7 @@ export const initAdmin = (container) => {
               const totalAbsMin = shiftList.reduce((a, s) => a + (s.absences||[]).reduce((b, ab) => b + (ab.duration_min||0), 0), 0);
               const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
               return `
-                <div onclick="handleAction('VIEW_GUARD_DETAIL', '${name}')"
+                <div data-action="VIEW_GUARD_DETAIL" data-guard="${name}"
                      style="flex-shrink:0; background:#1a1a2e; border-radius:20px;
                             padding:16px 14px; text-align:center; cursor:pointer;
                             min-width:100px; transition:transform 0.15s;"
@@ -2228,8 +2344,18 @@ export const initAdmin = (container) => {
     return `
       <div style="padding:20px; padding-bottom:100px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-          <h3 style="font-weight:900; margin:0;">HISTORIAL</h3>
+          <h3 style="font-weight:900; margin:0;">HISTORIAL Y REPORTES</h3>
           <button data-action="DOWNLOAD_CSV" style="background:#1a1a2e; color:#F5C518; border:none; padding:8px 16px; border-radius:10px; font-weight:700; font-size:0.75rem; cursor:pointer;">EXCEL (CSV)</button>
+        </div>
+
+        <!-- BUSCADOR TRAZABILIDAD -->
+        <div style="background:#fafafa; border:1px solid #eee; padding:20px; border-radius:24px; margin-bottom:20px;">
+           <div style="color:#1a1a2e; font-weight:900; font-size:0.75rem; margin-bottom:8px; text-transform:uppercase; letter-spacing:1px;">🔎 TRAZABILIDAD DE VEHÍCULOS</div>
+           <div style="display:flex; gap:10px;">
+               <input type="text" id="trace-plate-input" placeholder="Buscar por placa..." style="flex:1; padding:14px; border-radius:14px; border:1.5px solid #eee; font-weight:900; text-transform:uppercase; outline:none; font-family:var(--font); background:white;">
+               <button data-action="SEARCH_PLATE" style="background:#22c55e; color:white; border:none; padding:0 20px; border-radius:14px; font-weight:900; cursor:pointer;">BUSCAR</button>
+           </div>
+           <div id="trace-results-container" style="margin-top:15px; display:none;"></div>
         </div>
 
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:24px;">
