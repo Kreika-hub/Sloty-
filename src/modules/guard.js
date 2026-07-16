@@ -388,16 +388,27 @@ export const initGuard = (container, guardName = 'Guardia') => {
            entryData: entryData // Save to update slot after payment
          }
          currentView = 'PAYMENT'; render()
-getExchangeRate().then(bcv => {
-  if (!bcv?.rate) return;
-  const amount = pendingPayment?.amount || 0;
-  const bs = Math.round(amount * bcv.rate);
-  const elBs  = document.getElementById('bs-equivalent');
-  const elRate = document.getElementById('bcv-rate-guard');
-  if (elBs)  elBs.textContent  = `Bs. ${bs.toLocaleString('es-VE')}`;
-  if (elRate) elRate.textContent = `Tasa BCV: ${Number(bcv.rate).toLocaleString('es-VE', {minimumFractionDigits:2})} · ${bcv.source === 'auto' ? '✓ Oficial' : '⚠️ Manual'}`;
-});
+         getExchangeRate().then(bcv => {
+           if (!bcv?.rate) return;
+           const amount = pendingPayment?.amount || 0;
+           const bs = Math.round(amount * bcv.rate);
+           const elBs  = document.getElementById('bs-equivalent');
+           const elRate = document.getElementById('bcv-rate-guard');
+           if (elBs)  elBs.textContent  = `Bs. ${bs.toLocaleString('es-VE')}`;
+           if (elRate) elRate.textContent = `Tasa BCV: ${Number(bcv.rate).toLocaleString('es-VE', {minimumFractionDigits:2})} · ${bcv.source === 'auto' ? '✓ Oficial' : '⚠️ Manual'}`;
+         });
       } else {
+         logMovement({
+            type: 'ENTRY',
+            plate,
+            slot: selectedSlot.label,
+            category,
+            guardName,
+            paymentStatus: 'PENDIENTE',
+            payMethod: null,
+            amount: 0,
+            metadata
+         });
          currentView='TICKET'; render()
       }
     },
@@ -748,10 +759,10 @@ getExchangeRate().then(bcv => {
       exitTime: new Date().toISOString()
     })
     
-    // Persistir visitante en Supabase
+    // Persistir sesión de estacionamiento en Supabase
     const vState = getParkingState()
     const finalAmount = pendingPayment?.amount || 0
-    supabase.from('visitors').insert({
+    supabase.from('parking_sessions').insert({
       building_id: vState.buildingId,
       vehicle_plate: selectedSlot?.plate || '',
       entry_time: selectedSlot?.entryTime || new Date().toISOString(),
@@ -763,8 +774,20 @@ getExchangeRate().then(bcv => {
       pay_method: payMethod || '',
       status: 'EXITED'
     }).then(({ error }) => {
-      if (error) console.warn('[Sloty] visitors insert error:', error)
+      if (error) console.warn('[Sloty] parking_sessions insert error:', error)
     })
+
+    // Registrar salida en trazabilidad
+    import('../visitors.js').then(m => {
+      m.logAccess({
+        visitor_id: null,
+        guard_name: guardName,
+        full_name: slotData.metadata?.nombre || 'Vehículo Estacionado',
+        plate: slotData.plate || '',
+        visits_to: slotData.metadata?.apto ? `Apto ${slotData.metadata.apto}` : '',
+        type: 'EXIT'
+      });
+    });
 
     currentView='MAP'; render()
   }
