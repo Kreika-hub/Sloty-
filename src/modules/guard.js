@@ -1536,28 +1536,19 @@ getExchangeRate().then(bcv => {
               document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('cat-active'))
               catBtn.classList.add('cat-active')
            }
+
+           const btnConfirm = document.querySelector('[data-action="CONFIRM_ENTRY"]');
+           if (btnConfirm) {
+              btnConfirm.style.transform = 'scale(1.05)';
+              btnConfirm.style.boxShadow = '0 0 20px rgba(22, 163, 74, 0.5)';
+              btnConfirm.style.background = '#16a34a';
+              btnConfirm.focus();
+           }
         } else {
-           const found = await findVisitorByPlate(plate)
+           window.cachedVisitor = null;
+           const resultList = await searchVisitorByPlate(plate);
+           const found = resultList && resultList.length > 0 ? resultList[0] : null;
            if (!found) return
-
-           // Autocompletar campos si están vacíos
-           const phoneEl = document.getElementById('entry-phone')
-        const visitsEl = document.getElementById('entry-visits-to')
-        if (phoneEl && !phoneEl.value) phoneEl.value = found.r_phone || ''
-        if (visitsEl && !visitsEl.value) visitsEl.value = found.r_visits_to || ''
-
-        // Mostrar banner de visitante reconocido
-        const banner = document.createElement('div')
-        banner.id = 'visitor-suggestion'
-        banner.style.cssText = `
-          background:#F5C518;color:#1a1a2e;padding:10px 16px;border-radius:12px;
-          margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;
-          font-family:'Montserrat',sans-serif;
-        `
-        banner.innerHTML = `
-          <div>
-            <div style="font-size:0.6rem;font-weight:900;letter-spacing:1px;">VISITANTE FRECUENTE</div>
-            <div style="font-size:0.95rem;font-weight:900;">${found.r_full_name}</div>
             <div style="font-size:0.7rem;opacity:0.7;">${found.visit_count} visitas anteriores · ${found.r_visits_to || ''}</div>
           </div>
           <div style="font-size:1.5rem;">✓</div>

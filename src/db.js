@@ -115,7 +115,11 @@ const defaultState = {
   },
   settings: {
     freeHours: 8, baseRate: 1, extraPerHour: 0,
-    customFields: [ { id: 'torre', label: 'Torre', required: true }, { id: 'apto', label: 'Apartamento', required: true } ],
+    customFields: [ 
+       { id: 'torre', label: 'Torre', required: true }, 
+       { id: 'piso', label: 'Piso', required: true }, 
+       { id: 'apto', label: 'Apartamento', required: true } 
+    ],
     categories: [
       { id:'VISITANTE', label:'Visitante', color:'#F5C518', tag:'V', txt:'#000000' },
       { id:'RESIDENTE', label:'Residente', color:'#e63946', tag:'R', txt:'white'   }
@@ -261,6 +265,12 @@ export const getParkingState = () => {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
         state = JSON.parse(raw)
+        if (state.settings && state.settings.customFields) {
+           if (!state.settings.customFields.some(f => f.id === 'piso')) {
+              state.settings.customFields.splice(1, 0, { id: 'piso', label: 'Piso', required: true })
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+           }
+        }
         if (!hasBootedDown) setTimeout(() => syncDown(state.buildingCode), 100)
     }
   } catch(e) {}
