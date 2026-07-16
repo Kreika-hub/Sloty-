@@ -1346,8 +1346,8 @@ export const initAdmin = (container) => {
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" style="width:22px; height:22px; transform:translateX(-4px);"><path d="m15 18-6-6 6-6"/></svg>
               </div>` : ''}
               <div style="display:flex; align-items:center; gap:8px;">
-                <img src="/icons/Sloty logo negro.png" style="height:45px; filter:brightness(0) invert(1); object-fit:contain;" onerror="this.style.display='none'">
-                ${sState.logo_url ? `<img src="${sState.logo_url}" style="height:32px; width:auto; max-width:60px; border-radius:6px; object-fit:contain;">` : ''}
+                <img src="/icons/Sloty logo negro.png" style="height:53px; filter:brightness(0) invert(1); object-fit:contain;" onerror="this.style.display='none'">
+                ${sState.logo_url ? `<img src="${sState.logo_url}" style="height:35px; width:auto; max-width:60px; border-radius:6px; object-fit:contain;">` : ''}
               </div>
             </div>
 
@@ -1356,37 +1356,38 @@ export const initAdmin = (container) => {
               <button data-action="SYNC" style="background:none; border:none; cursor:pointer; color:rgba(255,255,255,0.6); padding:0; display:flex; align-items:center; justify-content:center; transition:transform 0.5s;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:20px; height:20px;"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
               </button>
-              <button data-action="TAB" data-tab="NOTIFICATIONS" style="position:relative; cursor:pointer; color:${unread ? '#F5C518' : 'white'}; background:none; border:none; padding:0; display:flex; align-items:center; justify-content:center;">
-                <div style="transform: scale(0.95); display:flex;">${ICONS.BELL}</div>
+              <button data-action="TAB" data-tab="NOTIFICATIONS" style="position:relative; cursor:pointer; color:${unread ? '#F5C518' : 'white'}; background:none; border:none; padding:0; display:flex; align-items:center; justify-content:center; width:24px; height:24px;">
+                ${ICONS.BELL}
                 ${unread ? `<div style="position:absolute; top:-2px; right:-2px; width:8px; height:8px; background:#e63946; border-radius:50%; border:2px solid #1a1a2e;"></div>` : ''}
               </button>
-              <button data-action="LOGOUT" style="background:none; border:none; cursor:pointer; color:rgba(255,255,255,0.6); padding:0; display:flex; align-items:center; justify-content:center;">
-                <div style="transform: scale(0.95); display:flex;">${ICONS.LOGOUT}</div>
+              <button data-action="LOGOUT" style="background:none; border:none; cursor:pointer; color:rgba(255,255,255,0.6); padding:0; display:flex; align-items:center; justify-content:center; width:24px; height:24px;">
+                ${ICONS.LOGOUT}
               </button>
             </div>
           </div>
 
           <!-- BOTTOM ROW: TITLE AND TAGS -->
-          <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
-            <div style="font-size:0.75rem; font-weight:900; color:var(--accent); letter-spacing:1px; text-transform:uppercase;">
-              ${isHome ? 'PANEL PRINCIPAL' : titles[activeTab].toUpperCase()}
+          <div style="display:flex; flex-direction:column; gap:8px; width:100%;">
+            <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+              <div style="font-size:0.75rem; font-weight:900; color:var(--accent); letter-spacing:1px; text-transform:uppercase;">
+                ${isHome ? 'PANEL PRINCIPAL' : titles[activeTab].toUpperCase()}
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                ${(() => {
+                  const plan = getParkingState().plan || 'TRIAL'
+                  const planColors = { TRIAL:'#888', BRONCE:'#cd7f32', PLATA:'#aaa', ORO:'#F5C518' }
+                  let upgradeBtn = ''
+                  if (plan !== 'ORO') {
+                    upgradeBtn = `<button data-action="SHOW_PLANS" class="gold-btn" style="padding:4px 10px; flex-shrink:0;"><span>🚀 UPGRADE</span></button>`
+                  }
+                  return `
+                    <div style="font-size:0.55rem; font-weight:900; color:${planColors[plan] || '#888'}; letter-spacing:0.5px; background:rgba(255,255,255,0.1); padding:4px 10px; border-radius:8px; flex-shrink:0;">PLAN ${plan}</div>
+                    ${upgradeBtn}
+                  `
+                })()}
+              </div>
             </div>
-            
-            <div style="display:flex; align-items:center; gap:8px;">
-              ${(() => {
-                const plan = getParkingState().plan || 'TRIAL'
-                const planColors = { TRIAL:'#888', BRONCE:'#cd7f32', PLATA:'#aaa', ORO:'#F5C518' }
-                let upgradeBtn = ''
-                if (plan !== 'ORO') {
-                  upgradeBtn = `<button data-action="SHOW_PLANS" class="gold-btn" style="padding:4px 10px; flex-shrink:0;"><span>🚀 UPGRADE</span></button>`
-                }
-                return `
-                  <div style="font-size:0.55rem; font-weight:900; color:${planColors[plan] || '#888'}; letter-spacing:0.5px; background:rgba(255,255,255,0.1); padding:4px 10px; border-radius:8px; flex-shrink:0;">PLAN ${plan}</div>
-                  ${upgradeBtn}
-                `
-              })()}
-              ${metricHtml ? `<div style="flex-shrink:0; margin-left:4px;">${metricHtml}</div>` : ''}
-            </div>
+            ${metricHtml ? `<div style="align-self:flex-end;">${metricHtml}</div>` : ''}
           </div>
         </div>
 
@@ -1717,9 +1718,27 @@ export const initAdmin = (container) => {
     cachedFinanceAt = Date.now();
   }
 
-  const bcv = await getExchangeRate();
-  const bcvRate  = bcv?.rate  || null;
-  const bcvFecha = bcv?.fecha || null;
+  let bcvRate  = null;
+  let bcvFecha = null;
+  let bcvSource = null;
+
+  setTimeout(() => {
+    getExchangeRate().then(bcv => {
+      if (!bcv) return;
+      const f1 = document.getElementById('finance-bcv-rate');
+      if (f1) {
+        f1.innerHTML = `
+          <div style="font-size:0.95rem; font-weight:900; color:#F5C518;">Bs. ${Number(bcv.rate).toLocaleString('es-VE', {minimumFractionDigits:2})}</div>
+          <div style="font-size:0.5rem; color:rgba(255,255,255,0.4); font-weight:700;">${bcv.source === 'manual' ? '⚠️ Manual' : '✓ BCV'} · ${bcv.fecha}</div>
+        `;
+      }
+      const f2 = document.getElementById('finance-month-bcv');
+      if (f2) {
+        f2.innerHTML = `Bs. ${Number(bcv.rate).toLocaleString('es-VE', {minimumFractionDigits:2})} / USD ${bcv.source === 'manual' ? '· ⚠️ Manual' : '· ✓ BCV'} · ${bcv.fecha}`;
+        f2.style.display = 'block';
+      }
+    });
+  }, 50);
 
   const { data: shifts } = await supabase
     .from('guard_shifts')
@@ -1840,14 +1859,7 @@ export const initAdmin = (container) => {
              </div>
              <div style="font-size:0.6rem; font-weight:700; text-transform:uppercase; 
                margin-top:5px; opacity:0.9;">MENSUALIDADES DEL MES</div>
-             ${bcvRate ? `
-               <div style="font-size:0.65rem; color:white; font-weight:800;
-                           margin-top:6px; padding:8px 12px;
-                           background:rgba(255,255,255,0.2); border-radius:8px;">
-                 Bs. ${Number(bcvRate).toLocaleString('es-VE', {minimumFractionDigits:2})} / USD
-                 ${bcv.source === 'manual' ? '· ⚠️ Manual' : '· ✓ BCV'}
-                 · ${bcvFecha || ''}
-               </div>` : ''}
+             <div id="finance-month-bcv" style="font-size:0.65rem; color:white; font-weight:800; margin-top:6px; padding:8px 12px; background:rgba(255,255,255,0.2); border-radius:8px; display:none;"></div>
            </div>
         </div>
 

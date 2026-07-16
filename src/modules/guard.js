@@ -835,8 +835,10 @@ getExchangeRate().then(bcv => {
 
   const renderMap = (state) => {
     const level = state.levels.find(l=>l.name===activeLevel)||state.levels[0]
-    if (!level) return ''
-    const half = Math.ceil(level.slots.length/2)
+
+    // Si no hay nivel, solo ocultamos el mapa pero dejamos la búsqueda
+    const hasLevels = !!level;
+
     return `
     <div style="background:#1a1a2e;padding:0 16px 20px;display:flex;gap:12px;overflow-x:auto;">
       ${state.levels.map(l=>`<button data-action="TAB_LEVEL" data-level="${l.name}" style="padding:10px 20px;border-radius:24px;border:none;font-weight:700;font-size:0.8rem;background:${activeLevel===l.name?'#F5C518':'rgba(255,255,255,0.08)'};color:${activeLevel===l.name?'#1a1a2e':'white'};">${l.name}</button>`).join('')}
@@ -874,11 +876,13 @@ getExchangeRate().then(bcv => {
          ` : ''}
       </div>
 
+      ${hasLevels ? `
       <div class="parking-canvas" style="margin-bottom:80px;">
-        <div class="parking-column">${level.slots.slice(0,half).map((s,i)=>renderSpot(s,level.name,i)).join('')}</div>
+        <div class="parking-column">${level.slots.slice(0, Math.ceil(level.slots.length/2)).map((s,i)=>renderSpot(s,level.name,i)).join('')}</div>
         <div class="parking-lane"><div style="opacity:0.1; font-size:3rem;">↑</div></div>
-        <div class="parking-column">${level.slots.slice(half).map((s,i)=>renderSpot(s,level.name,i+half)).join('')}</div>
+        <div class="parking-column">${level.slots.slice(Math.ceil(level.slots.length/2)).map((s,i)=>renderSpot(s,level.name,i+Math.ceil(level.slots.length/2))).join('')}</div>
       </div>
+      ` : '<div style="padding:40px 20px; text-align:center; color:#999; font-weight:700;">No hay puestos configurados.<br><span style="font-size:0.7rem; color:#bbb; margin-top:10px; display:block;">Pide a un administrador que asigne puestos a este edificio de Supabase.</span></div>'}
     </div>`
   }
 
