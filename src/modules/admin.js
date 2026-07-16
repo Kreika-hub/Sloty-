@@ -2466,20 +2466,20 @@ export const initAdmin = (container) => {
 
     return `
       <div style="padding:20px; padding-bottom:100px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px; margin-bottom:20px;">
           <h3 style="font-weight:900; margin:0;">HISTORIAL Y REPORTES</h3>
           <div style="display:flex; gap:8px;">
-            <button data-action="DOWNLOAD_REPORT" data-type="CSV" style="background:#f4f4f4; color:#666; border:none; padding:8px 12px; border-radius:10px; font-weight:900; font-size:0.6rem; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.05);">↓ CSV</button>
-            <button data-action="DOWNLOAD_REPORT" data-type="PDF" style="background:#1a1a2e; color:#F5C518; border:none; padding:8px 12px; border-radius:10px; font-weight:900; font-size:0.65rem; cursor:pointer; box-shadow:0 4px 10px rgba(26,26,46,0.2);">↓ REPORTE PDF</button>
+            <button data-action="DOWNLOAD_REPORT" data-type="CSV" style="background:#f4f4f4; color:#666; border:none; padding:8px 12px; border-radius:10px; font-weight:900; font-size:0.6rem; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.05); flex-shrink:0;">↓ CSV</button>
+            <button data-action="DOWNLOAD_REPORT" data-type="PDF" style="background:#1a1a2e; color:#F5C518; border:none; padding:8px 12px; border-radius:10px; font-weight:900; font-size:0.65rem; cursor:pointer; box-shadow:0 4px 10px rgba(26,26,46,0.2); flex-shrink:0; text-align:center;">↓ REPORTE PDF</button>
           </div>
         </div>
 
         <!-- BUSCADOR TRAZABILIDAD -->
-        <div style="background:#fafafa; border:1px solid #eee; padding:20px; border-radius:24px; margin-bottom:20px;">
-           <div style="color:#1a1a2e; font-weight:900; font-size:0.75rem; margin-bottom:8px; text-transform:uppercase; letter-spacing:1px;">🔎 TRAZABILIDAD DE VEHÍCULOS</div>
-           <div style="display:flex; gap:10px;">
-               <input type="text" id="trace-plate-input" placeholder="Buscar por placa..." style="flex:1; padding:14px; border-radius:14px; border:1.5px solid #eee; font-weight:900; text-transform:uppercase; outline:none; font-family:var(--font); background:white;">
-               <button data-action="SEARCH_PLATE" style="background:#22c55e; color:white; border:none; padding:0 20px; border-radius:14px; font-weight:900; cursor:pointer;">BUSCAR</button>
+        <div style="background:#fafafa; border:1px solid #eee; padding:20px; border-radius:24px; margin-bottom:20px; box-sizing:border-box; width:100%; overflow:hidden;">
+           <div style="color:#1a1a2e; font-weight:900; font-size:0.75rem; margin-bottom:10px; text-transform:uppercase; letter-spacing:1px;">🔎 TRAZABILIDAD DE VEHÍCULOS</div>
+           <div style="display:flex; gap:10px; flex-wrap:wrap;">
+               <input type="text" id="trace-plate-input" placeholder="Buscar por placa..." style="flex:1; min-width:140px; box-sizing:border-box; padding:14px; border-radius:14px; border:1.5px solid #eee; font-weight:900; text-transform:uppercase; outline:none; font-family:var(--font); background:white;">
+               <button data-action="SEARCH_PLATE" style="background:#22c55e; color:white; border:none; padding:14px 20px; border-radius:14px; font-weight:900; cursor:pointer; flex-shrink:0;">BUSCAR</button>
            </div>
            <div id="trace-results-container" style="margin-top:15px; display:none;"></div>
         </div>
