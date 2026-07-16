@@ -52,6 +52,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
   // Welcome Notification
   setTimeout(() => {
     showNativePush('¡HOLA, ' + guardName.toUpperCase() + '!', 'Tu turno ha iniciado correctamente. Que tengas una excelente guardia.', '👋')
+    import('./push.js').then(m => m.subscribeToPushNotifications(state.buildingId, 'GUARD', guardName));
   }, 1000)
 
   const showToast = (msg, type = 'info') => {
@@ -652,6 +653,7 @@ getExchangeRate().then(bcv => {
                 CANCELAR
               </button>
             </div>
+            <button onclick="handleAction('VIEW_INCIDENTS')" style="width:100%; background:none; color:#1a1a2e; border:1.5px solid #1a1a2e; border-radius:50px; padding:12px; font-size:0.8rem; font-weight:900; cursor:pointer; margin-top:10px;">VER MIS REPORTES</button>
           </div>
         </div>`;
       elModal.style.display = 'block';
@@ -707,9 +709,18 @@ getExchangeRate().then(bcv => {
 
       await logAudit('REPORT_INCIDENT', { type: selectedType, plate, slot });
 
+      supabase.functions.invoke('send-push', { 
+        body: { 
+          building_id: state.buildingId, 
+          role: 'ADMIN', 
+          title: '⚠️ Nuevo incidente reportado', 
+          body: `${selectedType} — ${desc.slice(0,60)}` 
+        } 
+      });
+
       elModal.style.display = 'none';
       elModal.innerHTML = '';
-      showToast('Incidente reportado', 'success');
+      showToast('Incidente reportado exitosamente', 'success');
     },
     CLOSE_MODAL: () => {
       elModal.style.display = 'none';

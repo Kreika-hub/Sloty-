@@ -1227,6 +1227,69 @@ export const initAdmin = (container) => {
       cachedFinance = null;
       await render();
     },
+    RESOLVE_INCIDENT_FORM: (btn) => {
+      const id = btn.dataset.id;
+      const guard = btn.dataset.guard;
+      const l = document.getElementById('modal-layer');
+      l.style.pointerEvents = 'auto';
+      l.innerHTML = `
+        <div style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);backdrop-filter:blur(15px);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;">
+          <div style="background:white; border-radius:35px; width:100%; max-width:400px; padding:35px 25px; box-shadow:0 25px 50px rgba(0,0,0,0.3); animation: slideUp 0.3s ease;">
+            <h2 style="font-weight:900; color:var(--primary); margin-bottom:5px; text-align:center; text-transform:uppercase;">RESPONDER INCIDENTE</h2>
+            <div style="font-size:0.75rem; color:#999; text-align:center; margin-bottom:20px; font-weight:700;">Será enviado al guardia: ${guard}</div>
+            <textarea id="admin-inc-response" rows="4" placeholder="Escribe tu respuesta aquí..." style="width:100%; box-sizing:border-box; border:1.5px solid #f0f0f0; border-radius:18px; padding:15px; font-family:var(--font); font-weight:700; margin-bottom:20px; outline:none; resize:none;"></textarea>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+              <button data-action="SUBMIT_INCIDENT_RESPONSE" data-id="${id}" data-guard="${guard}" style="padding:20px; background:#1a1a2e; color:var(--accent); border:none; border-radius:20px; font-weight:900; cursor:pointer; font-size:0.8rem; text-transform:uppercase;">ENVIAR</button>
+              <button data-action="CANCEL_MODAL" style="padding:20px; background:#f4f4f4; color:#666; border:none; border-radius:20px; font-weight:900; cursor:pointer; font-size:0.8rem; text-transform:uppercase;">CANCELAR</button>
+            </div>
+          </div>
+        </div>
+      `;
+    },
+    SUBMIT_INCIDENT_RESPONSE: async (btn) => {
+      const id = btn.dataset.id;
+      const guard = btn.dataset.guard;
+      const response = document.getElementById('admin-inc-response')?.value?.trim();
+      
+      if (!response) return showToast('Agrega una respuesta', 'error');
+
+      btn.textContent = 'ENVIANDO...';
+      btn.disabled = true;
+
+      const { error } = await supabase
+        .from('incidents')
+        .update({ 
+           resolved: true,
+           admin_response: response,
+           responded_at: new Date().toISOString()
+        })
+        .eq('id', id);
+
+      if (error) { 
+        console.error('Error', error);
+        showToast('Error al guardar. Asegúrate de tener admin_response en tu BD.', 'error'); 
+        actions.CANCEL_MODAL(); 
+        return; 
+      }
+
+      await logAudit('RESOLVE_INCIDENT', { incident_id: id });
+      showToast('Respuesta enviada al guardia', 'success');
+
+      // Notificar al guardia si es posible  
+      const state = getParkingState()
+      supabase.functions.invoke('send-push', { 
+        body: { 
+          building_id: state.buildingId, 
+          role: 'GUARD',
+          identifier: guard, 
+          title: '✅ Incidente Atendido', 
+          body: response.slice(0, 60)
+        } 
+      });
+
+      actions.CANCEL_MODAL();
+      await render();
+    },
     RESOLVE_INCIDENT: async (btn) => {
       const id = btn.dataset.id;
       const { error } = await supabase
@@ -2249,11 +2312,11 @@ export const initAdmin = (container) => {
                     ${inc.type}
                   </span>
                   ${!inc.resolved ? `
-                    <button data-action="RESOLVE_INCIDENT" data-id="${inc.id}"
+                    <button data-action="RESOLVE_INCIDENT_FORM" data-id="${inc.id}" data-guard="${inc.guard_name}"
                       style="background:#EAF3DE; color:#3B6D11; border:none;
                              border-radius:50px; padding:3px 10px; font-size:0.65rem;
                              font-weight:900; cursor:pointer;">
-                      ✓ RESOLVER
+                      ✎ RESPONDER
                     </button>` : `
                     <span style="font-size:0.65rem; color:#999; font-weight:700;">✓ Resuelto</span>`}
                 </div>
@@ -2264,6 +2327,13 @@ export const initAdmin = (container) => {
               <div style="font-size:0.8rem; font-weight:700; color:#1a1a2e; margin-bottom:4px;">
                 ${inc.description}
               </div>
+              ${inc.admin_response ? `
+                <div style="background:#f8f9fa; border-left:3px solid #22c55e; padding:10px; margin-top:10px; border-radius:8px;">
+                  <div style="font-size:0.6rem; font-weight:900; color:#22c55e; margin-bottom:4px;">TU RESPUESTA</div>
+                  <div style="font-size:0.8rem; font-weight:700; color:#666;">${inc.admin_response}</div>
+                  <div style="font-size:0.5rem; color:#bbb; font-weight:700; margin-top:4px;">Enviado: ${new Date(inc.responded_at || inc.created_at).toLocaleString('es-VE')}</div>
+                </div>
+              ` : ''}
               <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px;">
                 <span style="font-size:0.65rem; color:#999; font-weight:700;">
                   👮 ${inc.guard_name || 'Guardia'}
