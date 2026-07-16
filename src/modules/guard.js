@@ -171,7 +171,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
                         role: 'RESIDENT',
                         identifier: pass.resident_id,
                         title: '👋 Tu invitado ha llegado', 
-                        body: El pase de ${pass.visitor_name} fue verificado en la garita. 
+                        body: `El pase de ${pass.visitor_name} fue verificado en la garita.` 
                       } 
                     });
                   });
