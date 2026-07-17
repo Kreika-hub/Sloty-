@@ -1,5 +1,8 @@
 import { getParkingState, updateParkingState, logMovement, logNotification, saveClosure, supabase, hasFeature, showToast, logAudit, getExchangeRate } from '../db.js'
 import { searchVisitorByPlate, saveVisitor, logAccess } from '../visitors.js'
+import { subscribeToPushNotifications, renderPushBanner } from './push.js'
+
+window.renderPushBanner = renderPushBanner;
 // Html5Qrcode is loaded via CDN in index.html, accessible globally
 
 export const initGuard = (container, guardName = 'Guardia') => {
@@ -23,6 +26,8 @@ export const initGuard = (container, guardName = 'Guardia') => {
   let elToast = null
   let elShell = null
   let elContent = null
+  let subSearchText = ''
+
 
   let shiftData = {
     startedAt: new Date().toISOString(),
@@ -35,18 +40,19 @@ export const initGuard = (container, guardName = 'Guardia') => {
   }
 
   const showNativePush = (title, msg, icon = '🛡️') => {
-    const push = document.createElement('div')
-    push.style = `position:fixed; top:20px; left:20px; right:20px; background:rgba(255,255,255,0.95); backdrop-filter:blur(20px); padding:15px; border-radius:22px; display:flex; gap:12px; align-items:center; z-index:10001; box-shadow:0 15px 40px rgba(0,0,0,0.15); border:1px solid #eee; transform:translateY(-150%); transition:transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);`
     push.innerHTML = `
-      <div style="width:45px; height:45px; background:var(--primary); border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:1.4rem;">${icon}</div>
-      <div style="flex:1;">
-        <div style="font-weight:900; color:var(--primary); font-size:0.85rem; letter-spacing:0.3px;">${title}</div>
-        <div style="font-size:0.75rem; color:#666; font-weight:700;">${msg}</div>
+      <div style="flex:1; display:flex; gap:12px; align-items:center;" onclick="this.parentElement.remove()">
+        <div style="width:45px; height:45px; background:var(--primary); border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:1.4rem;">${icon}</div>
+        <div>
+          <div style="font-weight:900; color:var(--primary); font-size:0.85rem; letter-spacing:0.3px;">${title}</div>
+          <div style="font-size:0.75rem; color:#666; font-weight:700;">${msg}</div>
+        </div>
       </div>
+      <button onclick="this.parentElement.remove()" style="background:none; border:none; padding:10px; font-size:1.2rem; display:flex; align-items:center; justify-content:center; color:#999; cursor:pointer;">×</button>
     `
     container.appendChild(push)
     setTimeout(() => { push.style.transform = 'translateY(0)' }, 100)
-    setTimeout(() => { push.style.transform = 'translateY(-150%)'; setTimeout(() => push.remove(), 600) }, 5000)
+    setTimeout(() => { push.style.transform = 'translateY(-150%)'; setTimeout(() => { push.remove() }, 600) }, 3500)
   }
 
   // Welcome Notification
@@ -225,6 +231,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
       render()
     },
     BACK_MAP: () => { stopScanner(); currentView = 'MAP'; currentTab = 'HOME'; scannerActive = false; render() },
+    UPDATE_SUB_SEARCH: (val) => { subSearchText = val || ''; render() },
     SWITCH_TAB: (btn) => { 
        currentTab = btn.dataset.tab; 
        if (currentTab === 'PAY') actions.SHOW_SUB_PAYMENT();
@@ -545,13 +552,16 @@ getExchangeRate().then(bcv => {
         return acc
       }, {})
 
+      const notes = document.getElementById('closure-notes')?.value?.trim() || ''
+
       await saveClosure({
         guard: guardName,
         total,
         methods: breakdown,
         movements: openMovs,
         absences: shiftData.absences,
-        startedAt: shiftData.startedAt
+        startedAt: shiftData.startedAt,
+        notes: notes
       })
 
       logNotification('CIERRE_CAJA', guardName, `Cierre completado: $${total.toFixed(2)} acumulados.`)
@@ -852,10 +862,19 @@ getExchangeRate().then(bcv => {
           </div>
           <div id="guard-clock" style="font-size:0.85rem;color:#F5C518;font-weight:700;margin-top:4px;">${new Date().toLocaleTimeString().toLowerCase()}</div>
         </div>
-        <div style="text-align:right;">
+        <div style="text-align:right; flex-shrink:0;">
           <div style="font-size:0.6rem;color:rgba(255,255,255,0.4);font-weight:700;">DISPONIBLES</div>
           <div id="header-disp" style="font-size:2.4rem;font-weight:900;color:#F5C518;line-height:0.9;">${total-occ}<span style="font-size:0.6rem; color:rgba(255,255,255,0.3); display:block;">de ${total} puestos</span></div>
         </div>
+      </div>
+      
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:20px;">
+        <button data-action="PAUSE_SHIFT" style="background:#1a1a2e; color:#F5C518; border:2px solid rgba(245,197,24,0.3); border-radius:16px; padding:12px; font-size:0.75rem; font-weight:900; letter-spacing:1px; cursor:pointer;">
+          ⏸ PAUSAR TURNO
+        </button>
+        <button onclick="handleAction('REPORT_INCIDENT')" style="background:#e63946; color:white; border:none; border-radius:16px; padding:12px; font-size:0.75rem; font-weight:900; letter-spacing:1px; cursor:pointer;">
+          ⚠️ INCIDENTE
+        </button>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
         <div style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:12px;padding:12px;text-align:center;">
@@ -919,6 +938,9 @@ getExchangeRate().then(bcv => {
 
     <!-- INCOMING NOTIFICATION BANNER -->
     <div id="incoming-residents-area" style="padding:0 20px;"></div>
+    <div id="push-banner-area" style="padding:0 20px; margin-top:20px;">
+       ${window.renderPushBanner ? window.renderPushBanner() : ''}
+    </div>
 
     <div style="padding:16px 20px 100px;">
       
@@ -940,7 +962,7 @@ getExchangeRate().then(bcv => {
            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
               <button data-action="SHOW_SCANNER" style="background:#1a1a2e; color:#F5C518; padding:18px; border:none; border-radius:18px; font-weight:900; font-size:0.8rem; display:flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 10px 20px rgba(26,26,46,0.3);">
                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px; height:20px;"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-                 SALIDA QR
+                 ESCANEAR (ENTRADAS / SALIDAS)
               </button>
               <button data-action="SHOW_MANUAL_ENTRY" style="background:#22c55e; color:white; padding:18px; border:none; border-radius:18px; font-weight:900; font-size:0.8rem; box-shadow:0 10px 20px rgba(34,197,94,0.3);">
                  NUEVO INGRESO
@@ -1016,11 +1038,15 @@ getExchangeRate().then(bcv => {
         
         <!-- DYNAMIC CUSTOM FIELDS -->
         <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:20px;">
-          ${(state.settings?.customFields || []).map(f => {
+          ${(state.settings?.customFields && state.settings.customFields.length > 0 ? state.settings.customFields : [
+             {id:'nombre', label:'Nombre del Visitante'}, 
+             {id:'torre', label:'Torre'}, 
+             {id:'apto', label:'Piso / Apto'}
+          ]).map(f => {
             const fid = f.id.toLowerCase();
             let defVal = '';
             if (window.scannedPassData) {
-               if (fid === 'nombre' || fid === 'nombre completo') defVal = window.scannedPassData.visitor_name;
+               if (fid === 'nombre' || fid === 'nombre completo' || fid.includes('visitante')) defVal = window.scannedPassData.visitor_name;
                else if (fid === 'torre' || fid === 'edificio') defVal = window.scannedPassData.subscriptions?.tower || '';
                else if (fid.includes('apto') || fid.includes('piso')) defVal = window.scannedPassData.subscriptions?.apt || '';
             }
@@ -1028,7 +1054,7 @@ getExchangeRate().then(bcv => {
             <div>
               <label style="font-size:0.6rem; font-weight:500; color:#999; margin-left:12px; text-transform:uppercase;">${f.label} *</label>
               <input type="text" id="custom-${f.id}" placeholder="Ingresar ${f.label.toLowerCase()}" value="${defVal}" required
-                style="width:100%; padding:14px; border:2px solid #eee; border-radius:12px; font-weight:700;">
+                style="width:100%; padding:14px; border:2px solid #eee; border-radius:12px; font-weight:700; outline:none; text-transform:uppercase;">
             </div>
           `}).join('')}
         </div>
@@ -1242,13 +1268,13 @@ getExchangeRate().then(bcv => {
        </div>`
      }
 
-     const search = document.getElementById('sub-search')?.value.toLowerCase() || ''
+     const search = subSearchText.toLowerCase()
      const filtered = cachedResidents.filter(r => r.resident_name.toLowerCase().includes(search) || r.plate.toLowerCase().includes(search))
 
      return `
      <div style="padding:20px; padding-bottom:120px;">
         <h2 style="font-weight:900; color:var(--primary); margin-bottom:15px;">COBRAR MENSUALIDAD</h2>
-        <input type="text" id="sub-search" placeholder="Buscar por placa o nombre..." onkeyup="document.querySelector('[data-action=SEARCH_RESIDENT]').click()" style="width:100%; padding:15px; border-radius:15px; border:2px solid #eee; margin-bottom:20px; font-weight:700; font-family:'Montserrat'; outline:none;">
+        <input type="text" id="sub-search" placeholder="Buscar por placa o nombre..." value="${subSearchText}" oninput="window.handleAction('UPDATE_SUB_SEARCH', this.value)" style="width:100%; padding:15px; border-radius:15px; border:2px solid #eee; margin-bottom:20px; font-weight:700; font-family:'Montserrat'; outline:none;">
         <button data-action="SEARCH_RESIDENT" style="display:none;"></button>
 
         <div style="display:grid; gap:12px;">
@@ -1412,7 +1438,7 @@ getExchangeRate().then(bcv => {
 
           <!-- RECENT LIST -->
           <div style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:10px; text-transform:uppercase;">ÚLTIMOS MOVIMIENTOS</div>
-          <div style="display:grid; gap:8px; margin-bottom:30px; max-height:200px; overflow-y:auto;">
+          <div style="display:grid; gap:8px; margin-bottom:20px; max-height:200px; overflow-y:auto;">
              ${openMovs.slice(0, 10).map(m => `
                <div style="background:#fafafa; border-radius:12px; padding:10px 15px; display:flex; justify-content:space-between; align-items:center;">
                   <div>
@@ -1425,6 +1451,11 @@ getExchangeRate().then(bcv => {
                   </div>
                </div>
              `).join('')}
+          </div>
+
+          <div style="margin-bottom:20px; text-align:left;">
+             <label style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:8px; display:block;">COMENTARIOS AL MÁSTER (Opcional)</label>
+             <textarea id="closure-notes" rows="3" placeholder="Añade algún comentario sobre tu guardia..." style="width:100%; border:2px solid #eee; border-radius:18px; padding:15px; font-weight:700; font-family:var(--font); outline:none; resize:none;"></textarea>
           </div>
 
           <button data-action="FINALIZE_CLOSURE" style="width:100%; padding:20px; background:#1a1a2e; color:var(--accent); border:none; border-radius:20px; font-weight:900; font-size:0.9rem; box-shadow:0 10px 25px rgba(26,26,46,0.3);">
@@ -1591,22 +1622,7 @@ getExchangeRate().then(bcv => {
     else if (currentView === 'SUB_PAYMENT_LOADING') html = `<div style="text-align:center; padding:100px 20px; font-weight:900; color:#999;">CARGANDO RESIDENTES...</div>`
     
     if (elContent.innerHTML !== html) {
-      elContent.innerHTML = html + `
-        <button id="btn-pause-shift" data-action="PAUSE_SHIFT"
-          style="position:fixed; bottom:80px; right:16px; z-index:999;
-                 background:#1a1a2e; color:#F5C518; border:2px solid #F5C518;
-                 border-radius:50px; padding:10px 20px; font-size:0.75rem;
-                 font-weight:900; letter-spacing:1px; cursor:pointer; box-shadow: 0 5px 15px rgba(0,0,0,0.3);">
-          ⏸ PAUSAR TURNO
-        </button>
-        <button onclick="handleAction('REPORT_INCIDENT')"
-          style="position:fixed; bottom:140px; right:16px; z-index:999;
-                 background:#e63946; color:white; border:none;
-                 border-radius:50px; padding:10px 20px; font-size:0.75rem;
-                 font-weight:900; letter-spacing:1px; cursor:pointer; box-shadow: 0 5px 15px rgba(0,0,0,0.3);">
-          ⚠️ INCIDENTE
-        </button>
-      `
+      elContent.innerHTML = html;
       if (scannerActive) initQRScanner()
       setupLocalInteractions()
     }

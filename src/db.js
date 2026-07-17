@@ -419,7 +419,8 @@ export const saveClosure = async (closure) => {
         entries:      closure.movements.filter(m => m.type === 'ENTRY').length,
         exits:        closure.movements.filter(m => m.type === 'EXIT').length,
         absences:     closure.absences  || [],
-        movements:    closure.movements || []
+        movements:    closure.movements || [],
+        guard_notes:  closure.notes || null
       })
     } catch (e) {
       console.warn('[Sloty] No se pudo subir el cierre a la nube:', e)

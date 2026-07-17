@@ -31,8 +31,18 @@ export async function subscribeToPushNotifications(buildingId, role, identifier)
     }
 
     if (permission !== 'granted') {
-      showToast('Permiso de notificaciones denegado', 'error');
+      window.pushPermissionDenied = true;
+      // Do not show a red error! Wait for the UI overlay to gently ask.
+      if (document.getElementById('push-banner-area')) {
+         document.getElementById('push-banner-area').innerHTML = renderPushBanner();
+      }
       return false;
+    }
+
+    // if granted, hide banners
+    window.pushPermissionDenied = false;
+    if (document.getElementById('push-banner-area')) {
+       document.getElementById('push-banner-area').innerHTML = renderPushBanner();
     }
 
     const registration = await navigator.serviceWorker.ready;
@@ -65,7 +75,10 @@ export async function subscribeToPushNotifications(buildingId, role, identifier)
     return true;
   } catch (err) {
     console.error('[Sloty] Push subscription error:', err);
-    showToast('Error al activar notificaciones. Instala la app primero.', 'error');
+    window.pushPermissionDenied = true;
+    if (document.getElementById('push-banner-area')) {
+       document.getElementById('push-banner-area').innerHTML = renderPushBanner();
+    }
     return false;
   }
 }
@@ -80,10 +93,24 @@ export function renderPushBanner() {
          <span style="font-size:1.5rem; margin-top:2px;">🍎</span>
          <div>
             <div style="font-weight:900; margin-bottom:4px; font-size:0.8rem;">iOS DETECTADO</div>
-            Para recibir notificaciones, toca el botón de "Compartir" en Safari y luego elige <b>"Agregar a Inicio"</b>. Abre la app desde tu pantalla de inicio para activarlas.
+            Para recibir notificaciones, toca el botón central de "Compartir" en Safari y luego elige <b>"Agregar a Inicio"</b>. Abre la app desde tu pantalla de inicio para activarlas.
          </div>
       </div>
     `;
   }
+
+  if (window.pushPermissionDenied || (window.Notification && Notification.permission !== 'granted')) {
+    return `
+      <div style="background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; padding:15px; border-radius:18px; margin-bottom:20px; font-weight:700; font-size:0.7rem; text-align:left; display:flex; align-items:start; gap:12px; box-shadow:0 4px 10px rgba(0,0,0,0.02);">
+         <span style="font-size:1.5rem; margin-top:2px;">🔔</span>
+         <div>
+            <div style="font-weight:900; margin-bottom:4px; font-size:0.8rem;">NOTIFICACIONES CERRADAS</div>
+            Para que la app funcione incluso con la pantalla apagada, debes permitir los avisos. Toca el candado en tu navegador (arriba junto a la URL) y dale a <b>Permitir Notificaciones</b>.
+            ${!isStandalone && !isIos ? '<br><br><b>Truco Pro:</b> En Chrome pulsa los 3 puntos y dale a "Agregar a Pantalla Principal" para una mejor experiencia.' : ''}
+         </div>
+      </div>
+    `;
+  }
+
   return '';
 }
