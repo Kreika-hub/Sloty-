@@ -1363,9 +1363,10 @@ getExchangeRate().then(bcv => {
            <h2 style="font-weight:900; color:var(--primary); margin-bottom:5px; text-align:center;">PAGO DE MENSUALIDAD</h2>
            <div style="font-size:0.8rem; font-weight:700; color:#666; text-align:center; margin-bottom:20px;">${selectedResident.resident_name}</div>
 
-           <div style="background:${debt>0?'#FCEBEB':'#EAF3DE'}; padding:15px; border-radius:15px; text-align:center; margin-bottom:20px; border:1.5px solid ${debt>0?'#fca5a5':'#bbf7d0'};">
+           <div id="debt-card" data-debt="${debt.toFixed(2)}" style="background:${debt>0?'#FCEBEB':'#EAF3DE'}; padding:15px; border-radius:15px; text-align:center; margin-bottom:20px; border:1.5px solid ${debt>0?'#fca5a5':'#bbf7d0'};">
              <div style="font-size:0.6rem; font-weight:900; color:${debt>0?'#e63946':'#16a34a'}; text-transform:uppercase;">DEUDA ESTIMADA</div>
              <div style="font-size:1.8rem; font-weight:950; color:${debt>0?'#e63946':'#16a34a'};">$${debt.toFixed(2)}</div>
+             <div id="debt-bs-equiv" style="font-size:0.75rem; font-weight:800; color:${debt>0?'#991b1b':'#166534'}; margin-top:2px;">calculando Bs...</div>
              <div style="font-size:0.65rem; color:${debt>0?'#991b1b':'#166534'}; font-weight:700;">${monthsOwed} Mes(es) Vencido(s)</div>
            </div>
 
@@ -1671,6 +1672,23 @@ getExchangeRate().then(bcv => {
       elContent.innerHTML = html;
       if (scannerActive) initQRScanner()
       setupLocalInteractions()
+    }
+
+    // Populate BCV equivalent for debt display
+    if (currentView === 'SUB_PAYMENT_FORM') {
+      getExchangeRate().then(bcv => {
+        const el = document.getElementById('debt-bs-equiv');
+        if (!el) return;
+        const debtCard = document.getElementById('debt-card');
+        const debt = parseFloat(debtCard?.dataset?.debt || '0');
+        if (bcv?.rate) {
+          el.textContent = debt > 0
+            ? `≈ Bs. ${Math.round(debt * bcv.rate).toLocaleString('es-VE')} (Tasa BCV: ${Number(bcv.rate).toFixed(2)})`
+            : 'Sin deuda';
+        } else {
+          el.textContent = 'Tasa BCV no disponible';
+        }
+      });
     }
 
     if (currentView === 'MAP') checkIncomingResidents();

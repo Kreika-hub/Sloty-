@@ -67,12 +67,7 @@ export async function initResident(container, subscription) {
     dataLoaded = true
   }
 
-  window.downloadPassTicket = function(passId, visitorName, expectedDate) {
-     const qrContainer = document.getElementById('qr-pass-' + passId)
-     if (!qrContainer) return;
-     const img = qrContainer.querySelector('img')
-     if (!img) return showInlineAlert('QR aún generándose, intenta de nuevo...', false)
-     
+  const _drawPassTicket = (img, visitorName, expectedDate) => {
      const canvas = document.createElement('canvas');
      canvas.width = 600;
      canvas.height = 900;
@@ -97,7 +92,6 @@ export async function initResident(container, subscription) {
      ctx.fillStyle = '#bbbbbb';
      ctx.fillText('Sloty Access', 300, 140);
      
-     // Info
      ctx.fillStyle = '#F5C518';
      ctx.font = 'bold 42px sans-serif';
      ctx.fillText(visitorName.toUpperCase(), 300, 250);
@@ -110,19 +104,34 @@ export async function initResident(container, subscription) {
      ctx.font = '20px sans-serif';
      ctx.fillText('Destino: Torre ' + (subData.tower||'-') + ' / Apto ' + (subData.apt||'-'), 300, 360);
      
-     // Dibuja imagen QR
+     // Dibuja QR
      ctx.fillStyle = 'white';
      ctx.fillRect(140, 420, 320, 320);
      ctx.drawImage(img, 150, 430, 300, 300);
      
      ctx.fillStyle = '#bbbbbb';
      ctx.font = 'bold 18px sans-serif';
-     ctx.fillText('Muestra este código al Guardia al llegar', 300, 800);
+     ctx.fillText('Muestra este c\u00f3digo al Guardia al llegar', 300, 800);
      
      const link = document.createElement('a');
-     link.download = 'Pase-' + visitorName.replace(/\\s+/g, '') + '.png';
+     link.download = 'Pase-' + visitorName.replace(/\s+/g, '') + '.png';
      link.href = canvas.toDataURL('image/png');
      link.click();
+  }
+
+  window.downloadPassTicket = function(passId, visitorName, expectedDate) {
+     const qrContainer = document.getElementById('qr-pass-' + passId)
+     if (!qrContainer) return showInlineAlert('QR no encontrado, intenta de nuevo...', false);
+     const img = qrContainer.querySelector('img')
+     if (!img) return showInlineAlert('QR a\u00fan generando, espera un momento...', false)
+     
+     // Fix race condition: wait for img to fully load before drawing on canvas
+     if (!img.complete || img.naturalWidth === 0) {
+       showInlineAlert('Generando imagen... intenta de nuevo en un momento.', true)
+       img.onload = () => _drawPassTicket(img, visitorName, expectedDate)
+       return
+     }
+     _drawPassTicket(img, visitorName, expectedDate)
   }
 
   const showInlineAlert = (msg, ok = true) => {
@@ -535,7 +544,18 @@ export async function initResident(container, subscription) {
                 subData.resident_name || 'Residente'
               );
             }
-            
+
+            // Notify admin via push
+            supabase.functions.invoke('send-push', {
+              body: {
+                building_id: subData.building_id,
+                role: 'ADMIN',
+                title: '\uD83D\uDCB0 Nuevo pago reportado',
+                body: `${subData.resident_name} report\u00f3 un pago de $${amount} (${method})`
+              }
+            });
+
+            showInlineAlert('\u2705 Pago reportado correctamente', true)
             reportMode = false
             dataLoaded = false
             render()
