@@ -30,3 +30,7 @@ package-lock.json
 
 .vercel
 .env*.local
+
+# Scratch and debug files
+*.bat
+src/modules/fix_guard.js

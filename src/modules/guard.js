@@ -785,6 +785,52 @@ getExchangeRate().then(bcv => {
     CLOSE_MODAL: () => {
       elModal.style.display = 'none';
       elModal.innerHTML = '';
+    },
+    VIEW_INCIDENTS: async () => {
+      elModal.innerHTML = `<div style="padding:40px;text-align:center;color:white;font-weight:900;">Cargando tus reportes...</div>`;
+      elModal.style.display = 'block';
+
+      const { data, error } = await supabase.from('incidents')
+        .select('*')
+        .eq('building_id', state.buildingId)
+        .eq('guard_name', guardName)
+        .order('created_at', { ascending: false })
+        .limit(10);
+        
+      let listHtml = '';
+      if (error || !data || data.length === 0) {
+         listHtml = '<div style="color:#999;font-weight:700;text-align:center;margin:20px 0;">No hay incidentes previos reportados por ti.</div>';
+      } else {
+         listHtml = data.map(inc => `
+           <div style="background:#f8f9fa; border-radius:12px; padding:15px; margin-bottom:10px; text-align:left; border-left:4px ${inc.resolved ? 'solid #22c55e' : 'solid #e63946'};">
+             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                <span style="font-size:0.75rem; font-weight:900; color:var(--primary);">${inc.type}</span>
+                <span style="font-size:0.6rem; color:#bbb; font-weight:800;">${new Date(inc.created_at).toLocaleDateString()}</span>
+             </div>
+             <div style="font-size:0.7rem; color:#666; font-weight:700; margin-bottom:8px;">${inc.description}</div>
+             ${inc.admin_response ? `
+               <div style="background:#eaf3de; padding:10px; border-radius:8px; border:1px solid #bbf7d0;">
+                 <div style="font-size:0.6rem; font-weight:900; color:#166534; margin-bottom:3px;">RESPUESTA ADMIN:</div>
+                 <div style="font-size:0.7rem; color:#166534; font-weight:700;">"${inc.admin_response}"</div>
+               </div>
+             ` : `<div style="font-size:0.6rem; color:#e63946; font-weight:900;">EN ESPERA DE RESPUESTA</div>`}
+           </div>
+         `).join('');
+      }
+      
+      elModal.innerHTML = `
+          <div style="position:fixed; top:0; left:0; width:100%; height:100vh;
+                      background:rgba(0,0,0,0.8); z-index:99999; display:flex;
+                      align-items:center; justify-content:center; padding:20px;">
+            <div style="background:white; width:100%; max-width:400px;
+                        border-radius:24px; padding:24px; text-align:center;
+                        animation: popIn 0.3s forwards;">
+               <h3 style="font-weight:900; color:var(--primary); margin:0 0 15px;">MIS REPORTES (Últimos 10)</h3>
+               <div style="max-height:60vh; overflow-y:auto; margin-bottom:20px;">${listHtml}</div>
+               <button onclick="handleAction('CLOSE_MODAL')" style="width:100%; background:#f8f9fa; color:#1a1a2e; border:none; border-radius:50px; padding:14px; font-size:0.8rem; font-weight:900; cursor:pointer;">CERRAR</button>
+            </div>
+          </div>
+      `;
     }
   }
 
