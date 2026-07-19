@@ -114,7 +114,7 @@ const defaultState = {
     totalCollected: 0
   },
   settings: {
-    freeHours: 8, baseRate: 1, extraPerHour: 0,
+    freeHours: 8, maxVisitHours: 8, baseRate: 1, extraPerHour: 0,
     customFields: [ 
        { id: 'torre', label: 'Torre', required: true }, 
        { id: 'piso', label: 'Piso', required: true }, 

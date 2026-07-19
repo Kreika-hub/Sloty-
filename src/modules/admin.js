@@ -486,6 +486,16 @@ export const initAdmin = (container) => {
     SAVE_TARIFFS: () => {
       // Función deprecada intencionalmente
     },
+    SAVE_MAXVISIT: () => {
+       const v = parseFloat(document.getElementById('set-maxvisithours')?.value) || 8;
+       const state = getParkingState();
+       if (!state.settings) state.settings = {};
+       state.settings = { ...state.settings, maxVisitHours: v };
+       saveParkingState(state);
+       logAudit(`Actualizó máximo visitantes: ${v}h`);
+       showToast('Límite de visitantes actualizado', 'success');
+       render();
+    },
 
     SYNC: async () => {
       const state = getParkingState();
@@ -2332,6 +2342,14 @@ export const initAdmin = (container) => {
                  </div>
              </div>
              
+             <hr style="border:0; border-top:1px solid #eee; margin:20px 0;">
+             
+             <div style="font-size:0.7rem; font-weight:900; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">LÍMITE TIEMPO VISITANTES</div>
+             <div style="display:flex; gap:10px; margin-bottom:20px; box-sizing:border-box; width:100%;">
+                <input type="number" id="set-maxvisithours" value="${state.settings?.maxVisitHours || 8}" placeholder="Max horas (ej. 8)" style="flex:1; padding:14px; border:2px solid #eee; border-radius:14px; font-weight:700; outline:none;">
+                <button data-action="SAVE_MAXVISIT" style="background:#22c55e; color:white; border:none; padding:0 22px; border-radius:14px; font-weight:900; cursor:pointer;">GUARDAR</button>
+             </div>
+
              <hr style="border:0; border-top:1px solid #eee; margin:20px 0;">
              
              <div style="font-size:0.7rem; font-weight:900; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">REGLAS DE COBRO GUARDADAS</div>

@@ -653,13 +653,17 @@ getExchangeRate().then(bcv => {
     CONFIRM_HANDOVER: async () => {
       await render();
     },
-    REPORT_INCIDENT: () => {
-      const types = ['RAYÓN', 'ACCIDENTE', 'SOSPECHOSO', 'OBJETO PERDIDO', 'OTRO'];
+    REPORT_INCIDENT: (prefilled) => {
+      const types = ['RAYÓN', 'ACCIDENTE', 'SOSPECHOSO', 'OBJETO PERDIDO', 'TIEMPO EXCEDIDO', 'OTRO'];
+      const pPlate = prefilled?.plate || '';
+      const pSlot = prefilled?.slot || '';
+      const pType = prefilled?.type || null;
+
       const typeButtons = types.map((t, i) => `
         <button onclick="handleAction('SELECT_INCIDENT_TYPE','${t}')"
-          style="background:#f8f9fa; border:1.5px solid #eee; border-radius:12px;
+          style="background:${pType === t ? '#e63946' : '#f8f9fa'}; border:1.5px solid ${pType === t ? '#e63946' : '#eee'}; border-radius:12px;
                  padding:10px 14px; font-size:0.75rem; font-weight:900;
-                 cursor:pointer; text-align:left; color:#1a1a2e;">
+                 cursor:pointer; text-align:left; color:${pType === t ? 'white' : '#1a1a2e'};">
           ${t}
         </button>`).join('');
 
@@ -679,7 +683,7 @@ getExchangeRate().then(bcv => {
                         text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">
               Placa involucrada (opcional)
             </div>
-            <input id="incident-plate" placeholder="ABC-123"
+            <input id="incident-plate" placeholder="ABC-123" value="${pPlate}"
                    style="width:100%; padding:12px 16px; border:1.5px solid #eee;
                           border-radius:12px; font-size:0.85rem; font-weight:700;
                           margin-bottom:12px; box-sizing:border-box;" />
@@ -687,7 +691,7 @@ getExchangeRate().then(bcv => {
                         text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">
               Puesto involucrado (opcional)
             </div>
-            <input id="incident-slot" placeholder="A-01"
+            <input id="incident-slot" placeholder="A-01" value="${pSlot}"
                    style="width:100%; padding:12px 16px; border:1.5px solid #eee;
                           border-radius:12px; font-size:0.85rem; font-weight:700;
                           margin-bottom:12px; box-sizing:border-box;" />
@@ -887,6 +891,55 @@ getExchangeRate().then(bcv => {
     currentView='MAP'; render()
   }
 
+  const checkOvertimeVisitors = (state) => {
+     let overstayMsg = '';
+     const maxVisitHours = state.settings?.maxVisitHours || 8;
+     
+     state.levels.forEach(level => {
+        level.slots.forEach(slot => {
+           if (slot.status === 'OCCUPIED' && slot.category === 'VISITANTE' && slot.entryTime) {
+              const hoursStayed = (new Date() - new Date(slot.entryTime)) / 3600000;
+              if (hoursStayed > maxVisitHours) {
+                 const name = slot.metadata?.nombre || slot.plate || 'Visitante';
+                 const phone = slot.phone || '';
+                 
+                 let waButton = '';
+                 if (phone) {
+                    let cleaned = phone.replace(/[\\s\\-\\(\\)\\+]/g, '');
+                    if (cleaned.length === 10 || cleaned.length === 11) {
+                       if (!cleaned.startsWith('58')) {
+                          cleaned = '58' + (cleaned.length === 11 ? cleaned.slice(1) : cleaned);
+                       }
+                    } else if (cleaned.length > 7 && !cleaned.startsWith('58')) {
+                       cleaned = ''; // invalid format based on prompt requirement
+                    }
+                    
+                    if (cleaned.length >= 10 && cleaned.startsWith('58')) {
+                       const message = encodeURIComponent(`Hola ${name}, te escribimos desde ${state.buildingName} — tu tiempo de visita está por vencer, por favor coordina tu salida.`);
+                       waButton = `<button onclick="window.open('https://wa.me/${cleaned}?text=${message}', '_blank')" style="background:#22c55e; color:white; border:none; padding:8px 12px; border-radius:10px; font-weight:900; cursor:pointer; font-size:0.65rem; margin-top:8px;">ESCRÍBELE AL VISITANTE (WP)</button>`;
+                    }
+                 }
+                 
+                 overstayMsg += `
+                   <div style="background:#fff3cd; border:2px solid #ffeeba; border-radius:16px; padding:15px; margin-bottom:10px;">
+                      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                         <div>
+                            <div style="font-size:0.7rem; font-weight:900; color:#856404; text-transform:uppercase;">EXCEDE TIEMPO PERMITIDO</div>
+                            <div style="font-size:1rem; font-weight:900; color:#856404; margin-top:4px;">${name}</div>
+                            <div style="font-size:0.7rem; color:#856404; font-weight:700;">Placa: ${slot.plate} · Puesto: ${slot.label}</div>
+                         </div>
+                         <button onclick="handleAction('REPORT_INCIDENT', {plate:'${slot.plate}', slot:'${slot.label}', type:'TIEMPO EXCEDIDO'})" style="background:#856404; color:white; border:none; border-radius:10px; padding:6px 10px; font-weight:900; font-size:0.6rem; cursor:pointer; height:fit-content;">REPORTAR</button>
+                      </div>
+                      ${waButton}
+                   </div>
+                 `;
+              }
+           }
+        });
+     });
+     return overstayMsg;
+  }
+
   // ── RENDER COMPONENTS ────────────────────────────────────────
   const renderHeader = (state) => {
     const occ = state.levels.reduce((a,l)=>a+l.slots.filter(s=>s.status==='OCCUPIED'||s.status==='DEBT').length,0)
@@ -984,6 +1037,9 @@ getExchangeRate().then(bcv => {
 
     <!-- INCOMING NOTIFICATION BANNER -->
     <div id="incoming-residents-area" style="padding:0 20px;"></div>
+    <div id="overtime-banner-area" style="padding:0 20px; margin-top:20px;">
+       ${checkOvertimeVisitors(state)}
+    </div>
     <div id="push-banner-area" style="padding:0 20px; margin-top:20px;">
        ${window.renderPushBanner ? window.renderPushBanner() : ''}
     </div>
