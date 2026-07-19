@@ -617,6 +617,7 @@ const renderRegister = () => {
         name: data.buildingName,
         code: code,
         admin_email: data.email,
+        admin_name: data.adminName,
         plan: 'ORO',
         membership_status: 'ACTIVE',
         terms_accepted: true,
@@ -631,6 +632,7 @@ const renderRegister = () => {
            name: data.buildingName,
            code: code,
            admin_email: data.email,
+           admin_name: data.adminName,
            plan: 'ORO',
            membership_status: 'ACTIVE'
         }
@@ -1088,7 +1090,7 @@ const renderRegister = () => {
         await supabase.functions.invoke('notify-new-payment', {
           body: {
             building_name: building.name || 'Desconocido',
-            admin_name: building.admin_email || 'Buscando..',
+            admin_name: building.admin_name || 'Buscando..',
             plan_key: plan.key,
             amount: amount,
             bank: bank,
@@ -1099,7 +1101,7 @@ const renderRegister = () => {
 
         const waMsg = encodeURIComponent(`Hola, acabo de subir el comprobante de pago de mi edificio en Sloty.\n\n` + 
           `🏢 Edificio: ${building.name}\n` +
-          `👤 Admin: ${building.admin_email || 'Buscando..'}\n` +
+          `👤 Admin: ${building.admin_name || building.admin_email || 'No registrado'}\n` +
           `💳 Plan: ${plan.label}\n` +
           `💵 Monto: ${amount}\n` +
           `🏦 Banco: ${bank}\n` +
