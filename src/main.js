@@ -1064,6 +1064,19 @@ const renderRegister = () => {
           plan: plan.key
         }).eq('id', building.id)
 
+        // Invocar Edge Function para notificar el pago
+        await supabase.functions.invoke('notify-new-payment', {
+          body: {
+            building_name: building.name || 'Desconocido',
+            admin_name: building.admin_email || 'Buscando..',
+            plan_key: plan.key,
+            amount: amount,
+            bank: bank,
+            reference: finalRef,
+            payment_date: date
+          }
+        })
+
         renderPendingScreen('PROOF', plan)
 
       } catch(e) {
@@ -1090,7 +1103,7 @@ const renderRegister = () => {
             ? 'El equipo de Sloty confirmar\u00e1 tu pago y activar\u00e1 tu cuenta. Por ahora tu acceso est\u00e1 pendiente.'
             : 'Tu comprobante est\u00e1 siendo revisado. Reciber\u00e1s acceso en cuanto sea aprobado.'}
         </p>
-        ${type === 'CASH' ? `
+        ${type === 'CASH' || type === 'PROOF' ? `
           <a href="https://wa.me/${WA_NUMBER}?text=${waMsg}"
             style="display:block;width:100%;max-width:320px;padding:18px;background:#25D366;color:white;border:none;
             border-radius:14px;font-family:'Montserrat',sans-serif;font-size:0.95rem;font-weight:900;
