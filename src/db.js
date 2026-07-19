@@ -527,35 +527,42 @@ const renderFallbackToast = (message, type) => {
 }
 
 let _bcvCache = null;
-let _bcvCacheAt = 0;
-const BCV_CACHE_TTL = 30 * 60 * 1000;
+try {
+  const cached = localStorage.getItem('sloty_bcv_cache');
+  if (cached) _bcvCache = JSON.parse(cached);
+} catch (e) {}
+
+const BCV_CACHE_TTL = 6 * 60 * 60 * 1000; // 6 horas
 
 export const getExchangeRate = async () => {
-  if (_bcvCache && Date.now() - _bcvCacheAt < BCV_CACHE_TTL) {
+  if (_bcvCache && _bcvCache.cachedAt && (Date.now() - _bcvCache.cachedAt < BCV_CACHE_TTL)) {
     return _bcvCache;
   }
 
+  // Intentamos obtener la tasa desde la API de dolar-vzla o dolarapi
   try {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const supabaseKey = import.meta.env.VITE_SUPABASE_KEY;
-
-    const res = await fetch(`${supabaseUrl}/functions/v1/bcv-rate`, {
-      headers: { 'apikey': supabaseKey },
+    const res = await fetch('https://ve.dolarapi.com/v1/dolares/oficial', {
       signal: AbortSignal.timeout(5000)
     });
 
     if (res.ok) {
       const data = await res.json();
-      if (data.rate && data.rate > 100) {
-        _bcvCache = { rate: data.rate, fecha: data.fecha, source: 'auto' };
-        _bcvCacheAt = Date.now();
+      if (data.promedio && data.promedio > 10) {
+        _bcvCache = {
+          rate: Number(data.promedio),
+          fecha: data.fechaActualizacion ? data.fechaActualizacion.slice(0,10) : new Date().toISOString().slice(0,10),
+          source: 'dolarapi',
+          cachedAt: Date.now()
+        };
+        localStorage.setItem('sloty_bcv_cache', JSON.stringify(_bcvCache));
         return _bcvCache;
       }
     }
   } catch(e) {
-    console.warn('[Sloty] Edge Function BCV falló, usando respaldo:', e);
+    console.warn('[Sloty] API BCV principal falló, usando respaldo:', e);
   }
 
+  // Respaldo secundario: config global de Supabase
   try {
     const { data } = await supabase
       .from('system_config')
@@ -563,19 +570,29 @@ export const getExchangeRate = async () => {
       .eq('id', 'global')
       .single();
 
-    if (data?.bcv_rate && data.bcv_rate > 100) {
-      _bcvCache = { rate: data.bcv_rate, fecha: data.bcv_fecha, source: 'manual' };
-      _bcvCacheAt = Date.now();
+    if (data?.bcv_rate && data.bcv_rate > 10) {
+      _bcvCache = {
+        rate: data.bcv_rate,
+        fecha: data.bcv_fecha,
+        source: 'manual_db',
+        cachedAt: Date.now()
+      };
+      localStorage.setItem('sloty_bcv_cache', JSON.stringify(_bcvCache));
       return _bcvCache;
     }
   } catch(e) {
     console.warn('[Sloty] Respaldo system_config falló:', e);
   }
 
-  return { rate: 607.39, fecha: new Date().toISOString().slice(0,10), source: 'fallback' };
+  // Último recurso: usar offline cache si existe, aunque esté vencido
+  if (_bcvCache && _bcvCache.rate) {
+    return _bcvCache;
+  }
+
+  return { rate: 607.39, fecha: new Date().toISOString().slice(0,10), source: 'fallback_hardcoded' };
 };
 
 export const invalidateBCVCache = () => {
   _bcvCache = null;
-  _bcvCacheAt = 0;
+  localStorage.removeItem('sloty_bcv_cache');
 };

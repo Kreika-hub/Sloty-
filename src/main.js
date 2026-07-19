@@ -509,6 +509,24 @@ const renderRegister = () => {
       key: 'levels',
       validate: () => data.levels != null,
       noInput: true
+    },
+    {
+      title: 'Términos y Condiciones',
+      subtitle: 'Debes aceptar los términos para continuar',
+      field: `
+        <div style="display:flex;align-items:start;gap:12px;text-align:left;background:rgba(255,255,255,0.05);padding:16px;border-radius:12px;border:1px solid rgba(255,255,255,0.1);">
+          <input id="reg-terms" type="checkbox" style="width:24px;height:24px;accent-color:#F5C518;cursor:pointer;flex-shrink:0;margin-top:2px;" />
+          <label for="reg-terms" style="color:white;font-size:0.85rem;line-height:1.4;cursor:pointer;">
+            He leído y acepto los <a href="#" style="color:#F5C518;text-decoration:none;font-weight:700;">Términos de Servicio</a> y la Política de Privacidad de Sloty.
+          </label>
+        </div>
+      `,
+      key: 'terms',
+      validate: () => {
+        const el = document.getElementById('reg-terms');
+        return el ? el.checked : false;
+      },
+      noInput: true
     }
   ]
 
@@ -600,7 +618,9 @@ const renderRegister = () => {
         code: code,
         admin_email: data.email,
         plan: 'ORO',
-        membership_status: 'ACTIVE'
+        membership_status: 'ACTIVE',
+        terms_accepted: true,
+        terms_accepted_at: new Date().toISOString()
       }]).select().single()
 
       let finalBld = bld;
@@ -1077,6 +1097,15 @@ const renderRegister = () => {
           }
         })
 
+        const waMsg = encodeURIComponent(`Hola, acabo de subir el comprobante de pago de mi edificio en Sloty.\n\n` + 
+          `🏢 Edificio: ${building.name}\n` +
+          `👤 Admin: ${building.admin_email || 'Buscando..'}\n` +
+          `💳 Plan: ${plan.label}\n` +
+          `💵 Monto: ${amount}\n` +
+          `🏦 Banco: ${bank}\n` +
+          `📝 Ref: ${finalRef}`)
+        window.open(`https://wa.me/584120770776?text=${waMsg}`, '_blank')
+
         renderPendingScreen('PROOF', plan)
 
       } catch(e) {
@@ -1090,7 +1119,7 @@ const renderRegister = () => {
 
   // ─── PENDING SCREEN ────────────────────────────────────────────
   const renderPendingScreen = (type, plan) => {
-    const WA_NUMBER = '584129135799'
+    const WA_NUMBER = '584120770776'
     const waMsg = encodeURIComponent('Hola, acabo de registrar mi edificio en Sloty y seleccioné el plan ' + plan.label + '. Quedo pendiente de la activación. Gracias.')
     screens.register.innerHTML = `
       <div style="min-height:100vh;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;text-align:center;">
@@ -1562,7 +1591,7 @@ const renderSupportBubble = () => {
     if(document.getElementById('sloty-support-bubble')) return;
     const bubble = document.createElement('a');
     bubble.id = 'sloty-support-bubble';
-    bubble.href = 'https://wa.me/584128832447?text=Hola,%20necesito%20soporte%20con%20Sloty';
+    bubble.href = 'https://wa.me/584120770776?text=Hola,%20necesito%20soporte%20con%20Sloty';
     bubble.target = '_blank';
     bubble.style.cssText = 'position:fixed; bottom:20px; right:20px; background:#25D366; color:white; width:50px; height:50px; border-radius:50%; display:flex; align-items:center; justify-content:center; text-decoration:none; font-size:1.6rem; z-index:99999; box-shadow:0 4px 10px rgba(0,0,0,0.3); transition:transform 0.2s;';
     bubble.innerHTML = '💬';
