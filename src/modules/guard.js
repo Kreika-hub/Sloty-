@@ -142,7 +142,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
     { cat:'VISITANTE',    color:'#F5C518', label:'Visitante', maxHours: 8 },
     { cat:'RESIDENTE',    color:'#38bdf8', label:'Residente', maxHours: null },
     { cat:'DISCAPACITADO',color:'#3b82f6', label:'Discap.', maxHours: null },
-    { cat:'ELECTRICO',    color:'#22c55e', label:'Eléctrico', maxHours: null },
+    { cat:'ELECTRICO',    color:'#8b5cf6', label:'Eléctrico', maxHours: null },
     { cat:'MUDANZA',      color:'#a855f7', label:'Mudanza', maxHours: null },
     { cat:'MERCADO',      color:'#22c55e', label:'Mercado', maxHours: 0.5 },
   ]
