@@ -139,12 +139,12 @@ export const initGuard = (container, guardName = 'Guardia') => {
   }
 
   const CAT = [
-    { cat:'VISITANTE',    color:'#1a1a2e', label:'Visitante'  },
-    { cat:'RESIDENTE',    color:'#F5C518', label:'Residente'  },
-    { cat:'DISCAPACITADO',color:'#3b82f6', label:'Discap.'    },
-    { cat:'ELECTRICO',    color:'#22c55e', label:'Eléctrico'  },
-    { cat:'MUDANZA',      color:'#a855f7', label:'Mudanza'    },
-    { cat:'MERCADO',      color:'#f97316', label:'Mercado'    },
+    { cat:'VISITANTE',    color:'#F5C518', label:'Visitante', maxHours: 8 },
+    { cat:'RESIDENTE',    color:'#38bdf8', label:'Residente', maxHours: null },
+    { cat:'DISCAPACITADO',color:'#3b82f6', label:'Discap.', maxHours: null },
+    { cat:'ELECTRICO',    color:'#22c55e', label:'Eléctrico', maxHours: null },
+    { cat:'MUDANZA',      color:'#a855f7', label:'Mudanza', maxHours: null },
+    { cat:'MERCADO',      color:'#22c55e', label:'Mercado', maxHours: 0.5 },
   ]
   const PAY = [
     { m:'EFECTIVO_USD', label:'Efectivo $'  },
@@ -154,7 +154,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
     { m:'OTRO',         label:'Otro'        }
   ]
   
-  const getCatColor = cat => CAT.find(c=>c.cat===cat)?.color || '#1a1a2e'
+  const getCatColor = cat => (state.settings?.categories || CAT).find(c => c.id === cat || c.cat === cat)?.color || '#1a1a2e'
   const formatTime = iso => {
     if (!iso) return '00:00:00'
     const d = Math.floor((Date.now()-new Date(iso))/1000)
@@ -414,6 +414,25 @@ export const initGuard = (container, guardName = 'Guardia') => {
       if (missingField) return showToast(`Falta el campo ${missingField}`, 'error')
 
       const category = document.querySelector('.cat-active')?.dataset.cat || 'VISITANTE'
+      if (category === 'RESIDENTE') {
+         const rentalCap = state.settings?.rentalSlotsCap;
+         if (rentalCap != null && rentalCap >= 0) {
+            let occupiedResCount = 0;
+            state.levels.forEach(l => {
+               if (l.slots) {
+                  l.slots.forEach(s => {
+                     const isEditingSameSlot = (l.name === selectedSlot.levelName && s.label === selectedSlot.label);
+                     if (!isEditingSameSlot && s.status === 'OCCUPIED' && s.category === 'RESIDENTE') {
+                        occupiedResCount++;
+                     }
+                  });
+               }
+            });
+            if (occupiedResCount >= rentalCap) {
+               return showToast('Cupo de puestos de mensualidad alcanzado', 'error');
+            }
+         }
+      }
       const timing = document.querySelector('.timing-active')?.dataset.timing || 'EXIT'
       const payMethod = timing === 'PRE' ? (document.querySelector('#prepay-selector .pay-active')?.dataset.method || 'EFECTIVO_USD') : null
       
@@ -626,11 +645,29 @@ getExchangeRate().then(bcv => {
       const freeIdx = lvl.slots.findIndex(s => s.status === 'FREE');
       
       if (freeIdx === -1) return showToast("No hay puestos libres para reservar", "error");
+
+      const rentalCap = state.settings?.rentalSlotsCap;
+      if (rentalCap != null && rentalCap >= 0) {
+         let occupiedResCount = 0;
+         state.levels.forEach(l => {
+            if (l.slots) {
+               l.slots.forEach(s => {
+                  if (s.category === 'RESIDENTE') {
+                     occupiedResCount++;
+                  }
+               });
+            }
+         });
+         if (occupiedResCount >= rentalCap) {
+            return showToast('Cupo de puestos de mensualidad alcanzado (mensualidades llenas)', 'error');
+         }
+      }
       
       lvl.slots[freeIdx] = { 
         ...lvl.slots[freeIdx], 
         status: 'RESERVED', 
         plate: plate,
+        category: 'RESIDENTE',
         entryTime: new Date().toISOString()
       };
       
@@ -930,46 +967,52 @@ getExchangeRate().then(bcv => {
 
   const checkOvertimeVisitors = (state) => {
      let overstayMsg = '';
-     const maxVisitHours = state.settings?.maxVisitHours || 8;
      
      state.levels.forEach(level => {
         level.slots.forEach(slot => {
-           if (slot.status === 'OCCUPIED' && slot.category === 'VISITANTE' && slot.entryTime) {
-              const hoursStayed = (new Date() - new Date(slot.entryTime)) / 3600000;
-              if (hoursStayed > maxVisitHours) {
-                 const name = slot.metadata?.nombre || slot.plate || 'Visitante';
-                 const phone = slot.phone || '';
-                 
-                 let waButton = '';
-                 if (phone) {
-                    let cleaned = phone.replace(/[\\s\\-\\(\\)\\+]/g, '');
-                    if (cleaned.length === 10 || cleaned.length === 11) {
-                       if (!cleaned.startsWith('58')) {
-                          cleaned = '58' + (cleaned.length === 11 ? cleaned.slice(1) : cleaned);
+           if (slot.status === 'OCCUPIED' && slot.entryTime && slot.category) {
+              const list = state.settings?.categories || CAT;
+              const catObj = list.find(c => c.id === slot.category || c.cat === slot.category);
+              const maxHours = catObj ? catObj.maxHours : null;
+              
+              if (maxHours != null && maxHours > 0) {
+                 const hoursStayed = (new Date() - new Date(slot.entryTime)) / 3600000;
+                 if (hoursStayed > maxHours) {
+                    const labelName = catObj.label || slot.category;
+                    const name = slot.metadata?.nombre || slot.plate || labelName;
+                    const phone = slot.phone || '';
+                    
+                    let waButton = '';
+                    if (phone) {
+                       let cleaned = phone.replace(/[\s\-\(\)\+]/g, '');
+                       if (cleaned.length === 10 || cleaned.length === 11) {
+                          if (!cleaned.startsWith('58')) {
+                             cleaned = '58' + (cleaned.length === 11 ? cleaned.slice(1) : cleaned);
+                          }
+                       } else if (cleaned.length > 7 && !cleaned.startsWith('58')) {
+                          cleaned = ''; // formateo no válido
                        }
-                    } else if (cleaned.length > 7 && !cleaned.startsWith('58')) {
-                       cleaned = ''; // invalid format based on prompt requirement
+                       
+                       if (cleaned.length >= 10 && cleaned.startsWith('58')) {
+                          const message = encodeURIComponent(`Hola ${name}, te escribimos desde ${state.buildingName} — tu tiempo de visita (${labelName}) está por vencer, por favor coordina tu salida.`);
+                          waButton = `<button onclick="window.open('https://wa.me/${cleaned}?text=${message}', '_blank')" style="background:#22c55e; color:white; border:none; padding:8px 12px; border-radius:10px; font-weight:900; cursor:pointer; font-size:0.65rem; margin-top:8px;">ESCRÍBELE AL VISITANTE (WP)</button>`;
+                       }
                     }
                     
-                    if (cleaned.length >= 10 && cleaned.startsWith('58')) {
-                       const message = encodeURIComponent(`Hola ${name}, te escribimos desde ${state.buildingName} — tu tiempo de visita está por vencer, por favor coordina tu salida.`);
-                       waButton = `<button onclick="window.open('https://wa.me/${cleaned}?text=${message}', '_blank')" style="background:#22c55e; color:white; border:none; padding:8px 12px; border-radius:10px; font-weight:900; cursor:pointer; font-size:0.65rem; margin-top:8px;">ESCRÍBELE AL VISITANTE (WP)</button>`;
-                    }
-                 }
-                 
-                 overstayMsg += `
-                   <div style="background:#fff3cd; border:2px solid #ffeeba; border-radius:16px; padding:15px; margin-bottom:10px;">
-                      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                         <div>
-                            <div style="font-size:0.7rem; font-weight:900; color:#856404; text-transform:uppercase;">EXCEDE TIEMPO PERMITIDO</div>
-                            <div style="font-size:1rem; font-weight:900; color:#856404; margin-top:4px;">${name}</div>
-                            <div style="font-size:0.7rem; color:#856404; font-weight:700;">Placa: ${slot.plate} · Puesto: ${slot.label}</div>
+                    overstayMsg += `
+                      <div style="background:#fff3cd; border:2px solid #ffeeba; border-radius:16px; padding:15px; margin-bottom:10px;">
+                         <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                            <div>
+                               <div style="font-size:0.7rem; font-weight:900; color:#856404; text-transform:uppercase;">EXCEDE TIEMPO PERMITIDO (${labelName.toUpperCase()})</div>
+                               <div style="font-size:1rem; font-weight:900; color:#856404; margin-top:4px;">${name}</div>
+                               <div style="font-size:0.7rem; color:#856404; font-weight:700;">Placa: ${slot.plate} · Puesto: ${slot.label}</div>
+                            </div>
+                            <button onclick="handleAction('REPORT_INCIDENT', {plate:'${slot.plate}', slot:'${slot.label}', type:'TIEMPO EXCEDIDO'})" style="background:#856404; color:white; border:none; border-radius:10px; padding:6px 10px; font-weight:900; font-size:0.65rem; cursor:pointer; height:fit-content;">REPORTAR</button>
                          </div>
-                         <button onclick="handleAction('REPORT_INCIDENT', {plate:'${slot.plate}', slot:'${slot.label}', type:'TIEMPO EXCEDIDO'})" style="background:#856404; color:white; border:none; border-radius:10px; padding:6px 10px; font-weight:900; font-size:0.6rem; cursor:pointer; height:fit-content;">REPORTAR</button>
+                         ${waButton}
                       </div>
-                      ${waButton}
-                   </div>
-                 `;
+                    `;
+                 }
               }
            }
         });

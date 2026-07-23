@@ -114,15 +114,16 @@ const defaultState = {
     totalCollected: 0
   },
   settings: {
-    freeHours: 8, maxVisitHours: 8, baseRate: 1, extraPerHour: 0,
+    freeHours: 8, baseRate: 1, extraPerHour: 0, rentalSlotsCap: null,
     customFields: [ 
        { id: 'torre', label: 'Torre', required: true }, 
        { id: 'piso', label: 'Piso', required: true }, 
        { id: 'apto', label: 'Apartamento', required: true } 
     ],
     categories: [
-      { id:'VISITANTE', label:'Visitante', color:'#F5C518', tag:'V', txt:'#000000' },
-      { id:'RESIDENTE', label:'Residente', color:'#e63946', tag:'R', txt:'white'   }
+      { id:'VISITANTE', label:'Visitante', color:'#F5C518', tag:'V', txt:'#000000', maxHours: 8 },
+      { id:'RESIDENTE', label:'Residente', color:'#38bdf8', tag:'R', txt:'white', maxHours: null },
+      { id:'MERCADO', label:'Mercado', color:'#22c55e', tag:'M', txt:'white', maxHours: 0.5 }
     ]
   }
 }

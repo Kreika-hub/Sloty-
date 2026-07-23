@@ -486,14 +486,15 @@ export const initAdmin = (container) => {
     SAVE_TARIFFS: () => {
       // Función deprecada intencionalmente
     },
-    SAVE_MAXVISIT: () => {
-       const v = parseFloat(document.getElementById('set-maxvisithours')?.value) || 8;
+    SAVE_RENTAL_CAP: () => {
+       const val = document.getElementById('set-rentalslotscap')?.value;
+       const v = val === '' || val === undefined ? null : parseFloat(val);
        const state = getParkingState();
        if (!state.settings) state.settings = {};
-       state.settings = { ...state.settings, maxVisitHours: v };
+       state.settings = { ...state.settings, rentalSlotsCap: (v === null || isNaN(v)) ? null : v };
        saveParkingState(state);
-       logAudit(`Actualizó máximo visitantes: ${v}h`);
-       showToast('Límite de visitantes actualizado', 'success');
+       logAudit(`Actualizó cupo máximo de rentas: ${v != null ? v : 'Sin límite'}`);
+       showToast('Cupo de puestos de renta actualizado', 'success');
        render();
     },
 
@@ -588,8 +589,11 @@ export const initAdmin = (container) => {
     ADD_CATEGORY: () => {
       const inputLabel = document.getElementById('new-cat-label')
       const inputColor = document.getElementById('new-cat-color')
+      const inputMaxHours = document.getElementById('new-cat-maxhours')
       const label = inputLabel?.value?.trim()
       const color = inputColor?.value || '#3b82f6'
+      const maxHoursVal = parseFloat(inputMaxHours?.value)
+      const maxHours = isNaN(maxHoursVal) || maxHoursVal <= 0 ? null : maxHoursVal
       if (!label) return
       const id = label.toUpperCase().normalize('NFD')
         .replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'_')
@@ -600,7 +604,8 @@ export const initAdmin = (container) => {
       state.settings.categories.push({ 
         id, label, color, 
         tag: label.charAt(0).toUpperCase(), 
-        txt: '#ffffff' 
+        txt: '#ffffff',
+        maxHours: maxHours
       })
       saveParkingState(state)
       render()
@@ -2362,10 +2367,10 @@ export const initAdmin = (container) => {
              
              <hr style="border:0; border-top:1px solid #eee; margin:20px 0;">
              
-             <div style="font-size:0.7rem; font-weight:900; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">LÍMITE TIEMPO VISITANTES</div>
+             <div style="font-size:0.7rem; font-weight:900; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">CUPO DE PUESTOS DE RENTA (MENSUALIDADES)</div>
              <div style="display:flex; gap:10px; margin-bottom:20px; box-sizing:border-box; width:100%;">
-                <input type="number" id="set-maxvisithours" value="${state.settings?.maxVisitHours || 8}" placeholder="Max horas (ej. 8)" style="flex:1; padding:14px; border:2px solid #eee; border-radius:14px; font-weight:700; outline:none;">
-                <button data-action="SAVE_MAXVISIT" style="background:#22c55e; color:white; border:none; padding:0 22px; border-radius:14px; font-weight:900; cursor:pointer;">GUARDAR</button>
+                <input type="number" id="set-rentalslotscap" value="${state.settings?.rentalSlotsCap != null ? state.settings.rentalSlotsCap : ''}" placeholder="Sin límite (ej. 10)" style="flex:1; padding:14px; border:2px solid #eee; border-radius:14px; font-weight:700; outline:none;">
+                <button data-action="SAVE_RENTAL_CAP" style="background:#22c55e; color:white; border:none; padding:0 22px; border-radius:14px; font-weight:900; cursor:pointer;">GUARDAR</button>
              </div>
 
              <hr style="border:0; border-top:1px solid #eee; margin:20px 0;">
@@ -2437,8 +2442,9 @@ export const initAdmin = (container) => {
                  </div>
                `).join('') || '<div style="text-align:center; padding:15px; color:#ccc; font-size:0.75rem; border:2px dashed #eee; border-radius:14px;">No hay categorías configuradas</div>'}
              </div>
-             <div style="display:grid; grid-template-columns:1fr auto auto; gap:10px; align-items:center; box-sizing:border-box; width:100%;">
+             <div style="display:grid; grid-template-columns:1fr 80px auto auto; gap:10px; align-items:center; box-sizing:border-box; width:100%;">
                <input type="text" id="new-cat-label" placeholder="Ej: Delivery" style="box-sizing:border-box; width:100%; min-width:0; padding:14px; border:1.5px solid #eee; border-radius:14px; font-weight:700; font-family:var(--font); outline:none;">
+               <input type="number" step="0.1" min="0" id="new-cat-maxhours" placeholder="Horas" style="box-sizing:border-box; width:100%; min-width:0; padding:14px; border:1.5px solid #eee; border-radius:14px; font-weight:700; font-family:var(--font); outline:none;" title="Horas límite (p. ej. 0.5 para 30min)">
                <input type="color" id="new-cat-color" value="#3b82f6" style="box-sizing:border-box; width:48px; height:48px; border:none; border-radius:12px; cursor:pointer; padding:2px;">
                <button data-action="ADD_CATEGORY" style="background:#3b82f6; color:white; border:none; padding:0 20px; border-radius:14px; font-weight:900; cursor:pointer; height:48px; font-size:1.3rem; box-sizing:border-box;">+</button>
              </div>
