@@ -94,6 +94,50 @@ export const initGuard = (container, guardName = 'Guardia') => {
     elModal.querySelector('#modal-ok').onclick = () => { elModal.style.display = 'none'; onConfirm() }
   }
 
+  const showPinModal = (title, msg, onConfirm) => {
+    if (!elModal) {
+      elModal = document.createElement('div')
+      elModal.style = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);backdrop-filter:blur(5px);z-index:9998;display:none;align-items:center;justify-content:center;padding:20px;"
+      container.appendChild(elModal)
+    }
+    elModal.innerHTML = `
+      <div style="background:white;border-radius:24px;padding:24px;width:100%;max-width:320px;text-align:center;box-shadow:0 20px 40px rgba(0,0,0,0.2);">
+        <div style="font-size:2.5rem;margin-bottom:10px;">🔒</div>
+        <div style="font-weight:900;font-size:1.1rem;margin-bottom:8px;color:#1a1a2e;">${title}</div>
+        <div style="font-size:0.8rem;color:#666;margin-bottom:16px;">${msg}</div>
+        <input id="modal-pin-input" type="password" inputmode="numeric" maxlength="6" placeholder="••••" style="width:100%;box-sizing:border-box;padding:14px;border:2px solid #eee;border-radius:14px;font-size:1.4rem;text-align:center;letter-spacing:4px;font-weight:900;margin-bottom:20px;outline:none;" />
+        <div id="modal-pin-error" style="color:#e63946;font-size:0.75rem;font-weight:700;margin-bottom:12px;display:none;"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+           <button id="modal-pin-cancel" style="padding:14px;border:none;border-radius:12px;background:#f0f2f5;font-weight:800;color:#999;cursor:pointer;">CANCELAR</button>
+           <button id="modal-pin-ok" style="padding:14px;border:none;border-radius:12px;background:#1a1a2e;font-weight:900;color:#F5C518;cursor:pointer;">ACEPTAR</button>
+        </div>
+      </div>`
+    elModal.style.display = 'flex'
+    const input = elModal.querySelector('#modal-pin-input')
+    const errDiv = elModal.querySelector('#modal-pin-error')
+    setTimeout(() => input.focus(), 100)
+    elModal.querySelector('#modal-pin-cancel').onclick = () => { elModal.style.display = 'none' }
+    const submitPin = () => {
+      const val = input.value.trim()
+      if (!val) {
+        errDiv.textContent = 'Ingresa tu PIN'
+        errDiv.style.display = 'block'
+        return
+      }
+      const success = onConfirm(val)
+      if (success !== false) {
+        elModal.style.display = 'none'
+      } else {
+        errDiv.textContent = 'PIN incorrecto'
+        errDiv.style.display = 'block'
+        input.value = ''
+        input.focus()
+      }
+    }
+    elModal.querySelector('#modal-pin-ok').onclick = submitPin
+    input.onkeyup = (e) => { if (e.key === 'Enter') submitPin() }
+  }
+
   const CAT = [
     { cat:'VISITANTE',    color:'#1a1a2e', label:'Visitante'  },
     { cat:'RESIDENTE',    color:'#F5C518', label:'Residente'  },
@@ -598,36 +642,35 @@ getExchangeRate().then(bcv => {
       showToast(`Puesto ${lvl.slots[freeIdx].label} reservado para ${plate}`, "success");
     },
     PAUSE_SHIFT: () => {
-      const pin = prompt('Ingresa tu PIN para pausar el turno:');
-      if (!pin) return;
-      const guard = state.personnel?.find(p => p.pin === pin);
-      if (!guard) { alert('PIN incorrecto.'); return; }
+      showPinModal('Pausar Turno', 'Ingresa tu PIN de guardia para pausar el turno:', (pin) => {
+        const guard = state.personnel?.find(p => p.pin === pin);
+        if (!guard) return false;
 
-      // Registrar inicio de ausencia
-      if (shiftData) shiftData.pausedAt = new Date().toISOString();
+        if (shiftData) shiftData.pausedAt = new Date().toISOString();
 
-      // Bloquear pantalla
-      document.body.innerHTML = `
-        <div style="display:flex; flex-direction:column; align-items:center;
-                    justify-content:center; height:100vh; background:#1a1a2e;
-                    color:white; text-align:center; padding:40px;">
-          <div style="font-size:3rem; margin-bottom:16px;">🔒</div>
-          <div style="font-size:1rem; font-weight:900; color:#F5C518;
-                      text-transform:uppercase; letter-spacing:2px;">
-            Turno Pausado
-          </div>
-          <div style="font-size:0.75rem; color:rgba(255,255,255,0.5);
-                      margin-top:8px;">
-            Ingresa tu PIN para continuar
-          </div>
-          <input id="resume-pin" type="password" inputmode="numeric"
-                 maxlength="6" placeholder="••••••"
-                 style="margin-top:24px; padding:12px 20px; border-radius:50px;
-                        border:2px solid #F5C518; background:transparent;
-                        color:white; font-size:1.2rem; text-align:center;
-                        width:160px; outline:none;"
-                 oninput="if(this.value.length>=4) handleAction('RESUME_SHIFT', this.value)" />
-        </div>`;
+        document.body.innerHTML = `
+          <div style="display:flex; flex-direction:column; align-items:center;
+                      justify-content:center; height:100vh; background:#1a1a2e;
+                      color:white; text-align:center; padding:40px;">
+            <div style="font-size:3rem; margin-bottom:16px;">🔒</div>
+            <div style="font-size:1rem; font-weight:900; color:#F5C518;
+                        text-transform:uppercase; letter-spacing:2px;">
+              Turno Pausado
+            </div>
+            <div style="font-size:0.75rem; color:rgba(255,255,255,0.5);
+                        margin-top:8px;">
+              Ingresa tu PIN para continuar
+            </div>
+            <input id="resume-pin" type="password" inputmode="numeric"
+                   maxlength="6" placeholder="••••••"
+                   style="margin-top:24px; padding:12px 20px; border-radius:50px;
+                          border:2px solid #F5C518; background:transparent;
+                          color:white; font-size:1.2rem; text-align:center;
+                          width:160px; outline:none;"
+                   oninput="if(this.value.length>=4) handleAction('RESUME_SHIFT', this.value)" />
+          </div>`;
+        return true;
+      });
     },
     RESUME_SHIFT: async (pin) => {
       const guard = state.personnel?.find(p => p.pin === pin);
@@ -658,9 +701,10 @@ getExchangeRate().then(bcv => {
       const pPlate = prefilled?.plate || '';
       const pSlot = prefilled?.slot || '';
       const pType = prefilled?.type || null;
+      window.selectedIncidentType = pType;
 
-      const typeButtons = types.map((t, i) => `
-        <button onclick="handleAction('SELECT_INCIDENT_TYPE','${t}')"
+      const typeButtons = types.map((t) => `
+        <button class="incident-type-btn" onclick="handleAction('SELECT_INCIDENT_TYPE','${t}')"
           style="background:${pType === t ? '#e63946' : '#f8f9fa'}; border:1.5px solid ${pType === t ? '#e63946' : '#eee'}; border-radius:12px;
                  padding:10px 14px; font-size:0.75rem; font-weight:900;
                  cursor:pointer; text-align:left; color:${pType === t ? 'white' : '#1a1a2e'};">
@@ -720,35 +764,28 @@ getExchangeRate().then(bcv => {
             <button onclick="handleAction('VIEW_INCIDENTS')" style="width:100%; background:none; color:#1a1a2e; border:1.5px solid #1a1a2e; border-radius:50px; padding:12px; font-size:0.8rem; font-weight:900; cursor:pointer; margin-top:10px;">VER MIS REPORTES</button>
           </div>
         </div>`;
-      elModal.style.display = 'block';
+      elModal.style.display = 'flex';
     },
     SELECT_INCIDENT_TYPE: (payload) => {
-      // Marcar el tipo seleccionado visualmente
-      document.querySelectorAll('[onclick*="SELECT_INCIDENT_TYPE"]').forEach(b => {
-        b.style.background = '#f8f9fa';
-        b.style.borderColor = '#eee';
-        b.style.color = '#1a1a2e';
+      window.selectedIncidentType = payload;
+      document.querySelectorAll('.incident-type-btn').forEach(b => {
+        const isMatch = b.textContent.trim() === payload;
+        b.style.background = isMatch ? '#e63946' : '#f8f9fa';
+        b.style.borderColor = isMatch ? '#e63946' : '#eee';
+        b.style.color = isMatch ? 'white' : '#1a1a2e';
       });
-      const clicked = [...document.querySelectorAll('[onclick*="SELECT_INCIDENT_TYPE"]')]
-        .find(b => b.textContent.trim() === payload);
-      if (clicked) {
-        clicked.style.background = '#e63946';
-        clicked.style.borderColor = '#e63946';
-        clicked.style.color = 'white';
-      }
     },
     SUBMIT_INCIDENT: async () => {
-      const selectedType = [...document.querySelectorAll('[onclick*="SELECT_INCIDENT_TYPE"]')]
-        .find(b => b.style.background === 'rgb(230, 57, 70)')?.textContent.trim();
+      const selectedType = window.selectedIncidentType;
 
       if (!selectedType) {
-        alert('Selecciona el tipo de incidente.');
+        showToast('Selecciona el tipo de incidente', 'error');
         return;
       }
 
       const desc = document.querySelector('#incident-desc')?.value?.trim();
       if (!desc) {
-        alert('Agrega una descripción.');
+        showToast('Agrega una descripción del incidente', 'error');
         return;
       }
 
@@ -766,7 +803,7 @@ getExchangeRate().then(bcv => {
       });
 
       if (error) {
-        alert('Error al reportar el incidente. Intenta de nuevo.');
+        showToast('Error al reportar el incidente. Intenta de nuevo.', 'error');
         console.error(error);
         return;
       }
@@ -1055,9 +1092,9 @@ getExchangeRate().then(bcv => {
          ${!scannerActive ? `
            <div style="background:white; padding:15px; border-radius:24px; box-shadow:0 10px 30px rgba(0,0,0,0.05); margin-bottom:15px;">
               <div style="font-size:0.6rem; font-weight:900; color:#999; text-transform:uppercase; margin-bottom:10px;">SALIDA RÁPIDA</div>
-              <div style="display:flex; gap:10px;">
-                 <input type="text" id="fast-exit-plate" placeholder="Ej. ABC123" style="flex:1; border:2px solid #eee; border-radius:14px; padding:14px; font-weight:900; outline:none; text-transform:uppercase;">
-                 <button data-action="FAST_EXIT_SEARCH" style="background:#1a1a2e; color:#F5C518; border:none; padding:0 20px; border-radius:14px; font-weight:900;">BUSCAR</button>
+              <div style="display:flex; gap:10px; align-items:center;">
+                 <input type="text" id="fast-exit-plate" placeholder="Ej. ABC123" style="flex:1; min-width:0; box-sizing:border-box; border:2px solid #eee; border-radius:14px; padding:14px; font-weight:900; outline:none; text-transform:uppercase;">
+                 <button data-action="FAST_EXIT_SEARCH" style="background:#1a1a2e; color:#F5C518; border:none; padding:14px 20px; border-radius:14px; font-weight:900; flex-shrink:0; cursor:pointer;">BUSCAR</button>
               </div>
            </div>
            

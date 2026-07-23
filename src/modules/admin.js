@@ -237,9 +237,9 @@ export const initAdmin = (container) => {
     GENERATE: () => {
       const name = document.getElementById('level-name').value.trim()
       const cap = parseInt(document.getElementById('level-capacity').value)
-      if (!name || isNaN(cap) || cap < 1) return alert('Ingresa nombre y capacidad válida')
+      if (!name || isNaN(cap) || cap < 1) return showToast('Ingresa nombre y capacidad válida', 'error')
       const state = getParkingState()
-      if (state.levels.find(l => l.name === name)) return alert('Ya existe esa planta')
+      if (state.levels.find(l => l.name === name)) return showToast('Ya existe esa planta', 'error')
       const prefix = name.substring(0, 2).toUpperCase()
       state.levels.push({
         name, capacity: cap, collapsed: false,
@@ -377,13 +377,13 @@ export const initAdmin = (container) => {
     },
     SEND_DEBT_WS: (btn) => {
       const { name, debt, phone } = btn.dataset;
-      if (!phone) return alert('No hay teléfono registrado');
+      if (!phone) return showToast('No hay teléfono registrado', 'error');
       const msg = `Hola ${name}, te saludamos de la Administración. Te recordamos que presentas un saldo pendiente de $${debt} en tu mensualidad. Por favor, realiza tu pago para mantener tu acceso activo. ¡Gracias!`;
       window.open(`https://wa.me/${phone.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`, '_blank');
     },
     SEND_EXPIRY_ALERT: (btn) => {
       const { name, days, phone, amount } = btn.dataset;
-      if (!phone) return alert('No hay teléfono registrado');
+      if (!phone) return showToast('No hay teléfono registrado', 'error');
       const d = parseInt(days);
       const isExpired = d < 0;
       let msg = '';
@@ -515,7 +515,7 @@ export const initAdmin = (container) => {
       const email = document.getElementById('edit-admin-email').value.trim();
       const phone = document.getElementById('edit-admin-phone').value.trim();
       const logo = window._tempLogo || getParkingState().logo_url;
-      if (!newName) return alert('El nombre del edificio es obligatorio');
+      if (!newName) return showToast('El nombre del edificio es obligatorio', 'error');
       const state = getParkingState();
       
       const oldCode = state.buildingCode
@@ -613,7 +613,7 @@ export const initAdmin = (container) => {
     },
     DOWNLOAD_CSV: () => {
       const state = getParkingState(); const movs = state.movements || []
-      if (!movs.length) return alert('No hay movimientos')
+      if (!movs.length) return showToast('No hay movimientos', 'error')
       
       const customHeaders = (state.settings?.customFields || []).map(f => f.label.toUpperCase())
       const headers = ['ID','FECHA','TIPO','PLACA','PUESTO', ...customHeaders, 'MÉTODO PAGO', 'COBRO', 'REFERENCIA']
@@ -646,7 +646,7 @@ export const initAdmin = (container) => {
       const limit = document.getElementById('sub-limit').value;
       const state = getParkingState();
       const { error } = await supabase.from('buildings').update({ monthly_rate: rate, monthly_slots_limit: limit }).eq('id', state.buildingId);
-      if(!error) alert('Ajustes guardados correctamente'); else alert('Error al guardar');
+      if(!error) showToast('Ajustes guardados correctamente', 'success'); else showToast('Error al guardar', 'error');
       render();
     },
     ADD_RESIDENT: async (btn) => {
@@ -672,13 +672,31 @@ export const initAdmin = (container) => {
           render();
           return;
         }
-        
-        const originalText = btn.textContent;
-        btn.textContent = editingResident ? 'GUARDANDO...' : 'REGISTRANDO...';
-        btn.disabled = true;
 
+        const originalText = btn.textContent;
         const plateString = plates.join(', ');
         const state = getParkingState();
+
+        if (!editingResident && plates.length > 0) {
+          const { data: existingSubs } = await supabase.from('subscriptions')
+            .select('id, resident_name')
+            .eq('building_id', state.buildingId)
+            .ilike('plate', `%${plates[0]}%`)
+            .limit(1);
+
+          if (existingSubs && existingSubs.length > 0) {
+            pendingAction = {
+              type: 'CUSTOM_MODAL',
+              title: '⚠️ VEHÍCULO YA REGISTRADO',
+              content: `<p style="color:#666; font-weight:700;">La placa <b>${plates[0]}</b> ya pertenece al residente <b>${existingSubs[0].resident_name}</b>.<br>Búscalo en la lista y presiona Editar si deseas cambiar sus datos.</p>`
+            };
+            render();
+            return;
+          }
+        }
+        
+        btn.textContent = editingResident ? 'GUARDANDO...' : 'REGISTRANDO...';
+        btn.disabled = true;
         
         let error;
         if (editingResident) {
@@ -857,7 +875,7 @@ export const initAdmin = (container) => {
       const { data: pay } = await supabase.from('payments').select('*').eq('id', pid).single()
       const { data: sub } = await supabase.from('subscriptions').select('*').eq('id', sid).single()
       
-      if (!pay || !sub) return alert('Error al recuperar datos del pago')
+      if (!pay || !sub) return showToast('Error al recuperar datos del pago', 'error')
 
       const amount = pay.amount
       const price = sub.custom_price || 1
@@ -873,7 +891,7 @@ export const initAdmin = (container) => {
 
       if (e1 || e2) {
         console.error('Error al confirmar pago:', e1 || e2);
-        alert('Error al confirmar el pago. Intenta de nuevo.');
+        showToast('Error al confirmar el pago. Intenta de nuevo.', 'error');
         return;
       }
 
@@ -3261,7 +3279,7 @@ export const initAdmin = (container) => {
       const bank = document.getElementById('abono-bank')?.value || '';
       const date = document.getElementById('abono-date')?.value || new Date().toISOString().split('T')[0];
       
-      if (amount <= 0) return alert('Monto inválido');
+      if (amount <= 0) return showToast('Monto inválido', 'error');
       
       btn.textContent = 'PROCESANDO...';
       btn.disabled = true;

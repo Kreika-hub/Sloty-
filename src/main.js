@@ -1154,10 +1154,34 @@ const renderRegister = () => {
   render()
 }
 
-window.slotyGlobalShowPlans = (bldId) => {
+window.slotyGlobalShowPlans = async (bldId) => {
   renderRegister();
-  window.slotyExposePlanAPI({ id: bldId });
   showOnly('register');
+
+  // Render visual loading state aligned with the application dark/gold theme
+  const container = screens.register;
+  container.innerHTML = `
+    <div style="min-height:100vh;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;font-family:'Montserrat', sans-serif;">
+       <div style="font-size:2.5rem;margin-bottom:20px;animation:sloty-spin 1.2s linear infinite;color:#F5C518;">⏳</div>
+       <div style="color:white;font-weight:900;font-size:1.1rem;text-align:center;letter-spacing:1px;text-transform:uppercase;">Cargando Planes de Sloty...</div>
+    </div>
+    <style>
+      @keyframes sloty-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+  `;
+
+  try {
+    const { data: bld } = await supabase
+      .from('buildings')
+      .select('*')
+      .eq('id', bldId)
+      .single();
+    
+    window.slotyExposePlanAPI(bld || { id: bldId });
+  } catch (err) {
+    console.error('[Sloty] Error fetching building data:', err);
+    window.slotyExposePlanAPI({ id: bldId });
+  }
 }
 
 // ─── GUARD BUILDING LOGIN ──────────────────────────────────────

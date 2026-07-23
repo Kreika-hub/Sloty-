@@ -280,6 +280,16 @@ export const initMaster = (container) => {
         })
       ])
 
+      // Notificar al administrador del edificio sobre la activación
+      supabase.functions.invoke('send-push', {
+        body: {
+          building_id: buildingId,
+          role: 'ADMIN',
+          title: '✅ ¡Plan Activado!',
+          body: `El pago de tu edificio ha sido aprobado. El plan ${planKey || 'BRONCE'} ya se encuentra activo.`
+        }
+      }).catch(e => console.warn('[Sloty] push notification error:', e));
+
       document.getElementById('dossier-overlay')?.remove()
       render()
     },
@@ -298,9 +308,19 @@ export const initMaster = (container) => {
           reference: reason ? `RECHAZADO: ${reason}` : 'RECHAZADO'
         }).eq('id', proofId),
         supabase.from('buildings').update({
-        membership_status: 'SUSPENDED'
+          membership_status: 'SUSPENDED'
         }).eq('id', buildingId)
       ])
+
+      // Notificar al administrador del edificio sobre el rechazo
+      supabase.functions.invoke('send-push', {
+        body: {
+          building_id: buildingId,
+          role: 'ADMIN',
+          title: '❌ Pago de Membresía Rechazado',
+          body: `El pago de membresía fue rechazado.${reason ? ` Motivo: ${reason}` : ' Por favor, revisa los datos suministrados o contacta con soporte.'}`
+        }
+      }).catch(e => console.warn('[Sloty] push notification error:', e));
 
       document.getElementById('dossier-overlay')?.remove()
       render();
