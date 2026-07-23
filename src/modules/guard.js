@@ -406,7 +406,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
       // COLLECT CUSTOM FIELDS
       const metadata = {}
       let missingField = null
-      state.settings.customFields.forEach(f => {
+      (state.settings?.customFields || []).forEach(f => {
         const val = document.getElementById(`custom-${f.id}`)?.value.trim()
         if (!val) missingField = f.label
         metadata[f.id] = val
