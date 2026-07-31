@@ -560,7 +560,29 @@ export const getExchangeRate = async () => {
       }
     }
   } catch(e) {
-    console.warn('[Sloty] API BCV principal falló, usando respaldo:', e);
+    console.warn('[Sloty] API BCV principal falló:', e);
+  }
+
+  // Backup automático intermedio: dolarvzla API
+  try {
+    const res = await fetch('https://rates.dolarvzla.com/bcv/current.json', {
+      signal: AbortSignal.timeout(5000)
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.current?.usd && data.current.usd > 10) {
+        _bcvCache = {
+          rate: Number(data.current.usd),
+          fecha: data.current.date || new Date().toISOString().slice(0,10),
+          source: 'dolarvzla',
+          cachedAt: Date.now()
+        };
+        localStorage.setItem('sloty_bcv_cache', JSON.stringify(_bcvCache));
+        return _bcvCache;
+      }
+    }
+  } catch(e) {
+    console.warn('[Sloty] API BCV de respaldo (dolarvzla) falló:', e);
   }
 
   // Respaldo secundario: config global de Supabase

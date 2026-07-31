@@ -1,4 +1,4 @@
-import { supabase } from '../db.js'
+import { supabase, getExchangeRate } from '../db.js'
 
 const uploadPaymentProof = async (file, paymentId, buildingId, residentName) => {
   if (!file) return null;
@@ -50,6 +50,7 @@ export async function initResident(container, subscription) {
   let createPassMode = false
   let dataLoaded = false
   let visitorPasses = []
+  let bcvData = null
 
   const fetchData = async () => {
     const { data: latest } = await supabase.from('subscriptions').select('*').eq('id', subData.id).single()
@@ -63,6 +64,14 @@ export async function initResident(container, subscription) {
       .select('*').eq('resident_id', subData.id)
       .order('created_at', { ascending: false })
     visitorPasses = vpasses || []
+
+    try {
+      if (!bcvData) {
+        bcvData = await getExchangeRate()
+      }
+    } catch(e) {
+      console.warn('Failed to load BCV rate in resident panel:', e)
+    }
 
     dataLoaded = true
   }
@@ -144,7 +153,11 @@ export async function initResident(container, subscription) {
     setTimeout(() => { if (el) el.style.display = 'none' }, 4000)
   }
 
-  const renderPaymentForm = () => `
+  const renderPaymentForm = () => {
+    const rateText = bcvData?.rate 
+      ? `Tasa BCV: Bs. ${Number(bcvData.rate).toLocaleString('es-VE', {minimumFractionDigits:2})} · ${bcvData.source === 'auto' || bcvData.source === 'dolarapi' || bcvData.source === 'dolarvzla' ? '✓ Oficial' : '⚠️ Manual'}` 
+      : 'Cargando tasa oficial...';
+    return `
     <div style="background:white;border-radius:24px;padding:25px;border:1px solid #f0f0f0;margin-bottom:20px;">
       <div style="font-size:0.7rem;font-weight:900;color:#1a1a2e;text-transform:uppercase;letter-spacing:1px;margin-bottom:20px;">REPORTAR PAGO</div>
       <div id="res-inline-alert" style="display:none;padding:12px 16px;border-radius:12px;font-weight:700;font-size:0.8rem;margin-bottom:15px;"></div>
@@ -160,6 +173,9 @@ export async function initResident(container, subscription) {
           <div id="pago-movil-note" style="display:none;background:rgba(245,197,24,0.1);border:1.5px solid #F5C518;border-radius:14px;padding:12px;font-size:0.65rem;color:#D97706;font-weight:700;margin-top:8px;text-align:left;line-height:1.3;">
             ⚠️ Nota: Recuerda que debes colocar el valor del Pago Móvil en Bolívares (Bs.)
           </div>
+          <div style="font-size:0.65rem; font-weight:800; color:#555; margin-top:6px; font-family:'Montserrat',sans-serif;">
+            ℹ️ ${rateText}
+          </div>
         </div>
 
         <div>
@@ -169,9 +185,10 @@ export async function initResident(container, subscription) {
         </div>
 
         <div>
-          <label style="font-size:0.6rem;font-weight:800;color:#999;text-transform:uppercase;display:block;margin-bottom:6px;">MONTO PAGADO</label>
+          <label id="pay-amount-label" style="font-size:0.6rem;font-weight:800;color:#999;text-transform:uppercase;display:block;margin-bottom:6px;">MONTO PAGADO ($)</label>
           <input type="number" id="pay-amount" placeholder="${subData.custom_price || 0}" value="${subData.custom_price || ''}"
             style="width:100%;padding:14px;border-radius:14px;border:1.5px solid #e5e7eb;font-family:'Montserrat',sans-serif;font-size:0.85rem;font-weight:700;color:#1a1a2e;outline:none;">
+          <div id="pay-conversion-helper" style="font-size:0.7rem; font-weight:800; color:#1d512d; margin-top:6px; font-family:'Montserrat',sans-serif;"></div>
         </div>
 
         <div id="pay-ref-group">
@@ -206,6 +223,7 @@ export async function initResident(container, subscription) {
       </div>
     </div>
   `
+  }
 
   const renderPaymentHistory = () => {
     if (!payments.length) return `<div style="text-align:center;padding:30px;color:#bbb;font-size:0.8rem;font-weight:700;">Sin pagos registrados aún</div>`
@@ -487,19 +505,58 @@ export async function initResident(container, subscription) {
 
       const methodSel = document.getElementById('pay-method')
       const refGroup = document.getElementById('pay-ref-group')
-      if (methodSel && refGroup) {
-        const toggleRef = () => { 
-          refGroup.style.display = methodSel.value === 'EFECTIVO' ? 'none' : 'block'
-          const pmNote = document.getElementById('pago-movil-note')
-          if (pmNote) {
-            pmNote.style.display = methodSel.value === 'PAGO_MOVIL' ? 'block' : 'none'
+      const amountInput = document.getElementById('pay-amount')
+      
+      if (methodSel && refGroup && amountInput) {
+        const updateConversion = () => {
+          const method = methodSel.value
+          const amountVal = parseFloat(amountInput.value) || 0
+          const rate = bcvData?.rate || 40
+
+          const amountLabel = document.getElementById('pay-amount-label')
+          if (amountLabel) {
+            if (method === 'PAGO_MOVIL' || method === 'TRANSFERENCIA') {
+              amountLabel.textContent = 'MONTO PAGADO EN BOLÍVARES (Bs.)'
+            } else {
+              amountLabel.textContent = 'MONTO PAGADO EN DÓLARES ($)'
+            }
+          }
+
+          const helper = document.getElementById('pay-conversion-helper')
+          if (helper) {
+            if (method === 'PAGO_MOVIL' || method === 'TRANSFERENCIA') {
+              const equivUsd = amountVal / rate
+              helper.innerHTML = `Equivale a <strong>$${equivUsd.toFixed(2)} USD</strong> (Tasa BCV: Bs. ${Number(rate).toFixed(2)})`
+            } else {
+              const equivBs = amountVal * rate
+              helper.innerHTML = `Equivale a <strong>Bs. ${Math.round(equivBs).toLocaleString('es-VE')}</strong> (Tasa BCV: Bs. ${Number(rate).toFixed(2)})`
+            }
           }
         }
+
+        const toggleRef = () => { 
+          const method = methodSel.value
+          refGroup.style.display = method === 'EFECTIVO' ? 'none' : 'block'
+          const pmNote = document.getElementById('pago-movil-note')
+          if (pmNote) {
+            pmNote.style.display = method === 'PAGO_MOVIL' ? 'block' : 'none'
+          }
+
+          const rate = bcvData?.rate || 40
+          if (method === 'PAGO_MOVIL' || method === 'TRANSFERENCIA') {
+            amountInput.value = Math.round((subData.custom_price || 10) * rate)
+          } else {
+            amountInput.value = subData.custom_price || 10
+          }
+          updateConversion()
+        }
+
         methodSel.onchange = toggleRef
+        amountInput.oninput = updateConversion
         toggleRef()
       }
 
-      const proofInput = document.getElementById('pay-proof')
+      const proofInput = document.getElementById('payment-proof-file')
       if (proofInput) {
         proofInput.onchange = () => {
           const label = document.getElementById('proof-label')
@@ -515,23 +572,31 @@ export async function initResident(container, subscription) {
         btnSubmit.onclick = async () => {
           const method = document.getElementById('pay-method').value
           const date = document.getElementById('pay-date').value
-          const amount = parseFloat(document.getElementById('pay-amount').value)
+          const amountInputVal = parseFloat(amountInput?.value || '0')
           const ref = document.getElementById('pay-ref')?.value?.trim() || null
-          const proofFile = document.getElementById('pay-proof')?.files?.[0] || null
 
-          if (!date || !amount) return showInlineAlert('Completa fecha y monto', false)
+          if (!date || !amountInputVal) return showInlineAlert('Completa fecha y monto', false)
           if ((method !== 'EFECTIVO') && !ref) 
             return showInlineAlert('Ingresa la referencia de pago', false)
 
           btnSubmit.textContent = 'Enviando...'
           btnSubmit.disabled = true
 
+          let finalUsdAmount = amountInputVal
+          let processedRef = ref
+          const rate = bcvData?.rate || 40
+
+          if (method === 'PAGO_MOVIL' || method === 'TRANSFERENCIA') {
+            finalUsdAmount = amountInputVal / rate
+            processedRef = `${ref} (Bs. ${Number(amountInputVal).toFixed(2)})`
+          }
+
           const { data, error } = await supabase.from('payments').insert({
             subscription_id: subData.id,
             building_id: subData.building_id,
             resident_name: subData.resident_name,
-            method, payment_date: date, amount,
-            reference: ref, status: 'PENDING'
+            method, payment_date: date, amount: finalUsdAmount,
+            reference: processedRef, status: 'PENDING'
           }).select('id').single()
 
           if (!error && data?.id) {
@@ -550,12 +615,12 @@ export async function initResident(container, subscription) {
               body: {
                 building_id: subData.building_id,
                 role: 'ADMIN',
-                title: '\uD83D\uDCB0 Nuevo pago reportado',
-                body: `${subData.resident_name} report\u00f3 un pago de $${amount} (${method})`
+                title: '💰 Nuevo pago reportado',
+                body: `${subData.resident_name} reportó un pago de $${finalUsdAmount.toFixed(2)} (${method})`
               }
             });
 
-            showInlineAlert('\u2705 Pago reportado correctamente', true)
+            showInlineAlert('✓ Pago reportado correctamente', true)
             reportMode = false
             dataLoaded = false
             render()

@@ -357,8 +357,8 @@ export const initMaster = (container) => {
       const input = document.getElementById('bcv-manual-input');
       const rate  = parseFloat(input?.value);
 
-      if (!rate || rate < 100) {
-        alert('Ingresa una tasa válida mayor a 100');
+      if (!rate || rate < 10) {
+        alert('Ingresa una tasa válida mayor a 10');
         return;
       }
 

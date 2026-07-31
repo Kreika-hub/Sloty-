@@ -59,6 +59,7 @@ export const initAdmin = (container) => {
   let activeSettingsMenu = 'MAIN' // MAIN, TARIFFS, VISITORS, AUDIT
   let cachedMetrics = null
   let metricsLoading = false
+  let currentBcv = null
 
   window.handleAction = (type, payload) => {
     if (actions[type]) actions[type](payload)
@@ -99,16 +100,24 @@ export const initAdmin = (container) => {
 
   const getSubsCached = async (buildingId) => {
     if (cachedSubs && Date.now() - cachedSubsAt < SUBS_TTL) return cachedSubs;
-    const [subsRes, bldRes] = await Promise.all([
-      supabase.from('subscriptions')
-        .select('id,resident_name,plate,expiry_date,custom_price,tower,apt,phone,is_coming,slots_count,status')
-        .eq('building_id', buildingId)
-        .order('created_at', { ascending: false }),
-      supabase.from('buildings')
-        .select('monthly_rate,monthly_slots_limit')
-        .eq('id', buildingId).single()
-    ]);
-    cachedSubs = { subs: subsRes.data || [], bld: bldRes.data };
+    let subsResData = [];
+    let bldResData = null;
+    try {
+      const [subsRes, bldRes] = await Promise.all([
+        supabase.from('subscriptions')
+          .select('id,resident_name,plate,expiry_date,custom_price,tower,apt,phone,is_coming,slots_count,status')
+          .eq('building_id', buildingId)
+          .order('created_at', { ascending: false }),
+        supabase.from('buildings')
+          .select('monthly_rate,monthly_slots_limit')
+          .eq('id', buildingId).single()
+      ]);
+      subsResData = subsRes?.data || [];
+      bldResData = bldRes?.data || null;
+    } catch (e) {
+      console.warn('[Sloty] Error fetching subscriptions or building plan:', e);
+    }
+    cachedSubs = { subs: subsResData, bld: bldResData };
     cachedSubsAt = Date.now();
     return cachedSubs;
   };
@@ -436,7 +445,8 @@ export const initAdmin = (container) => {
       if (activeTab === 'SETTINGS') activeSettingsMenu = 'MAIN'
       // Colorear inmediatamente sin esperar render
       container.querySelectorAll('.admin-tab-btn').forEach(v => {
-        v.style.color = v.dataset.tab === activeTab ? '#F5C518' : 'rgba(255,255,255,0.4)'
+        const isTabActive = (v.dataset.tab === activeTab) || (activeTab === 'ABONOS' && v.dataset.tab === 'SUBS')
+        v.style.color = isTabActive ? '#F5C518' : 'rgba(255,255,255,0.4)'
       })
       render()
     },
@@ -901,13 +911,15 @@ export const initAdmin = (container) => {
       }
 
       // Log movement so it reflects in the global cash total
+      let movementPayMethod = pay.method || 'EFECTIVO_USD';
+      if (movementPayMethod === 'EFECTIVO') movementPayMethod = 'EFECTIVO_USD';
       logMovement({
         type: 'MENSUALIDAD',
         plate: sub.plate.split(',')[0].trim(),
         slot: 'MENSUAL',
         category: 'RESIDENTE',
         guardName: 'Sistema (Appr)',
-        payMethod: pay.method,
+        payMethod: movementPayMethod,
         amount: amount,
         reference: pay.reference,
         paymentStatus: 'PAGADO'
@@ -984,30 +996,41 @@ export const initAdmin = (container) => {
 
       const l = document.getElementById('modal-layer')
       l.style.pointerEvents = 'auto'
-      const ML = { EFECTIVO: '💵 Efectivo', PAGO_MOVIL: '📱 Pago Móvil', TRANSFERENCIA: '🏦 Transferencia' }
+      const ML = {
+        EFECTIVO: '💵 Efectivo',
+        EFECTIVO_USD: '💵 Efectivo $',
+        EFECTIVO_BS: '💵 Efectivo Bs',
+        PAGO_MOVIL: '📱 Pago Móvil',
+        TRANSFERENCIA: '🏦 Transferencia',
+        ZELLE: '🌀 Zelle'
+      }
       l.innerHTML = `
         <div style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);backdrop-filter:blur(12px);display:flex;align-items:flex-end;justify-content:center;z-index:9999;">
           <div style="background:white;border-radius:32px 32px 0 0;width:100%;max-width:480px;padding:30px 25px 40px;max-height:85vh;overflow-y:auto;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:25px;">
               <div>
-                <div style="font-size:0.6rem;font-weight:800;color:#bbb;text-transform:uppercase;">Pagos Reportados</div>
+                <div style="font-size:0.7rem;font-weight:800;color:#4b5563;text-transform:uppercase;">Pagos Reportados</div>
                 <div style="font-size:1.1rem;font-weight:900;color:#1a1a2e;">${name}</div>
               </div>
               <button data-action="CANCEL_MODAL" style="background:#f4f4f4;border:none;width:36px;height:36px;border-radius:50%;font-size:1.2rem;cursor:pointer;">×</button>
             </div>
-            ${!paysWithProofs.length ? '<div style="text-align:center;padding:40px;color:#bbb;font-size:0.85rem;font-weight:700;">Sin reportes de pago</div>' : paysWithProofs.map(p => `
+            ${!paysWithProofs.length ? '<div style="text-align:center;padding:40px;color:#555555;font-size:0.85rem;font-weight:700;">Sin reportes de pago</div>' : paysWithProofs.map(p => {
+              const isBsPay = ['PAGO_MOVIL', 'TRANSFERENCIA', 'EFECTIVO_BS', 'EFECTIVO'].includes(p.method);
+              const rateVal = currentBcv?.rate || 40;
+              const vesText = isBsPay ? ` <span style="font-size:0.75rem; color:#4b5563; font-weight:800;">≈ Bs. ${(p.amount * rateVal).toLocaleString('es-VE', {minimumFractionDigits:2})}</span>` : '';
+              return `
               <div style="background:${p.status==='CONFIRMED'?'#f0fdf4':p.status==='REJECTED'?'#fff1f2':'#fafafa'};border:1.5px solid ${p.status==='CONFIRMED'?'#86efac':p.status==='REJECTED'?'#fca5a5':'#e5e7eb'};border-radius:20px;padding:18px;margin-bottom:12px;">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
                   <div>
-                    <div style="font-weight:900;color:#1a1a2e;font-size:1rem;">$${p.amount}</div>
-                    <div style="font-size:0.65rem;color:#666;font-weight:700;margin-top:3px;">${ML[p.method]||p.method} · ${new Date(p.payment_date).toLocaleDateString()}</div>
-                    ${p.reference ? `<div style="font-size:0.6rem;color:#999;font-weight:700;">Ref: ${p.reference}</div>` : ''}
+                    <div style="font-weight:900;color:#1a1a2e;font-size:1rem;">$${p.amount}${vesText}</div>
+                    <div style="font-size:0.65rem;color:#4b5563;font-weight:700;margin-top:3px;">${ML[p.method]||p.method} · ${new Date(p.payment_date).toLocaleDateString()}</div>
+                    ${p.reference ? `<div style="font-size:0.6rem;color:#4b5563;font-weight:700;">Ref: ${p.reference}</div>` : ''}
                     ${p.proofHtml}
                   </div>
                   <span style="background:${p.status==='CONFIRMED'?'#22c55e':p.status==='REJECTED'?'#e63946':'#f59e0b'};color:white;padding:4px 10px;border-radius:20px;font-size:0.55rem;font-weight:900;">${p.status==='CONFIRMED'?'CONFIRMADO':p.status==='REJECTED'?'RECHAZADO':'PENDIENTE'}</span>
                 </div>
                 ${p.status === 'PENDING' ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;"><button data-action="CONFIRM_PAYMENT" data-id="${p.id}" data-sid="${sid}" style="padding:12px;background:#1a1a2e;color:#F5C518;border:none;border-radius:14px;font-weight:900;font-size:0.7rem;cursor:pointer;">✓ CONFIRMAR</button><button data-action="REJECT_PAYMENT" data-id="${p.id}" style="padding:12px;background:#fff0f0;color:#e63946;border:none;border-radius:14px;font-weight:900;font-size:0.7rem;cursor:pointer;">✕ RECHAZAR</button></div>` : ''}
-              </div>`).join('')}
+              </div>`.trim()}).join('')}
           </div>
         </div>`
     },
@@ -1612,7 +1635,7 @@ export const initAdmin = (container) => {
     } else if (activeTab === 'FINANCE') {
       const rev = (state.movements || []).filter(m => new Date(m.timestamp) >= new Date().setHours(0,0,0,0)).reduce((acc, m) => acc + (m.amount || 0), 0)
       metricHtml = `<div class="header-status" style="background:rgba(34,197,94,0.15); color:#22c55e;"><span>$${rev.toFixed(2)}</span></div>`
-    } else if (activeTab === 'SUBS') {
+    } else if (activeTab === 'SUBS' || activeTab === 'ABONOS') {
       // Fetch count in background to not block render
       metricHtml = `<div class="header-status" id="sub-count-badge" style="background:rgba(59,130,246,0.15); color:#3b82f6;"><span>... RESIDENTES</span></div>`
       supabase.from('subscriptions').select('count', { count: 'exact' }).eq('building_id', state.buildingId)
@@ -1626,7 +1649,7 @@ export const initAdmin = (container) => {
       metricHtml = ``
     }
 
-    const titles = { STRUCTURE:'Pisos', SUBS:'Mensuales', FINANCE:'Caja', PERSONAL:'Personal', REPORTES:'Reportes', SETTINGS:'Auditoría', NOTIFICATIONS:'Notificaciones', PROFILE:'Perfil' }
+    const titles = { STRUCTURE:'Pisos', SUBS:'Mensuales', FINANCE:'Caja', PERSONAL:'Personal', REPORTES:'Reportes', SETTINGS:'Auditoría', NOTIFICATIONS:'Notificaciones', PROFILE:'Perfil', ABONOS:'Abonos' }
     const isHome = activeTab === 'HOME'
 
     const sState = getParkingState()
@@ -1811,18 +1834,21 @@ export const initAdmin = (container) => {
 
     const statCard = (label, value, sub, color, tab = 'SUBS') => `
       <div data-action="TAB" data-tab="${tab}" style="background:white;padding:18px;border-radius:22px;border:1px solid #f0f0f0;cursor:pointer;box-shadow:0 4px 15px rgba(0,0,0,0.03);">
-        <div style="font-size:0.5rem;font-weight:800;color:#bbb;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">${label}</div>
+        <div style="font-size:0.5rem;font-weight:800;color:#555555;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">${label}</div>
         <div style="font-size:1.5rem;font-weight:900;color:${color};">${value}</div>
-        <div style="font-size:0.55rem;font-weight:700;color:#bbb;margin-top:4px;">${sub}</div>
+        <div style="font-size:0.55rem;font-weight:700;color:#555555;margin-top:4px;">${sub}</div>
       </div>`
 
     // CAJA EN VIVO
     const liveUsd = movements.filter(m => !m.closed && m.payMethod === 'EFECTIVO_USD').reduce((a,m)=>a+(m.amount||0),0);
     const liveBs = movements.filter(m => !m.closed && m.payMethod === 'EFECTIVO_BS').reduce((a,m)=>a+(m.amount||0),0);
     const livePm = movements.filter(m => !m.closed && m.payMethod === 'PAGO_MOVIL').reduce((a,m)=>a+(m.amount||0),0);
+    const liveTransfer = movements.filter(m => !m.closed && m.payMethod === 'TRANSFERENCIA').reduce((a,m)=>a+(m.amount||0),0);
     const liveZelle = movements.filter(m => !m.closed && m.payMethod === 'ZELLE').reduce((a,m)=>a+(m.amount||0),0);
 
-    const liveTotalUsd = liveUsd + livePm + liveZelle; // BS is separate
+    const rate = currentBcv?.rate || 40;
+    const liveTotalUsd = liveUsd + liveBs + livePm + liveTransfer + liveZelle;
+    const liveTotalBs = (liveBs + livePm + liveTransfer) * rate;
 
     const cajaEnVivoHtml = `
       <div data-action="TAB" data-tab="FINANCE" style="cursor:pointer; background:linear-gradient(135deg, #1a1a2e 0%, #2a2a4e 100%); border-radius:24px; padding:22px; margin-bottom:25px; box-shadow:0 10px 30px rgba(0,0,0,0.15); display:flex; justify-content:space-between; align-items:center; position:relative; overflow:hidden;">
@@ -1834,13 +1860,14 @@ export const initAdmin = (container) => {
              <div style="font-size:0.65rem; font-weight:900; color:white; letter-spacing:1px; text-transform:uppercase;">CAJA EN VIVO (Garita)</div>
            </div>
            <div style="display:flex; align-items:baseline; gap:10px;">
-             <div style="font-size:2.2rem; font-weight:900; color:#22c55e; line-height:1;">$${liveTotalUsd.toFixed(0)}</div>
-             ${liveBs > 0 ? `<div style="font-size:1rem; font-weight:700; color:#bbb;">+ Bs.${liveBs.toFixed(0)}</div>` : ''}
+             <div style="font-size:2.2rem; font-weight:900; color:#22c55e; line-height:1;">$${liveTotalUsd.toFixed(2)}</div>
+             <div style="font-size:1.1rem; font-weight:700; color:#ffffff;">≈ Bs. ${liveTotalBs.toLocaleString('es-VE', {minimumFractionDigits:2})}</div>
            </div>
-           <div style="font-size:0.55rem; font-weight:700; color:rgba(255,255,255,0.5); margin-top:8px; display:flex; gap:10px;">
-             <span>USD: $${liveUsd.toFixed(0)}</span>
-             <span>ZELLE: $${liveZelle.toFixed(0)}</span>
-             <span>P. MÓVIL: $${livePm.toFixed(0)}</span>
+           <div style="font-size:0.6rem; font-weight:800; color:rgba(255,255,255,0.85); margin-top:8px; display:flex; gap:10px; flex-wrap:wrap;">
+             <span>USD: $${liveUsd.toFixed(2)}</span>
+             <span>Bs (Efect.): Bs. ${(liveBs * rate).toLocaleString('es-VE', {maximumFractionDigits:0})}</span>
+             <span>P. Móvil: Bs. ${(livePm * rate).toLocaleString('es-VE', {maximumFractionDigits:0})}</span>
+             <span>Zelle: $${liveZelle.toFixed(2)}</span>
            </div>
         </div>
         <div style="background:rgba(255,255,255,0.1); width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; z-index:1;">
@@ -2768,11 +2795,17 @@ export const initAdmin = (container) => {
 
     switch(renderingTab) {
       case 'HOME': 
-        const { data: adsData } = await supabase.from('ads')
-          .select('*')
-          .or(`building_id.is.null,building_id.eq.${state.buildingId}`)
-          .order('timestamp', { ascending: false })
-        html = await renderHome(state, adsData || []); 
+        let adsData = [];
+        try {
+          const { data } = await supabase.from('ads')
+            .select('*')
+            .or(`building_id.is.null,building_id.eq.${state.buildingId}`)
+            .order('timestamp', { ascending: false });
+          adsData = data || [];
+        } catch (e) {
+          console.warn('[Sloty] Error loading ads:', e);
+        }
+        html = await renderHome(state, adsData); 
         break
       case 'SUBS': html = await renderMonthlySystem(state); break
       case 'PERSONAL': html = renderPersonnel(state); break
@@ -2955,6 +2988,12 @@ export const initAdmin = (container) => {
     <div style="padding:20px; padding-bottom:120px; background:#f8f9fa;">
       <h2 style="font-weight:900; color:var(--primary); font-size:1.4rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:20px;">SISTEMA DE RESIDENTES</h2>
       
+      <!-- Selector de Sub-Pestaña Segmentado -->
+      <div class="sub-tab-nav" style="display:flex; background:#e4e6eb; border-radius:14px; padding:4px; margin-bottom:20px; gap:4px;">
+        <button data-action="TAB" data-tab="SUBS" style="flex:1; padding:10px; border-radius:10px; border:none; background:white; color:var(--primary); font-weight:800; font-size:0.75rem; cursor:pointer; transition:all 0.2s; box-shadow:0 4px 10px rgba(0,0,0,0.06);">CONTRATOS</button>
+        <button data-action="TAB" data-tab="ABONOS" style="flex:1; padding:10px; border-radius:10px; border:none; background:transparent; color:#666; font-weight:800; font-size:0.75rem; cursor:pointer; transition:all 0.2s; box-shadow:none;">COBROS / ABONOS</button>
+      </div>
+
       <!-- NUEVO RESIDENTE -->
       <div style="background:#1a1a2e; padding:25px; border-radius:28px; color:white; margin-bottom:25px; box-shadow:0 15px 35px rgba(26,26,46,0.3);">
          <div style="font-size:0.7rem; font-weight:800; color:var(--accent); text-transform:uppercase; margin-bottom:15px;">NUEVO RESIDENTE (CONTRATO)</div>
@@ -3091,7 +3130,13 @@ export const initAdmin = (container) => {
   }
 
   const renderAbonos = async (state) => {
-    const { data: subs } = await supabase.from('subscriptions').select('*').eq('building_id', state.buildingId).order('resident_name');
+    let subs = [];
+    try {
+      const { data } = await supabase.from('subscriptions').select('*').eq('building_id', state.buildingId).order('resident_name');
+      subs = data || [];
+    } catch (e) {
+      console.warn('[Sloty] Error loading abonos:', e);
+    }
     const now = new Date();
     const today = now.toISOString().split('T')[0];
     
@@ -3102,6 +3147,12 @@ export const initAdmin = (container) => {
     <div style="padding:20px; padding-bottom:120px; background:#f8f9fa;">
       <h2 style="font-weight:900; color:var(--primary); font-size:1.4rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:20px;">REGISTRO DE ABONOS</h2>
       
+      <!-- Selector de Sub-Pestaña Segmentado -->
+      <div class="sub-tab-nav" style="display:flex; background:#e4e6eb; border-radius:14px; padding:4px; margin-bottom:20px; gap:4px;">
+        <button data-action="TAB" data-tab="SUBS" style="flex:1; padding:10px; border-radius:10px; border:none; background:transparent; color:#666; font-weight:800; font-size:0.75rem; cursor:pointer; transition:all 0.2s; box-shadow:none;">CONTRATOS</button>
+        <button data-action="TAB" data-tab="ABONOS" style="flex:1; padding:10px; border-radius:10px; border:none; background:white; color:var(--primary); font-weight:800; font-size:0.75rem; cursor:pointer; transition:all 0.2s; box-shadow:0 4px 10px rgba(0,0,0,0.06);">COBROS / ABONOS</button>
+      </div>
+
       <!-- ABONO STATS -->
       <div style="background:#1a1a2e; padding:25px; border-radius:28px; color:white; margin-bottom:25px; display:flex; justify-content:space-between; align-items:center; box-shadow:0 15px 35px rgba(26,26,46,0.2);">
          <div>
@@ -3115,7 +3166,7 @@ export const initAdmin = (container) => {
 
       <div style="background:white; padding:20px; border-radius:24px; margin-bottom:25px; border:1px solid #eee;">
          <div style="font-size:0.7rem; font-weight:800; color:#999; margin-bottom:15px; text-transform:uppercase;">BUSCAR RESIDENTE</div>
-         <input type="text" id="abono-search" placeholder="Nombre o Placa..." onkeyup="filterAbonos(this.value)" style="width:100%; padding:15px; border-radius:15px; border:1.5px solid #f0f0f0; font-family:var(--font); font-weight:700; outline:none; background:#fafafa;">
+         <input type="text" id="abono-search" placeholder="Nombre o Placa..." style="width:100%; padding:15px; border-radius:15px; border:1.5px solid #f0f0f0; font-family:var(--font); font-weight:700; outline:none; background:#fafafa;">
       </div>
 
       <div id="abonos-list" style="display:grid; gap:15px;">
@@ -3205,31 +3256,34 @@ export const initAdmin = (container) => {
         <div style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);backdrop-filter:blur(15px);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;">
           <div style="background:white; border-radius:35px; width:100%; max-width:400px; padding:35px 25px; box-shadow:0 25px 50px rgba(0,0,0,0.3); animation: slideUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);">
             <h2 style="font-weight:900; color:var(--primary); margin-bottom:5px; text-align:center;">REGISTRAR ABONO</h2>
-            <div style="font-size:0.8rem; font-weight:700; color:#666; text-align:center; margin-bottom:25px;">${name}</div>
+            <div style="font-size:0.8rem; font-weight:700; color:#555555; text-align:center; margin-bottom:25px;">${name}</div>
             
             <div style="margin-bottom:20px;">
-              <label style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:8px; display:block; text-transform:uppercase;">Monto del Abono ($)</label>
+              <label style="font-size:0.65rem; font-weight:900; color:#4b5563; margin-bottom:8px; display:block; text-transform:uppercase;">Monto del Abono ($)</label>
               <input id="abono-amount" type="number" step="0.01" value="${price}" style="width:100%; box-sizing:border-box; border:2.5px solid #f0f0f0; border-radius:18px; padding:20px; font-size:1.5rem; font-weight:900; outline:none; font-family:var(--font); text-align:center;">
               <div id="abono-preview" style="font-size:0.6rem; font-weight:800; color:#22c55e; margin-top:8px; text-align:center;">Extenderá: 30 días aprox.</div>
+              <div id="abono-ves-calc" style="font-size:0.75rem; font-weight:800; color:#18181b; margin-top:8px; text-align:center; padding:10px; background:#f4f4f5; border-radius:14px; display:none; border:1px solid #e4e4e7;"></div>
             </div>
 
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px;">
               <div>
-                <label style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:8px; display:block; text-transform:uppercase;">Fecha de Pago</label>
+                <label style="font-size:0.65rem; font-weight:900; color:#4b5563; margin-bottom:8px; display:block; text-transform:uppercase;">Fecha de Pago</label>
                 <input id="abono-date" type="date" value="${new Date().toISOString().split('T')[0]}" style="width:100%; box-sizing:border-box; border:2.5px solid #f0f0f0; border-radius:15px; padding:12px; font-family:var(--font); font-weight:700; outline:none; background:#fafafa;">
               </div>
               <div>
-                <label style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:8px; display:block; text-transform:uppercase;">Método</label>
+                <label style="font-size:0.65rem; font-weight:900; color:#4b5563; margin-bottom:8px; display:block; text-transform:uppercase;">Método</label>
                 <select id="abono-method" style="width:100%; padding:12px; border-radius:15px; border:2.5px solid #f0f0f0; font-family:var(--font); font-weight:800; outline:none; appearance:none; background:#fafafa;">
-                  <option value="EFECTIVO">💵 EFECTIVO</option>
+                  <option value="EFECTIVO_USD">💵 EFECTIVO $</option>
+                  <option value="EFECTIVO_BS">💵 EFECTIVO BS</option>
                   <option value="PAGO_MOVIL">📱 PAGO MÓVIL</option>
                   <option value="TRANSFERENCIA">🏦 TRANSFERENCIA</option>
+                  <option value="ZELLE">🌀 ZELLE</option>
                 </select>
               </div>
             </div>
 
             <div id="abono-bank-container" style="margin-bottom:20px; display:none;">
-              <label style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:8px; display:block; text-transform:uppercase;">Banco Emisor</label>
+              <label style="font-size:0.65rem; font-weight:900; color:#4b5563; margin-bottom:8px; display:block; text-transform:uppercase;">Banco Emisor</label>
               <select id="abono-bank" style="width:100%; padding:15px; border-radius:15px; border:2.5px solid #f0f0f0; font-family:var(--font); font-weight:800; outline:none; appearance:none; background:#fafafa;">
                 <option value="">Seleccionar Banco...</option>
                 <option value="BANESCO">Banesco</option>
@@ -3244,13 +3298,13 @@ export const initAdmin = (container) => {
             </div>
 
             <div id="abono-ref-container" style="margin-bottom:25px; display:none;">
-              <label style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:8px; display:block; text-transform:uppercase;">Referencia</label>
+              <label style="font-size:0.65rem; font-weight:900; color:#4b5563; margin-bottom:8px; display:block; text-transform:uppercase;">Referencia</label>
               <input id="abono-ref" type="text" placeholder="Ej: 4522" style="width:100%; box-sizing:border-box; border:2.5px solid #f0f0f0; border-radius:18px; padding:18px; font-size:1.1rem; font-weight:900; outline:none; font-family:var(--font);">
             </div>
 
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
                <button data-action="SUBMIT_ABONO" data-id="${id}" data-price="${price}" style="padding:20px; background:#1a1a2e; color:var(--accent); border:none; border-radius:20px; font-weight:900; cursor:pointer; font-size:0.8rem; text-transform:uppercase;">PROCESAR</button>
-               <button data-action="CANCEL_MODAL" style="padding:20px; background:#f4f4f4; color:#666; border:none; border-radius:20px; font-weight:900; cursor:pointer; font-size:0.8rem; text-transform:uppercase;">CANCELAR</button>
+               <button data-action="CANCEL_MODAL" style="padding:20px; background:#f4f4f4; color:#555555; border:none; border-radius:20px; font-weight:900; cursor:pointer; font-size:0.8rem; text-transform:uppercase;">CANCELAR</button>
             </div>
           </div>
         </div>
@@ -3258,23 +3312,39 @@ export const initAdmin = (container) => {
       
       const amountInput = l.querySelector('#abono-amount');
       const preview = l.querySelector('#abono-preview');
+      const vesCalc = l.querySelector('#abono-ves-calc');
       const methodSelect = l.querySelector('#abono-method');
       const refContainer = l.querySelector('#abono-ref-container');
 
       const bankContainer = l.querySelector('#abono-bank-container');
       const bankSelect = l.querySelector('#abono-bank');
 
-      amountInput.oninput = () => {
+      const updateAbonoVesCalc = () => {
         const val = parseFloat(amountInput.value) || 0;
         const days = Math.round((val / price) * 30);
         preview.textContent = `Extenderá: ${days} días aprox.`;
+        
+        const method = methodSelect.value;
+        const isBs = ['EFECTIVO_BS', 'PAGO_MOVIL', 'TRANSFERENCIA'].includes(method);
+        if (isBs) {
+          const rateVal = currentBcv?.rate || 40;
+          const vesVal = val * rateVal;
+          vesCalc.innerHTML = `Equivale a: <strong style="color:#111827;">Bs. ${vesVal.toLocaleString('es-VE', {minimumFractionDigits:2})}</strong><br><span style="font-size:0.6rem; color:#6b7280; font-weight:700;">Tasa BCV: Bs. ${rateVal.toFixed(2)}</span>`;
+          vesCalc.style.display = 'block';
+        } else {
+          vesCalc.style.display = 'none';
+        }
       };
 
+      amountInput.oninput = updateAbonoVesCalc;
       methodSelect.onchange = () => {
         const isDigital = ['PAGO_MOVIL', 'TRANSFERENCIA'].includes(methodSelect.value);
         refContainer.style.display = isDigital ? 'block' : 'none';
         bankContainer.style.display = isDigital ? 'block' : 'none';
+        updateAbonoVesCalc();
       };
+      
+      updateAbonoVesCalc();
     },
     SUBMIT_ABONO: async (btn) => {
       const id = btn.dataset.id;
@@ -3359,7 +3429,7 @@ export const initAdmin = (container) => {
     await renderTabContent(s); 
     initPlateAdder()
     container.querySelectorAll('.admin-tab-btn').forEach(v => {
-      const active = v.dataset.tab === activeTab
+      const active = (v.dataset.tab === activeTab) || (activeTab === 'ABONOS' && v.dataset.tab === 'SUBS')
       v.style.color = active ? '#F5C518' : 'rgba(255,255,255,0.4)'
     })
   }
@@ -3393,6 +3463,11 @@ export const initAdmin = (container) => {
   }
 
   loadHomeMetrics().then(async () => {
+    try {
+      currentBcv = await getExchangeRate()
+    } catch (e) {
+      console.warn('Failed to load BCV rate on start:', e)
+    }
     await render()
     const state = getParkingState()
     setTimeout(() => checkExpiringSubscriptions(state.buildingId), 2000);

@@ -1353,8 +1353,11 @@ getExchangeRate().then(bcv => {
     }
     
     if (selectedSlot.paymentStatus === 'PAGADO') {
-       totalOwed = 0;
-       appliedTariffName = 'PAGADO EN PRE-PAGO';
+       if (totalOwed > 0) {
+          appliedTariffName = 'MULTA POR DÍA ADICIONAL';
+       } else {
+          appliedTariffName = 'PAGADO EN PRE-PAGO';
+       }
     }
     if (selectedSlot.status === 'DEBT' && totalOwed === 0 && selectedSlot.paymentStatus !== 'PAGADO') {
        totalOwed = activeTariffs.length > 0 ? activeTariffs[0].baseRate : (state.settings?.baseRate || 1);
