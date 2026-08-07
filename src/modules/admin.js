@@ -1,5 +1,33 @@
 import { getParkingState, saveParkingState, logAudit, getCleanPrefix, supabase, logMovement, syncDown, hasFeature, getBuildingPlan, showToast, getExchangeRate, getSyncQueueCount } from '../db.js'
 
+const compressBase64Image = (base64Str, max = 200, quality = 0.6) => {
+  return new Promise((resolve) => {
+    if (!base64Str || !base64Str.startsWith('data:image')) {
+      resolve(base64Str);
+      return;
+    }
+    if (base64Str.length < 55000) {
+      resolve(base64Str);
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let w = img.width; let h = img.height;
+      if (w > h) { if (w > max) { h *= max / w; w = max; } }
+      else { if (h > max) { w *= max / h; h = max; } }
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => {
+      resolve(base64Str);
+    };
+    img.src = base64Str;
+  });
+};
+
 const checkExpiringSubscriptions = async (buildingId) => {
   const today   = new Date();
   const in3days = new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000);
@@ -359,13 +387,19 @@ export const initAdmin = (container) => {
       btn.disabled = true;
 
       try {
+        const compressedPhoto = g.photo ? await compressBase64Image(g.photo) : null;
+        if (compressedPhoto && compressedPhoto !== g.photo) {
+          g.photo = compressedPhoto;
+          saveParkingState(state);
+        }
+
         const { error } = await supabase.from('personnel').upsert({
            id: g.id,
            building_id: state.buildingId,
            name: g.name,
            phone: g.phone,
            shift: g.shift,
-           photo: g.photo || null,
+           photo: compressedPhoto || null,
            pin: g.pin || null
         }, { onConflict: 'id' });
 
@@ -2987,8 +3021,25 @@ export const initAdmin = (container) => {
     if (dz && i) {
       dz.onclick = () => i.click();
       i.onchange = (e) => {
-        const file = e.target.files[0]; if (!file) return; const r = new FileReader()
-        r.onload = (re) => { p.src = re.target.result; p.style.display = 'block'; s.style.display = 'none' }
+        const file = e.target.files[0]; if (!file) return;
+        const r = new FileReader()
+        r.onload = (re) => {
+          const img = new Image()
+          img.onload = () => {
+             const canvas = document.createElement('canvas');
+             const max = 200;
+             let w = img.width; let h = img.height;
+             if (w > h) { if (w > max) { h *= max / w; w = max; } }
+             else { if (h > max) { w *= max / h; h = max; } }
+             canvas.width = w; canvas.height = h;
+             const ctx = canvas.getContext('2d');
+             ctx.drawImage(img, 0, 0, w, h);
+             p.src = canvas.toDataURL('image/jpeg', 0.6);
+             p.style.display = 'block';
+             s.style.display = 'none';
+          };
+          img.src = re.target.result;
+        }
         r.readAsDataURL(file)
       }
     }
