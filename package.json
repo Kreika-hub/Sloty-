@@ -7,13 +7,12 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "gen-icons": "pwa-assets-generator --preset minimal public/icons/pwa-sloty.png",
+    "gen-icons": "pwa-assets-generator --preset minimal public/icons/pwa-512x512.png",
     "read": "node read_sections.js",
     "modify": "node modify_guard.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.0.0",
-    "date-fns": "^4.1.0",
     "vite": "^5.0.0",
     "vite-plugin-pwa": "^1.2.0"
   }

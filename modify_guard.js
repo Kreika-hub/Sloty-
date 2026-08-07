@@ -568,5 +568,120 @@ if (content.includes(oldClosureMethodsLoop)) {
   }
 }
 
+// B. Update renderHeader template in guard.js to include connection and sync badges
+const oldHeaderDiv = `<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:4px;">
+            <div style="font-size:0.65rem;font-weight:900;color:rgba(255,255,255,0.4);letter-spacing:1px;text-transform:uppercase;">GARITA ACTIVA</div>
+            <span style="background:rgba(245,197,24,0.15); color:#F5C518; font-size:0.65rem; font-weight:900; padding:2px 8px; border-radius:6px; border:1px solid rgba(245,197,24,0.3);">\\\${state.buildingCode || ''}</span>
+          </div>`;
+
+const newHeaderDiv = `<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:4px;">
+            <div style="font-size:0.65rem;font-weight:900;color:rgba(255,255,255,0.4);letter-spacing:1px;text-transform:uppercase;">GARITA ACTIVA</div>
+            <span style="background:rgba(245,197,24,0.15); color:#F5C518; font-size:0.65rem; font-weight:900; padding:2px 8px; border-radius:6px; border:1px solid rgba(245,197,24,0.3);">\\\${state.buildingCode || ''}</span>
+            <span id="header-conn-status" style="font-size:0.65rem; font-weight:900; padding:2px 8px; border-radius:6px; background:\\\${navigator.onLine ? 'rgba(34,197,94,0.15)' : 'rgba(245,197,24,0.15)'}; color:\\\${navigator.onLine ? '#22c55e' : '#ce8a05'}; border:1px solid \\\${navigator.onLine ? 'rgba(34,197,94,0.3)' : 'rgba(245,197,24,0.3)'};">
+               ● \\\${navigator.onLine ? 'En Línea' : 'Offline'}
+            </span>
+            <span id="header-sync-queue" style="font-size:0.65rem; font-weight:900; padding:2px 8px; border-radius:6px; background:rgba(255,255,255,0.06); color:#ce8a05; border:1px solid rgba(255,255,255,0.15); display:\\\${getSyncQueueCount() > 0 ? 'inline-block' : 'none'};">
+               ⏳ Carga: <b id="header-sync-count">\\\${getSyncQueueCount()}</b>
+            </span>
+          </div>`;
+
+content = content.replace(oldHeaderDiv, newHeaderDiv);
+
+// C. Update recent list map to display PENDIENTE badge when isTaskPending(m.id) is true
+const oldRecentMap = `              \\\\\\\${openMovs.slice(0, 10).map(m => \\\`
+                <div style="background:#fafafa; border-radius:12px; padding:10px 15px; display:flex; justify-content:space-between; align-items:center;">
+                   <div>
+                     <div style="font-size:0.8rem; font-weight:900; color:var(--primary);">\\\\\\\${m.plate || '---'}</div>
+                     <div style="font-size:0.5rem; color:#999; font-weight:700;">\\\\\\\${m.type} · \\\\\\\${m.slot}</div>
+                   </div>
+                   <div style="text-align:right;">
+                     <div style="font-size:0.8rem; font-weight:900; color:#22c55e;">+\\\\\\\$\\\\\\\${(m.amount||0).toFixed(2)}</div>
+                     <div style="font-size:0.45rem; color:#bbb; font-weight:800;">Ref: \\\\\\\${m.reference || 'EFEC'}</div>
+                   </div>
+                </div>
+              \\\`).join('')}`;
+
+const newRecentMap = `              \\\\\\\${openMovs.slice(0, 10).map(m => {
+                const isPending = isTaskPending(m.id);
+                return \\\`
+                <div style="background:#fafafa; border-radius:12px; padding:10px 15px; display:flex; justify-content:space-between; align-items:center; border:1.5px solid \\\\\\\${isPending ? 'rgba(245,197,24,0.4)' : 'transparent'};">
+                   <div>
+                     <div style="font-size:0.8rem; font-weight:900; color:var(--primary); display:flex; align-items:center; gap:6px;">
+                       \\\\\\\${m.plate || '---'}
+                       \\\\\\\${isPending ? \\\\\\\`<span style="font-size:0.5rem; font-weight:800; background:rgba(245,197,24,0.15); color:#ce8a05; padding:1px 5px; border-radius:4px; border:1px solid rgba(245,197,24,0.25);">PENDIENTE</span>\\\\\\\` : ''}
+                     </div>
+                     <div style="font-size:0.5rem; color:#999; font-weight:700;">\\\\\\\${m.type} · \\\\\\\${m.slot}</div>
+                   </div>
+                   <div style="text-align:right;">
+                     <div style="font-size:0.8rem; font-weight:900; color:#22c55e;">+\\\\\\\$\\\\\\\${(m.amount||0).toFixed(2)}</div>
+                     <div style="font-size:0.45rem; color:#bbb; font-weight:800;">Ref: \\\\\\\${m.reference || 'EFEC'}</div>
+                   </div>
+                </div>
+               \\\`
+              }).join('')}`;
+
+content = content.replace(oldRecentMap, newRecentMap);
+
+// D. Add window listeners in initGuard and handle cleanup
+const oldListenersPlaceholder = `  let shiftData = {
+    startedAt: new Date().toISOString(),
+    absences: [],
+    pausedAt: null
+  }`;
+
+const newListenersPlaceholder = `  let shiftData = {
+    startedAt: new Date().toISOString(),
+    absences: [],
+    pausedAt: null
+  }
+
+  const handleSyncUpdated = (e) => {
+    const el = document.getElementById('header-sync-queue')
+    if (el) {
+      el.style.display = e.detail.count > 0 ? 'inline-block' : 'none'
+      const countEl = document.getElementById('header-sync-count')
+      if (countEl) countEl.textContent = e.detail.count
+    }
+  }
+
+  const handleConnectionStatus = (e) => {
+    const el = document.getElementById('header-conn-status')
+    if (el) {
+      el.style.background = e.detail.online ? 'rgba(34,197,94,0.15)' : 'rgba(245,197,24,0.15)'
+      el.style.color = e.detail.online ? '#22c55e' : '#ce8a05'
+      el.style.borderColor = e.detail.online ? 'rgba(34,197,94,0.3)' : 'rgba(245,197,24,0.3)'
+      el.innerHTML = \\\`● \\\${e.detail.online ? 'En Línea' : 'Offline'}\\\`
+    }
+  }
+
+  window.addEventListener('sloty-sync-updated', handleSyncUpdated)
+  window.addEventListener('sloty-connection-status', handleConnectionStatus)`;
+
+content = content.replace(oldListenersPlaceholder, newListenersPlaceholder);
+
+// E. Add window listener cleanups at guardRealtimeChannel unsubscribe
+const oldCleanup = `  container._cleanup = () => {
+    if (guardRealtimeChannel) guardRealtimeChannel.unsubscribe();
+  }`;
+
+const newCleanup = `  container._cleanup = () => {
+    if (guardRealtimeChannel) guardRealtimeChannel.unsubscribe();
+    window.removeEventListener('sloty-sync-updated', handleSyncUpdated);
+    window.removeEventListener('sloty-connection-status', handleConnectionStatus);
+  }`;
+
+content = content.replace(oldCleanup, newCleanup);
+
+// F. Ensure imports in guard.js are fully up to date
+const oldImp1 = `import { getParkingState, updateParkingState, logMovement, logNotification, saveClosure, supabase, hasFeature, showToast, logAudit, getExchangeRate, getSyncQueueCount } from '../db.js'`;
+const oldImp2 = `import { getParkingState, updateParkingState, logMovement, logNotification, saveClosure, supabase, hasFeature, showToast, logAudit, getExchangeRate } from '../db.js'`;
+const targetImp = `import { getParkingState, updateParkingState, logMovement, logNotification, saveClosure, supabase, hasFeature, showToast, logAudit, getExchangeRate, getSyncQueueCount, isTaskPending } from '../db.js'`;
+
+if (content.includes(oldImp1)) {
+  content = content.replace(oldImp1, targetImp);
+} else if (content.includes(oldImp2)) {
+  content = content.replace(oldImp2, targetImp);
+}
+
 fs.writeFileSync('src/modules/guard.js', content, 'utf8');
 console.log('guard.js saved successfully');

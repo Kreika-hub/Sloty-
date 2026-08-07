@@ -1,4 +1,4 @@
-import { getParkingState, saveParkingState, logAudit, getCleanPrefix, supabase, logMovement, syncDown, hasFeature, getBuildingPlan, showToast, getExchangeRate } from '../db.js'
+import { getParkingState, saveParkingState, logAudit, getCleanPrefix, supabase, logMovement, syncDown, hasFeature, getBuildingPlan, showToast, getExchangeRate, getSyncQueueCount } from '../db.js'
 
 const checkExpiringSubscriptions = async (buildingId) => {
   const today   = new Date();
@@ -50,6 +50,37 @@ const checkExpiringSubscriptions = async (buildingId) => {
 export const initAdmin = (container) => {
   console.log('[Sloty] Inicializando Panel Admin...')
   let activeTab = 'HOME'
+
+  const handleSyncUpdated = (e) => {
+    const el = document.getElementById('admin-sync-queue')
+    if (el) {
+      el.style.display = e.detail.count > 0 ? 'inline-block' : 'none'
+      const countEl = document.getElementById('admin-sync-count')
+      if (countEl) countEl.textContent = e.detail.count
+    }
+  }
+
+  const handleConnectionStatus = (e) => {
+    const el = document.getElementById('admin-conn-status')
+    if (el) {
+      el.style.background = e.detail.online ? 'rgba(34,197,94,0.15)' : 'rgba(245,197,24,0.15)'
+      el.style.color = e.detail.online ? '#22c55e' : '#ce8a05'
+      el.style.borderColor = e.detail.online ? 'rgba(34,197,94,0.3)' : 'rgba(245,197,24,0.3)'
+      el.innerHTML = `● ${e.detail.online ? 'En Línea' : 'Offline'}`
+    }
+  }
+
+  window.addEventListener('sloty-sync-updated', handleSyncUpdated)
+  window.addEventListener('sloty-connection-status', handleConnectionStatus)
+
+  let renderTimeout = null
+  const debouncedRender = () => {
+    if (renderTimeout) clearTimeout(renderTimeout)
+    renderTimeout = setTimeout(() => {
+      render()
+    }, 150)
+  }
+
   let reportFilter = 'HOY'
   let pendingAction = null // { type, name, lName, sLabel, guardId }
   let editingLevel = null // Level name being renamed
@@ -341,7 +372,7 @@ export const initAdmin = (container) => {
         if (error) throw error;
 
         const url = `${window.location.origin}/?setup_guard=${g.id}&bld=${state.buildingCode}`;
-        const msg = `¡Bienvenido a Sloty, ${g.name}! 🛡️\n\nTu acceso para ${state.buildingName} está listo.\n\nPor favor, ingresa al siguiente enlace para activar tu cuenta y crear tu PIN de acceso:\n\n${url}`;
+        const msg = `¡Bienvenido a Sloty, ${g.name}! 🛡️\n\nTu acceso para ${state.buildingName} (${state.buildingCode}) está listo.\n\nPor favor, ingresa al siguiente enlace para activar tu cuenta y crear tu PIN de acceso:\n\n${url}`;
         
         window.open(`https://wa.me/${g.phone.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`, '_blank');
       } catch (err) {
@@ -445,7 +476,9 @@ export const initAdmin = (container) => {
       if (activeTab === 'SETTINGS') activeSettingsMenu = 'MAIN'
       // Colorear inmediatamente sin esperar render
       container.querySelectorAll('.admin-tab-btn').forEach(v => {
-        const isTabActive = (v.dataset.tab === activeTab) || (activeTab === 'ABONOS' && v.dataset.tab === 'SUBS')
+        const isTabActive = (v.dataset.tab === activeTab) || 
+                            (activeTab === 'ABONOS' && v.dataset.tab === 'SUBS') ||
+                            (activeTab === 'REPORTES' && v.dataset.tab === 'FINANCE')
         v.style.color = isTabActive ? '#F5C518' : 'rgba(255,255,255,0.4)'
       })
       render()
@@ -1153,38 +1186,130 @@ export const initAdmin = (container) => {
       const c = (state.closures || []).find(x => x.id === id)
       if (!c) return
       
-      const methodsHtml = Object.entries(c.methods || {}).map(([m, val]) => `
-         <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
-           <span style="font-size:0.75rem; color:#666; font-weight:700;">${m.replace('_', ' ')}</span>
-           <span style="font-size:0.85rem; color:var(--primary); font-weight:900;">$${val.toFixed(2)}</span>
-         </div>
-      `).join('')
+      const expected = { EFECTIVO_USD: 0, EFECTIVO_BS: 0, PAGO_MOVIL: 0, TRANSFERENCIA: 0, ZELLE: 0 };
+      const declared = { EFECTIVO_USD: 0, EFECTIVO_BS: 0, PAGO_MOVIL: 0, TRANSFERENCIA: 0, ZELLE: 0 };
+      
+      const normalizeMethodKey = (m) => {
+        let k = (m || 'EFECTIVO_USD').toUpperCase().replace(/\s/g, '_');
+        if (k === 'EFECTIVO') return 'EFECTIVO_USD';
+        return k;
+      };
+
+      (c.movements || []).forEach(m => {
+        const key = normalizeMethodKey(m.payMethod);
+        if (expected[key] !== undefined) {
+          expected[key] += (m.amount || 0);
+        } else {
+          expected[key] = (m.amount || 0);
+        }
+      });
+
+      Object.entries(c.methods || {}).forEach(([m, val]) => {
+        const key = normalizeMethodKey(m);
+        if (declared[key] !== undefined) {
+          declared[key] += (val || 0);
+        } else {
+          declared[key] = (val || 0);
+        }
+      });
+
+      const allKeys = Array.from(new Set([...Object.keys(expected), ...Object.keys(declared)]));
+      let totalExpected = 0;
+      let totalDeclared = 0;
+      let totalDiff = 0;
+
+      const methodNames = {
+        EFECTIVO_USD: 'Efectivo $',
+        EFECTIVO_BS: 'Efectivo Bs',
+        PAGO_MOVIL: 'Pago Móvil',
+        TRANSFERENCIA: 'Transferencia',
+        ZELLE: 'Zelle'
+      };
+
+      const tableRows = allKeys.map(key => {
+        const expVal = expected[key] || 0;
+        const decVal = declared[key] || 0;
+        const diffVal = decVal - expVal;
+        
+        if (expVal === 0 && decVal === 0) return '';
+        
+        totalExpected += expVal;
+        totalDeclared += decVal;
+        totalDiff += diffVal;
+
+        const diffColor = diffVal === 0 ? '#4b5563' : diffVal > 0 ? '#22c55e' : '#ef4444';
+        const diffText = diffVal === 0 ? '$0.00' : (diffVal > 0 ? `+$${diffVal.toFixed(2)}` : `-$${Math.abs(diffVal).toFixed(2)}`);
+
+        return `
+          <tr style="border-bottom:1px solid #f3f4f6; font-size:0.75rem;">
+            <td style="padding:10px 0; font-weight:800; color:#1f2937;">${methodNames[key] || key.replace('_', ' ')}</td>
+            <td style="padding:10px 0; text-align:right; font-weight:700; color:#4b5563;">$${expVal.toFixed(2)}</td>
+            <td style="padding:10px 0; text-align:right; font-weight:700; color:#4b5563;">$${decVal.toFixed(2)}</td>
+            <td style="padding:10px 0; text-align:right; font-weight:900; color:${diffColor};">${diffText}</td>
+          </tr>
+        `;
+      }).join('');
+
+      const totalDiffColor = totalDiff === 0 ? '#15803d' : totalDiff > 0 ? '#15803d' : '#ef4444';
+      const totalDiffBadge = totalDiff === 0 
+        ? `<div style="background:#dcfce7; color:#15803d; padding:8px 12px; border-radius:12px; font-weight:950; font-size:0.7rem; text-align:center; display:inline-block;">✓ CUADRADO (SIN DIFERENCIAS)</div>`
+        : `<div style="background:${totalDiff > 0 ? '#dcfce7' : '#fee2e2'}; color:${totalDiffColor}; padding:8px 12px; border-radius:12px; font-weight:950; font-size:0.7rem; text-align:center; display:inline-block;">DIFERENCIA: ${totalDiff > 0 ? 'SOBRANTE' : 'FALTANTE'} DE $${Math.abs(totalDiff).toFixed(2)}</div>`;
 
       const movsHtml = (c.movements || []).map(m => `
-         <div style="padding:10px; border-bottom:1px solid #f8f8f8; display:flex; justify-content:space-between; align-items:center;">
-            <div style="font-size:0.75rem; font-weight:900;">${m.plate} <span style="font-weight:700; color:#bbb; margin-left:5px;">${m.slot}</span></div>
+         <div style="padding:12px; border-bottom:1px solid #f3f4f6; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+               <div style="font-size:0.75rem; font-weight:900; color:#1f2937;">${m.plate}</div>
+               <div style="font-size:0.6rem; color:#4b5563; font-weight:700;">${m.slot} · ${(m.payMethod || '').replace('_', ' ')}</div>
+            </div>
             <div style="text-align:right;">
                <div style="font-size:0.75rem; font-weight:900; color:#22c55e;">$${(m.amount||0).toFixed(2)}</div>
-               <div style="font-size:0.5rem; color:#bbb;">Ref: ${m.reference || 'EFEC'}</div>
+               <div style="font-size:0.55rem; color:#4b5563; font-weight:700;">Ref: ${m.reference || 'EFEC'}</div>
             </div>
          </div>
       `).join('')
 
       pendingAction = {
         type: 'CUSTOM_MODAL',
-        title: 'Detalle de Cierre',
+        title: 'Arqueo y Detalle de Cierre',
         content: `
-          <div style="padding:15px; text-align:left;">
-             <div style="background:#f8f9fa; border-radius:16px; padding:15px; margin-bottom:20px;">
-                ${methodsHtml || '<div style="font-size:0.7rem; color:#999; text-align:center;">Sin detalles por método</div>'}
-                <div style="border-top:1.5px solid #eee; margin-top:10px; padding-top:10px; display:flex; justify-content:space-between; font-weight:950;">
-                   <span>TOTAL CIERRE</span>
-                   <span style="color:#22c55e;">$${(c.total || 0).toFixed(2)}</span>
+          <div style="padding:15px; text-align:left; font-family:var(--font);">
+             <!-- Tabla de Conciliación -->
+             <div style="background:#f9fafb; border-radius:24px; border:1px solid #e5e7eb; padding:20px; margin-bottom:20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                <div style="font-size:0.65rem; font-weight:900; color:#4b5563; text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Comparativa de Métodos</div>
+                <table style="width:100%; border-collapse:collapse;">
+                  <thead>
+                    <tr style="border-bottom:1.5px solid #e5e7eb; text-align:left; font-size:0.65rem;">
+                      <th style="padding:6px 0; color:#4b5563; font-weight:900; text-transform:uppercase;">Método</th>
+                      <th style="padding:6px 0; text-align:right; color:#4b5563; font-weight:900; text-transform:uppercase;">Esperado</th>
+                      <th style="padding:6px 0; text-align:right; color:#4b5563; font-weight:900; text-transform:uppercase;">Declarado</th>
+                      <th style="padding:6px 0; text-align:right; color:#4b5563; font-weight:900; text-transform:uppercase;">Dif.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${tableRows || `<tr><td colspan="4" style="text-align:center; padding:15px; color:#4b5563; font-weight:700;">Sin movimientos ni declaraciones</td></tr>`}
+                  </tbody>
+                </table>
+                
+                <div style="border-top:1.5px solid #e5e7eb; margin-top:12px; padding-top:12px; display:grid; grid-template-columns:1fr 1fr; gap:10px; font-weight:950; font-size:0.75rem;">
+                   <div>
+                     <div style="font-size:0.55rem; color:#4b5563; font-weight:800; text-transform:uppercase;">Total Esperado</div>
+                     <div style="font-size:0.95rem; color:#1a1a2e;">$${totalExpected.toFixed(2)}</div>
+                   </div>
+                   <div style="text-align:right;">
+                     <div style="font-size:0.55rem; color:#4b5563; font-weight:800; text-transform:uppercase;">Total Declarado</div>
+                     <div style="font-size:0.95rem; color:#22c55e;">$${totalDeclared.toFixed(2)}</div>
+                   </div>
                 </div>
              </div>
-             <div style="font-size:0.6rem; font-weight:900; color:#999; text-transform:uppercase; margin-bottom:10px;">MOVIMIENTOS DE LA SESIÓN</div>
-             <div style="max-height:250px; overflow-y:auto; border:1px solid #f4f4f4; border-radius:12px;">
-                ${movsHtml || '<div style="padding:20px; text-align:center; color:#ccc;">No hay movimientos registrados</div>'}
+             
+             <!-- Badge de Estatus -->
+             <div style="text-align:center; margin-bottom:20px;">
+                ${totalDiffBadge}
+             </div>
+             
+             <div style="font-size:0.65rem; font-weight:900; color:#4b5563; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">MOVIMIENTOS DE LA SESIÓN (${(c.movements || []).length})</div>
+             <div style="max-height:220px; overflow-y:auto; border:1px solid #e5e7eb; border-radius:18px; background:white;">
+                ${movsHtml || '<div style="padding:30px; text-align:center; color:#4b5563; font-weight:700; font-size:0.75rem;">No hay movimientos registrados</div>'}
              </div>
           </div>
         `
@@ -1676,6 +1801,12 @@ export const initAdmin = (container) => {
 
             <!-- RIGHT ACTIONS -->
             <div style="display:flex; align-items:center; gap:12px;">
+              <span id="admin-conn-status" style="font-size:0.65rem; font-weight:900; padding:2px 8px; border-radius:6px; background:${navigator.onLine ? 'rgba(34,197,94,0.15)' : 'rgba(245,197,24,0.15)'}; color:${navigator.onLine ? '#22c55e' : '#ce8a05'}; border:1px solid ${navigator.onLine ? 'rgba(34,197,94,0.3)' : 'rgba(245,197,24,0.3)'};">
+                 ● ${navigator.onLine ? 'En Línea' : 'Offline'}
+              </span>
+              <span id="admin-sync-queue" style="font-size:0.65rem; font-weight:900; padding:2px 8px; border-radius:6px; background:rgba(255,255,255,0.06); color:#ce8a05; border:1px solid rgba(255,255,255,0.15); display:${getSyncQueueCount() > 0 ? 'inline-block' : 'none'};">
+                 ⏳ Carga: <b id="admin-sync-count">${getSyncQueueCount()}</b>
+              </span>
               <button data-action="SYNC" style="background:none; border:none; cursor:pointer; color:rgba(255,255,255,0.6); padding:0; display:flex; align-items:center; justify-content:center; transition:transform 0.5s;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:20px; height:20px;"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
               </button>
@@ -1787,9 +1918,7 @@ export const initAdmin = (container) => {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
     const in7days = new Date(now.getTime() + 7 * 86400000).toISOString()
 
-    if (!cachedMetrics) {
-      await loadHomeMetrics()
-    }
+    if (!cachedMetrics) cachedMetrics = { subs: [], pays: [], pends: [] };
     const subs = cachedMetrics?.subs || []
     const pays = cachedMetrics?.pays || []
     const pends = cachedMetrics?.pends || []
@@ -2056,29 +2185,8 @@ export const initAdmin = (container) => {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
   const todayStr = new Date().toISOString().split('T')[0]
 
-  let subsPays, todayPays;
-
-  if (cachedFinance && Date.now() - cachedFinanceAt < FINANCE_TTL) {
-    subsPays  = cachedFinance.subsPays;
-    todayPays = cachedFinance.todayPays;
-  } else {
-    const [subsPayRes, todayPayRes] = await Promise.all([
-      supabase.from('payments')
-        .select('amount, method, payment_date, status')
-        .eq('building_id', state.buildingId)
-        .eq('status', 'CONFIRMED')
-        .gte('payment_date', monthStart),
-      supabase.from('payments')
-        .select('amount, method')
-        .eq('building_id', state.buildingId)
-        .eq('status', 'CONFIRMED')
-        .gte('payment_date', todayStr)
-    ]);
-    subsPays  = subsPayRes.data || [];
-    todayPays = todayPayRes.data || [];
-    cachedFinance   = { subsPays, todayPays };
-    cachedFinanceAt = Date.now();
-  }
+  const subsPays = cachedFinance?.subsPays || [];
+  const todayPays = cachedFinance?.todayPays || [];
 
   let bcvRate  = null;
   let bcvFecha = null;
@@ -2102,14 +2210,7 @@ export const initAdmin = (container) => {
     });
   }, 50);
 
-  const { data: shifts } = await supabase
-    .from('guard_shifts')
-    .select('id, guard_name, started_at, ended_at, total_cash, total_mobile, total_bs, entries, exits, absences')
-    .eq('building_id', state.buildingId)
-    .order('ended_at', { ascending: false })
-    .limit(200);
-
-  const guardShifts = shifts || [];
+  const guardShifts = cachedFinance?.guardShifts || [];
 
   // Agrupar por guardia
   const byGuard = {};
@@ -2794,28 +2895,82 @@ export const initAdmin = (container) => {
     elMain.dataset.lastTab = renderingTab;
 
     switch(renderingTab) {
-      case 'HOME': 
-        let adsData = [];
-        try {
-          const { data } = await supabase.from('ads')
-            .select('*')
-            .or(`building_id.is.null,building_id.eq.${state.buildingId}`)
-            .order('timestamp', { ascending: false });
-          adsData = data || [];
-        } catch (e) {
-          console.warn('[Sloty] Error loading ads:', e);
+      case 'HOME': {
+        if (!cachedMetrics || !window._cachedAds) {
+          if (!metricsLoading) {
+            Promise.all([
+              loadHomeMetrics(),
+              supabase.from('ads').select('*').or(`building_id.is.null,building_id.eq.${state.buildingId}`).order('timestamp', { ascending: false })
+            ]).then(([_, adsRes]) => {
+              window._cachedAds = adsRes?.data || [];
+              if (activeTab === 'HOME') render();
+            });
+          }
+          const skeleton = SKELETONS.HOME;
+          elMain.innerHTML = `<div class="responsive-container" style="padding-bottom:100px;">${SKELETONS.pulse}${skeleton}</div>`;
+          return;
         }
-        html = await renderHome(state, adsData); 
-        break
-      case 'SUBS': html = await renderMonthlySystem(state); break
+        html = await renderHome(state, window._cachedAds); 
+        break;
+      }
+      case 'SUBS': {
+        if (!cachedSubs) {
+          getSubsCached(state.buildingId).then(() => {
+            if (activeTab === 'SUBS' || activeTab === 'ABONOS') render();
+          });
+          const skeleton = SKELETONS.SUBS;
+          elMain.innerHTML = `<div class="responsive-container" style="padding-bottom:100px;">${SKELETONS.pulse}${skeleton}</div>`;
+          return;
+        }
+        html = await renderMonthlySystem(state); 
+        break;
+      }
+      case 'ABONOS': {
+        if (!cachedSubs) {
+          getSubsCached(state.buildingId).then(() => {
+            if (activeTab === 'SUBS' || activeTab === 'ABONOS') render();
+          });
+          const skeleton = SKELETONS.DEFAULT;
+          elMain.innerHTML = `<div class="responsive-container" style="padding-bottom:100px;">${SKELETONS.pulse}${skeleton}</div>`;
+          return;
+        }
+        html = await renderAbonos(state); 
+        break;
+      }
+      case 'FINANCE': {
+        if (!cachedFinance || (Date.now() - cachedFinanceAt >= FINANCE_TTL)) {
+          const nowObj = new Date();
+          const monthStart = new Date(nowObj.getFullYear(), nowObj.getMonth(), 1).toISOString();
+          const todayStr = new Date().toISOString().split('T')[0];
+          Promise.all([
+            supabase.from('payments').select('amount, method, payment_date, status').eq('building_id', state.buildingId).eq('status', 'CONFIRMED').gte('payment_date', monthStart),
+            supabase.from('payments').select('amount, method').eq('building_id', state.buildingId).eq('status', 'CONFIRMED').gte('payment_date', todayStr),
+            supabase.from('guard_shifts').select('id, guard_name, started_at, ended_at, total_cash, total_mobile, total_bs, entries, exits, absences').eq('building_id', state.buildingId).order('ended_at', { ascending: false }).limit(200)
+          ]).then(([subsPayRes, todayPayRes, shiftsRes]) => {
+            cachedFinance = {
+              subsPays: subsPayRes?.data || [],
+              todayPays: todayPayRes?.data || [],
+              guardShifts: shiftsRes?.data || []
+            };
+            cachedFinanceAt = Date.now();
+            if (activeTab === 'FINANCE') render();
+          });
+
+          if (!cachedFinance) {
+            const skeleton = SKELETONS.FINANCE;
+            elMain.innerHTML = `<div class="responsive-container" style="padding-bottom:100px;">${SKELETONS.pulse}${skeleton}</div>`;
+            return;
+          }
+        }
+        html = await renderFinanceSummary(state); 
+        break;
+      }
       case 'PERSONAL': html = renderPersonnel(state); break
       case 'STRUCTURE': html = renderLevels(state); break
       case 'REPORTES': html = await renderReports(state); break
-      case 'FINANCE': html = await renderFinanceSummary(state); break
       case 'SETTINGS': html = renderSettings(state); break
       case 'NOTIFICATIONS': html = renderNotifications(state); break
       case 'PROFILE': html = renderProfile(state); break
-      case 'ABONOS': html = await renderAbonos(state); break
     }
     
     // Prevent race condition if user changed tab while fetching
@@ -2976,7 +3131,7 @@ export const initAdmin = (container) => {
 
   const renderMonthlySystem = async (state) => {
     // Force a fresh fetch from Supabase
-    const { subs, bld } = await getSubsCached(state.buildingId);
+    const { subs, bld } = cachedSubs || { subs: [], bld: null };
     const fetchErr = null;
     
     if (fetchErr) console.error("Error fetching residents:", fetchErr);
@@ -3130,13 +3285,7 @@ export const initAdmin = (container) => {
   }
 
   const renderAbonos = async (state) => {
-    let subs = [];
-    try {
-      const { data } = await supabase.from('subscriptions').select('*').eq('building_id', state.buildingId).order('resident_name');
-      subs = data || [];
-    } catch (e) {
-      console.warn('[Sloty] Error loading abonos:', e);
-    }
+    const subs = (cachedSubs?.subs || []).slice().sort((a,b) => (a.resident_name || '').localeCompare(b.resident_name || ''));
     const now = new Date();
     const today = now.toISOString().split('T')[0];
     
@@ -3429,7 +3578,9 @@ export const initAdmin = (container) => {
     await renderTabContent(s); 
     initPlateAdder()
     container.querySelectorAll('.admin-tab-btn').forEach(v => {
-      const active = (v.dataset.tab === activeTab) || (activeTab === 'ABONOS' && v.dataset.tab === 'SUBS')
+      const active = (v.dataset.tab === activeTab) || 
+                     (activeTab === 'ABONOS' && v.dataset.tab === 'SUBS') ||
+                     (activeTab === 'REPORTES' && v.dataset.tab === 'FINANCE')
       v.style.color = active ? '#F5C518' : 'rgba(255,255,255,0.4)'
     })
   }
@@ -3453,24 +3604,26 @@ export const initAdmin = (container) => {
       const currentState = getParkingState()
       if (payload.new.building_id !== currentState.buildingId) return
       showToast('💰 Nuevo pago pendiente de aprobación', 'info')
-      if (activeTab === 'HOME') render()
+      if (activeTab === 'HOME') debouncedRender()
     })
     .subscribe()
 
   container._cleanup = () => {
     realtimeChannel.unsubscribe();
     unsubscribeFinanceRealtime();
+    window.removeEventListener('sloty-sync-updated', handleSyncUpdated);
+    window.removeEventListener('sloty-connection-status', handleConnectionStatus);
   }
 
-  loadHomeMetrics().then(async () => {
-    try {
-      currentBcv = await getExchangeRate()
-    } catch (e) {
-      console.warn('Failed to load BCV rate on start:', e)
-    }
-    await render()
-    const state = getParkingState()
+  render();
+
+  Promise.all([
+    loadHomeMetrics(),
+    getExchangeRate().catch(e => console.warn('Failed to load BCV rate on start:', e))
+  ]).then(async ([_, bcv]) => {
+    currentBcv = bcv || currentBcv;
+    await render();
+    const state = getParkingState();
     setTimeout(() => checkExpiringSubscriptions(state.buildingId), 2000);
-    // Eliminado el aviso toast de prueba gratuita por vencer
-  })
+  });
 }

@@ -8,60 +8,145 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 const STORAGE_KEY = 'sloty_state'
 const SYNC_QUEUE_KEY = 'sloty_sync_queue'
 
-// 1. OFFLINE SYNC QUEUE SYSTEM
-const getSyncQueue = () => {
-    try {
-        const raw = localStorage.getItem(SYNC_QUEUE_KEY)
-        return raw ? JSON.parse(raw) : []
-    } catch(e) { return [] }
-}
-
+// 1. OFFLINE SYNC QUEUE SYSTEM (IndexedDB with LocalStorage Fallback)
+const DB_NAME = 'sloty_pwa_db'
+const STORE_NAME = 'sync_queue'
 const MAX_QUEUE_SIZE = 200
 
-const enqueueSync = (task) => {
-    let queue = getSyncQueue()
-    queue.push({ _internalId: Date.now() + Math.random(), _retries: 0, ...task })
-    // Trim oldest items if queue is too large
-    if (queue.length > MAX_QUEUE_SIZE) {
-        queue = queue.slice(queue.length - MAX_QUEUE_SIZE)
-    }
-    try {
-        localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(queue))
-    } catch (e) {
-        // QuotaExceededError - aggressively trim queue and retry
-        console.warn('[Sloty] localStorage quota exceeded, trimming sync queue')
-        queue = queue.slice(Math.floor(queue.length / 2))
+let inMemoryQueue = []
+let idbDatabase = null
+
+const initIDB = () => {
+    return new Promise((resolve) => {
         try {
-            localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(queue))
-        } catch (e2) {
-            // Last resort: clear the queue entirely
-            localStorage.setItem(SYNC_QUEUE_KEY, '[]')
+            const request = indexedDB.open(DB_NAME, 1)
+            request.onerror = (e) => {
+                console.warn('[Sloty IDB] Failed to open IndexedDB, falling back to localStorage:', e)
+                resolve(null)
+            }
+            request.onsuccess = (e) => {
+                resolve(e.target.result)
+            }
+            request.onupgradeneeded = (e) => {
+                const db = e.target.result
+                if (!db.objectStoreNames.contains(STORE_NAME)) {
+                    db.createObjectStore(STORE_NAME, { keyPath: '_internalId' })
+                }
+            }
+        } catch (err) {
+            console.warn('[Sloty IDB] IndexedDB not supported or permission denied:', err)
+            resolve(null)
         }
+    })
+}
+
+const fallbackToLocalStorage = () => {
+    try {
+        const raw = localStorage.getItem(SYNC_QUEUE_KEY)
+        inMemoryQueue = raw ? JSON.parse(raw) : []
+        console.log(`[Sloty IDB] Loaded ${inMemoryQueue.length} tasks from localStorage fallback`)
+        window.dispatchEvent(new CustomEvent('sloty-sync-updated', { detail: { count: inMemoryQueue.length } }))
+    } catch(e) {
+        inMemoryQueue = []
     }
+}
+
+const loadQueueFromStorage = async () => {
+    idbDatabase = await initIDB()
+    if (idbDatabase) {
+        return new Promise((resolve) => {
+            try {
+                const transaction = idbDatabase.transaction([STORE_NAME], 'readonly')
+                const store = transaction.objectStore(STORE_NAME)
+                const request = store.getAll()
+                request.onsuccess = () => {
+                    inMemoryQueue = request.result || []
+                    console.log(`[Sloty IDB] Loaded ${inMemoryQueue.length} tasks from IndexedDB`)
+                    window.dispatchEvent(new CustomEvent('sloty-sync-updated', { detail: { count: inMemoryQueue.length } }))
+                    resolve(inMemoryQueue)
+                }
+                request.onerror = () => {
+                    fallbackToLocalStorage()
+                    resolve(inMemoryQueue)
+                }
+            } catch(e) {
+                fallbackToLocalStorage()
+                resolve(inMemoryQueue)
+            }
+        })
+    } else {
+        fallbackToLocalStorage()
+        return inMemoryQueue
+    }
+}
+
+const persistToLocalStorage = () => {
+    try {
+        localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(inMemoryQueue))
+    } catch(e) {
+        console.error('[Sloty IDB] localStorage write failed:', e)
+    }
+}
+
+const persistQueue = async () => {
+    if (idbDatabase) {
+        try {
+            const transaction = idbDatabase.transaction([STORE_NAME], 'readwrite')
+            const store = transaction.objectStore(STORE_NAME)
+            const clearReq = store.clear()
+            clearReq.onsuccess = () => {
+                for (const task of inMemoryQueue) {
+                    store.add(task)
+                }
+            }
+        } catch (e) {
+            console.warn('[Sloty IDB] Write to IndexedDB failed, using localStorage fallback:', e)
+            persistToLocalStorage()
+        }
+    } else {
+        persistToLocalStorage()
+    }
+}
+
+export const enqueueSync = async (task) => {
+    const item = { _internalId: Date.now() + Math.random(), _retries: 0, ...task }
+    inMemoryQueue.push(item)
+    if (inMemoryQueue.length > MAX_QUEUE_SIZE) {
+        inMemoryQueue = inMemoryQueue.slice(inMemoryQueue.length - MAX_QUEUE_SIZE)
+    }
+    await persistQueue()
+    window.dispatchEvent(new CustomEvent('sloty-sync-updated', { detail: { count: inMemoryQueue.length } }))
     triggerSyncUp()
 }
 
-const cleanQueue = (idsToRemove) => {
-    let queue = getSyncQueue()
-    queue = queue.filter(t => !idsToRemove.includes(t._internalId))
-    localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(queue))
+export const getSyncQueueCount = () => {
+    return inMemoryQueue.length
+}
+
+export const isTaskPending = (taskId) => {
+    return inMemoryQueue.some(t => t.data && (t.data.id === taskId || t.data.visitor_id === taskId))
+}
+
+const cleanQueue = async (idsToRemove) => {
+    inMemoryQueue = inMemoryQueue.filter(t => !idsToRemove.includes(t._internalId))
+    await persistQueue()
+    window.dispatchEvent(new CustomEvent('sloty-sync-updated', { detail: { count: inMemoryQueue.length } }))
 }
 
 let isSyncing = false
 const triggerSyncUp = async () => {
     if (!navigator.onLine || isSyncing) return
     isSyncing = true
-    const queue = getSyncQueue()
-    if (queue.length === 0) { isSyncing = false; return }
+    window.dispatchEvent(new CustomEvent('sloty-sync-updated', { detail: { count: inMemoryQueue.length } }))
+    if (inMemoryQueue.length === 0) { isSyncing = false; return }
 
     const removeIds = []
+    const currentTasks = [...inMemoryQueue]
     
-    for (const task of queue) {
+    for (const task of currentTasks) {
         try {
-            // Sanitize bad personnel data that was queued previously
             if (task.table === 'personnel' && Array.isArray(task.data)) {
                 task.data.forEach(item => delete item.active);
-                // Remove personnel items with non-UUID ids (old Date.now() format)
                 const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
                 task.data = task.data.filter(item => uuidRegex.test(item.id));
                 if (task.data.length === 0) {
@@ -82,21 +167,33 @@ const triggerSyncUp = async () => {
             removeIds.push(task._internalId)
         } catch (e) {
             console.error('[Sloty Sync Error]:', e, 'Task:', task)
-            // Track retries — discard tasks that keep failing
             task._retries = (task._retries || 0) + 1
             if (task._retries >= 3) {
                 console.warn('[Sloty] Discarding task after 3 failures:', task)
                 removeIds.push(task._internalId)
             }
-            // Continue processing other tasks instead of breaking
         }
     }
     
-    if (removeIds.length > 0) cleanQueue(removeIds)
+    if (removeIds.length > 0) await cleanQueue(removeIds)
     isSyncing = false
+    window.dispatchEvent(new CustomEvent('sloty-sync-updated', { detail: { count: inMemoryQueue.length } }))
 }
 
-window.addEventListener('online', triggerSyncUp)
+window.addEventListener('online', () => {
+    window.dispatchEvent(new CustomEvent('sloty-connection-status', { detail: { online: true } }))
+    triggerSyncUp()
+})
+window.addEventListener('offline', () => {
+    window.dispatchEvent(new CustomEvent('sloty-connection-status', { detail: { online: false } }))
+})
+
+// Initialize the queue asynchronously on script load
+loadQueueFromStorage().then(() => {
+    if (navigator.onLine) {
+        triggerSyncUp()
+    }
+})
 
 const defaultState = {
   buildingName: "Edificio Sloty",
@@ -161,20 +258,6 @@ export const getCleanPrefix = (name) => {
   return meaningful.substring(0, 3).toUpperCase()
 }
 
-export const updateBuildingProfile = async (state, newName) => {
-  const oldCode = state.buildingCode
-  const newCode = `${getCleanPrefix(newName)}-${Math.floor(1000 + Math.random() * 9000)}`
-  state.buildingName = newName
-  state.buildingCode = newCode
-
-  const { error } = await supabase
-    .from('buildings')
-    .update({ name: newName, code: newCode })
-    .eq('code', oldCode)
-    
-  saveParkingState(state)
-  return { error, newCode }
-}
 
 let hasBootedDown = false
 export const syncDown = async (buildingCode) => {
@@ -467,9 +550,6 @@ export const markNotificationsRead = () => {
   saveParkingState(state)
 }
 
-export const resetState = () => {
-  localStorage.removeItem(STORAGE_KEY)
-}
 
 export const getBuildingPlan = () => {
   try {

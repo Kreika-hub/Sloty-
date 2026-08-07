@@ -1,4 +1,4 @@
-import { getParkingState, updateParkingState, logMovement, logNotification, saveClosure, supabase, hasFeature, showToast, logAudit, getExchangeRate } from '../db.js'
+import { getParkingState, updateParkingState, logMovement, logNotification, saveClosure, supabase, hasFeature, showToast, logAudit, getExchangeRate, getSyncQueueCount, isTaskPending } from '../db.js'
 import { searchVisitorByPlate, saveVisitor, logAccess } from '../visitors.js'
 import { subscribeToPushNotifications, renderPushBanner } from './push.js'
 
@@ -7,6 +7,12 @@ window.renderPushBanner = renderPushBanner;
 
 export const initGuard = (container, guardName = 'Guardia') => {
   let state = getParkingState()
+  if (state && !state.buildingId) {
+    state.buildingId = localStorage.getItem('sloty_building_id') || null;
+    state.buildingName = localStorage.getItem('sloty_building_name') || '';
+    state.buildingCode = localStorage.getItem('sloty_active_building') || '';
+    updateParkingState(state);
+  }
   let selectedSlot = (() => {
     try {
       return JSON.parse(localStorage.getItem('sloty_selected_slot')) || null
@@ -14,6 +20,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
   })()
   let currentView = 'MAP'
   let activeLevel = null
+  let previousView = 'MAP'
   let currentTab = 'HOME'
   let qrScanner = null
   let scannerActive = false
@@ -22,7 +29,9 @@ export const initGuard = (container, guardName = 'Guardia') => {
   let subPaymentAmount = 0
   let subPaymentMethod = 'EFECTIVO_USD'
   let selectedResident = null
-  let elModal = null
+  let elModal = document.createElement('div')
+  elModal.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);backdrop-filter:blur(5px);z-index:9998;display:none;align-items:center;justify-content:center;padding:20px;"
+  container.appendChild(elModal)
   let elToast = null
   let elShell = null
   let elContent = null
@@ -34,6 +43,28 @@ export const initGuard = (container, guardName = 'Guardia') => {
     absences: [],
     pausedAt: null
   }
+
+  const handleSyncUpdated = (e) => {
+    const el = document.getElementById('header-sync-queue')
+    if (el) {
+      el.style.display = e.detail.count > 0 ? 'inline-block' : 'none'
+      const countEl = document.getElementById('header-sync-count')
+      if (countEl) countEl.textContent = e.detail.count
+    }
+  }
+
+  const handleConnectionStatus = (e) => {
+    const el = document.getElementById('header-conn-status')
+    if (el) {
+      el.style.background = e.detail.online ? 'rgba(34,197,94,0.15)' : 'rgba(245,197,24,0.15)'
+      el.style.color = e.detail.online ? '#22c55e' : '#ce8a05'
+      el.style.borderColor = e.detail.online ? 'rgba(34,197,94,0.3)' : 'rgba(245,197,24,0.3)'
+      el.innerHTML = `● ${e.detail.online ? 'En Línea' : 'Offline'}`
+    }
+  }
+
+  window.addEventListener('sloty-sync-updated', handleSyncUpdated)
+  window.addEventListener('sloty-connection-status', handleConnectionStatus)
 
   window.handleAction = (type, payload) => {
     if (actions[type]) actions[type](payload)
@@ -75,9 +106,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
   }
 
   const showModal = (title, msg, onConfirm) => {
-    if (!elModal) {
-      elModal = document.createElement('div')
-      elModal.style = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);backdrop-filter:blur(5px);z-index:9998;display:none;align-items:center;justify-content:center;padding:20px;"
+    if (!container.contains(elModal)) {
       container.appendChild(elModal)
     }
     elModal.innerHTML = `
@@ -95,9 +124,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
   }
 
   const showPinModal = (title, msg, onConfirm) => {
-    if (!elModal) {
-      elModal = document.createElement('div')
-      elModal.style = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);backdrop-filter:blur(5px);z-index:9998;display:none;align-items:center;justify-content:center;padding:20px;"
+    if (!container.contains(elModal)) {
       container.appendChild(elModal)
     }
     elModal.innerHTML = `
@@ -389,7 +416,10 @@ export const initGuard = (container, guardName = 'Guardia') => {
       currentView = 'MAP'; render()
     },
     SHOW_MANUAL_ENTRY: () => {
+       state = getParkingState()
+       if (!state.levels || state.levels.length === 0) return showToast("No hay puestos configurados", "error")
        const level = state.levels.find(l => l.name === (activeLevel || state.levels[0].name))
+       if (!level) return showToast("No hay puestos configurados", "error")
        const freeIdx = level.slots.findIndex(s => s.status === 'FREE')
        if (freeIdx !== -1) {
           selectedSlot = { ...level.slots[freeIdx], levelName: level.name, sIdx: freeIdx }
@@ -399,58 +429,69 @@ export const initGuard = (container, guardName = 'Guardia') => {
        } else showToast("No hay puestos libres", "error")
     },
     CONFIRM_ENTRY: () => {
-      const plate = document.getElementById('entry-plate')?.value.trim().toUpperCase()
-      const phone = document.getElementById('entry-phone')?.value.trim()
-      if (!plate) return showToast('Ingresa la placa', 'error')
+       state = getParkingState()
+       const plate = document.getElementById('entry-plate')?.value.trim().toUpperCase()
+       const phone = document.getElementById('entry-phone')?.value.trim()
+       if (!plate) return showToast('Ingresa la placa', 'error')
 
-      // COLLECT CUSTOM FIELDS
-      const metadata = {}
-      let missingField = null
-      (state.settings?.customFields || []).forEach(f => {
-        const val = document.getElementById(`custom-${f.id}`)?.value.trim()
-        if (!val) missingField = f.label
-        metadata[f.id] = val
-      })
-      if (missingField) return showToast(`Falta el campo ${missingField}`, 'error')
+       // COLLECT CUSTOM FIELDS
+       const metadata = {}
+       let missingField = null
+       (state.settings?.customFields || []).forEach(f => {
+         const val = document.getElementById(`custom-${f.id}`)?.value.trim()
+         if (!val) missingField = f.label
+         metadata[f.id] = val
+       })
+       if (missingField) return showToast(`Falta el campo ${missingField}`, 'error')
 
-      const category = document.querySelector('.cat-active')?.dataset.cat || 'VISITANTE'
-      if (category === 'RESIDENTE') {
-         const rentalCap = state.settings?.rentalSlotsCap;
-         if (rentalCap != null && rentalCap >= 0) {
-            let occupiedResCount = 0;
-            state.levels.forEach(l => {
-               if (l.slots) {
-                  l.slots.forEach(s => {
-                     const isEditingSameSlot = (l.name === selectedSlot.levelName && s.label === selectedSlot.label);
-                     if (!isEditingSameSlot && s.status === 'OCCUPIED' && s.category === 'RESIDENTE') {
-                        occupiedResCount++;
-                     }
-                  });
-               }
-            });
-            if (occupiedResCount >= rentalCap) {
-               return showToast('Cupo de puestos de mensualidad alcanzado', 'error');
-            }
-         }
-      }
-      const timing = document.querySelector('.timing-active')?.dataset.timing || 'EXIT'
-      const payMethod = timing === 'PRE' ? (document.querySelector('#prepay-selector .pay-active')?.dataset.method || 'EFECTIVO_USD') : null
-      
-      const lvl = state.levels.find(l=>l.name===selectedSlot.levelName)
-      const entryData = { 
-        ...lvl.slots[selectedSlot.sIdx], 
-        status:'OCCUPIED', 
-        category, 
-        plate, 
-        phone, 
-        metadata,
-        entryTime: new Date().toISOString(), 
-        guardName, 
-        paymentStatus: timing === 'PRE' ? 'PAGADO' : 'PENDIENTE',
-        payMethod
-      }
-      
-      lvl.slots[selectedSlot.sIdx] = entryData
+       const category = document.querySelector('.cat-active')?.dataset.cat || 'VISITANTE'
+       if (!selectedSlot) {
+         showToast('Error: No se seleccionó puesto', 'error')
+         currentView = 'MAP'; render()
+         return
+       }
+       if (category === 'RESIDENTE') {
+          const rentalCap = state.settings?.rentalSlotsCap;
+          if (rentalCap != null && rentalCap >= 0) {
+             let occupiedResCount = 0;
+             state.levels.forEach(l => {
+                if (l.slots) {
+                   l.slots.forEach(s => {
+                      const isEditingSameSlot = (l.name === selectedSlot.levelName && s.label === selectedSlot.label);
+                      if (!isEditingSameSlot && s.status === 'OCCUPIED' && s.category === 'RESIDENTE') {
+                         occupiedResCount++;
+                      }
+                   });
+                }
+             });
+             if (occupiedResCount >= rentalCap) {
+                return showToast('Cupo de puestos de mensualidad alcanzado', 'error');
+             }
+          }
+       }
+       const timing = document.querySelector('.timing-active')?.dataset.timing || 'EXIT'
+       const payMethod = timing === 'PRE' ? (document.querySelector('#prepay-selector .pay-active')?.dataset.method || 'EFECTIVO_USD') : null
+       
+       const lvl = state.levels.find(l=>l.name===selectedSlot.levelName)
+       if (!lvl) {
+         showToast('Error: Nivel no encontrado', 'error')
+         currentView = 'MAP'; render()
+         return
+       }
+       const entryData = { 
+         ...lvl.slots[selectedSlot.sIdx], 
+         status:'OCCUPIED', 
+         category, 
+         plate, 
+         phone, 
+         metadata,
+         entryTime: new Date().toISOString(), 
+         guardName, 
+         paymentStatus: timing === 'PRE' ? 'PAGADO' : 'PENDIENTE',
+         payMethod
+       }
+       
+       lvl.slots[selectedSlot.sIdx] = entryData
       selectedSlot = { ...entryData, levelName: selectedSlot.levelName, sIdx: selectedSlot.sIdx }
       if (selectedSlot) { localStorage.setItem('sloty_selected_slot', JSON.stringify(selectedSlot)) } else { localStorage.removeItem('sloty_selected_slot') }
       updateParkingState(state)
@@ -684,37 +725,23 @@ getExchangeRate().then(bcv => {
         if (!guard) return false;
 
         if (shiftData) shiftData.pausedAt = new Date().toISOString();
-
-        document.body.innerHTML = `
-          <div style="display:flex; flex-direction:column; align-items:center;
-                      justify-content:center; height:100vh; background:#1a1a2e;
-                      color:white; text-align:center; padding:40px;">
-            <div style="font-size:3rem; margin-bottom:16px;">🔒</div>
-            <div style="font-size:1rem; font-weight:900; color:#F5C518;
-                        text-transform:uppercase; letter-spacing:2px;">
-              Turno Pausado
-            </div>
-            <div style="font-size:0.75rem; color:rgba(255,255,255,0.5);
-                        margin-top:8px;">
-              Ingresa tu PIN para continuar
-            </div>
-            <input id="resume-pin" type="password" inputmode="numeric"
-                   maxlength="6" placeholder="••••••"
-                   style="margin-top:24px; padding:12px 20px; border-radius:50px;
-                          border:2px solid #F5C518; background:transparent;
-                          color:white; font-size:1.2rem; text-align:center;
-                          width:160px; outline:none;"
-                   oninput="if(this.value.length>=4) handleAction('RESUME_SHIFT', this.value)" />
-          </div>`;
+        previousView = currentView;
+        currentView = 'PAUSED';
+        render();
         return true;
       });
     },
     RESUME_SHIFT: async (pin) => {
       const guard = state.personnel?.find(p => p.pin === pin);
       if (!guard) {
-        document.querySelector('#resume-pin').value = '';
-        document.querySelector('#resume-pin').placeholder = 'PIN incorrecto';
-        return;
+        const errDiv = document.getElementById('resume-pin-error');
+        if (errDiv) errDiv.style.display = 'block';
+        const input = document.getElementById('resume-pin-paused');
+        if (input) {
+          input.value = '';
+          input.focus();
+        }
+        return false;
       }
 
       // Registrar fin de ausencia
@@ -727,13 +754,17 @@ getExchangeRate().then(bcv => {
         shiftData.pausedAt = null;
       }
 
-      // Volver al panel normal (restaurar shell si fue borrado por innerHTML global)
-      location.reload();
+      currentView = previousView || 'MAP';
+      render();
+      return true;
     },
     CONFIRM_HANDOVER: async () => {
       await render();
     },
     REPORT_INCIDENT: (prefilled) => {
+      if (!container.contains(elModal)) {
+        container.appendChild(elModal);
+      }
       const types = ['RAYÓN', 'ACCIDENTE', 'SOSPECHOSO', 'OBJETO PERDIDO', 'TIEMPO EXCEDIDO', 'OTRO'];
       const pPlate = prefilled?.plate || '';
       const pSlot = prefilled?.slot || '';
@@ -764,7 +795,7 @@ getExchangeRate().then(bcv => {
                         text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">
               Placa involucrada (opcional)
             </div>
-            <input id="incident-plate" placeholder="ABC-123" value="${pPlate}"
+            <input id="incident-plate" type="text" inputmode="text" autocapitalize="characters" placeholder="ABC-123" value="${pPlate}"
                    style="width:100%; padding:12px 16px; border:1.5px solid #eee;
                           border-radius:12px; font-size:0.85rem; font-weight:700;
                           margin-bottom:12px; box-sizing:border-box;" />
@@ -813,6 +844,8 @@ getExchangeRate().then(bcv => {
       });
     },
     SUBMIT_INCIDENT: async () => {
+      state = getParkingState()
+      const buildingId = getBuildingId() || state.buildingId
       const selectedType = window.selectedIncidentType;
 
       if (!selectedType) {
@@ -830,7 +863,7 @@ getExchangeRate().then(bcv => {
       const slot  = document.querySelector('#incident-slot')?.value?.trim() || null;
 
       const { error } = await supabase.from('incidents').insert({
-        building_id: state.buildingId,
+        building_id: buildingId,
         guard_name:  shiftData.guardName || guardName,
         type:        selectedType,
         description: desc,
@@ -849,7 +882,7 @@ getExchangeRate().then(bcv => {
 
       supabase.functions.invoke('send-push', { 
         body: { 
-          building_id: state.buildingId, 
+          building_id: buildingId, 
           role: 'ADMIN', 
           title: '⚠️ Nuevo incidente reportado', 
           body: `${selectedType} — ${desc.slice(0,60)}` 
@@ -865,12 +898,17 @@ getExchangeRate().then(bcv => {
       elModal.innerHTML = '';
     },
     VIEW_INCIDENTS: async () => {
+      state = getParkingState()
+      const buildingId = getBuildingId() || state.buildingId
+      if (!container.contains(elModal)) {
+        container.appendChild(elModal);
+      }
       elModal.innerHTML = `<div style="padding:40px;text-align:center;color:white;font-weight:900;">Cargando tus reportes...</div>`;
       elModal.style.display = 'block';
 
       const { data, error } = await supabase.from('incidents')
         .select('*')
-        .eq('building_id', state.buildingId)
+        .eq('building_id', buildingId)
         .eq('guard_name', guardName)
         .order('created_at', { ascending: false })
         .limit(10);
@@ -1029,8 +1067,18 @@ getExchangeRate().then(bcv => {
     <div style="background:#1a1a2e;padding:24px 24px 16px;color:white;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;">
         <div>
-          <div style="font-size:0.6rem;font-weight:700;color:rgba(255,255,255,0.4);letter-spacing:2px;">GARITA ACTIVA</div>
-            <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:4px;">
+            <div style="font-size:0.65rem;font-weight:900;color:rgba(255,255,255,0.4);letter-spacing:1px;text-transform:uppercase;">GARITA ACTIVA</div>
+            <span style="background:rgba(245,197,24,0.15); color:#F5C518; font-size:0.65rem; font-weight:900; padding:2px 8px; border-radius:6px; border:1px solid rgba(245,197,24,0.3);">${state.buildingCode || ''}</span>
+            <span id="header-conn-status" style="font-size:0.65rem; font-weight:900; padding:2px 8px; border-radius:6px; background:${navigator.onLine ? 'rgba(34,197,94,0.15)' : 'rgba(245,197,24,0.15)'}; color:${navigator.onLine ? '#22c55e' : '#ce8a05'}; border:1px solid ${navigator.onLine ? 'rgba(34,197,94,0.3)' : 'rgba(245,197,24,0.3)'};">
+               ● ${navigator.onLine ? 'En Línea' : 'Offline'}
+            </span>
+            <span id="header-sync-queue" style="font-size:0.65rem; font-weight:900; padding:2px 8px; border-radius:6px; background:rgba(255,255,255,0.06); color:#ce8a05; border:1px solid rgba(255,255,255,0.15); display:${getSyncQueueCount() > 0 ? 'inline-block' : 'none'};">
+               ⏳ Carga: <b id="header-sync-count">${getSyncQueueCount()}</b>
+            </span>
+          </div>
+          <div style="font-size:1.1rem; font-weight:900; color:white; margin-top:2px;">${(state.buildingName || '').toUpperCase()}</div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
             <div style="font-size:1.2rem;font-weight:900;">${guardName}</div>
             <div style="display:flex; gap:8px; align-items:center;">
                <button data-action="LOGOUT" style="background:rgba(255,255,255,0.1);color:white;border:none;padding:5px 12px;border-radius:8px;font-size:0.65rem;font-weight:900;cursor:pointer; display:flex; align-items:center; gap:6px;">
@@ -1136,7 +1184,7 @@ getExchangeRate().then(bcv => {
            <div style="background:white; padding:15px; border-radius:24px; box-shadow:0 10px 30px rgba(0,0,0,0.05); margin-bottom:15px;">
               <div style="font-size:0.6rem; font-weight:900; color:#999; text-transform:uppercase; margin-bottom:10px;">SALIDA RÁPIDA</div>
               <div style="display:flex; gap:10px; align-items:center;">
-                 <input type="text" id="fast-exit-plate" placeholder="Ej. ABC123" style="flex:1; min-width:0; box-sizing:border-box; border:2px solid #eee; border-radius:14px; padding:14px; font-weight:900; outline:none; text-transform:uppercase;">
+                 <input type="text" id="fast-exit-plate" inputmode="text" autocapitalize="characters" placeholder="Ej. ABC123" style="flex:1; min-width:0; box-sizing:border-box; border:2px solid #eee; border-radius:14px; padding:14px; font-weight:900; outline:none; text-transform:uppercase;">
                  <button data-action="FAST_EXIT_SEARCH" style="background:#1a1a2e; color:#F5C518; border:none; padding:14px 20px; border-radius:14px; font-weight:900; flex-shrink:0; cursor:pointer;">BUSCAR</button>
               </div>
            </div>
@@ -1215,7 +1263,7 @@ getExchangeRate().then(bcv => {
           </div>
         ` : ''}
 
-        <input type="text" id="entry-plate" placeholder="PLACA" value="${window.scannedPassData?.visitor_plate || ''}" style="width:100%;padding:18px;border:2px solid #eee;border-radius:12px;font-size:1.8rem;font-weight:900;text-align:center;margin-bottom:15px;">
+        <input type="text" id="entry-plate" inputmode="text" autocapitalize="characters" placeholder="PLACA" value="${window.scannedPassData?.visitor_plate || ''}" style="width:100%;padding:18px;border:2px solid #eee;border-radius:12px;font-size:1.8rem;font-weight:900;text-align:center;margin-bottom:15px;">
         <input type="tel" id="entry-phone" placeholder="WHATSAPP (Opcional)" style="width:100%;padding:14px;border:2px solid #eee;border-radius:12px;margin-bottom:15px;">
         
         <!-- DYNAMIC CUSTOM FIELDS -->
@@ -1354,7 +1402,7 @@ getExchangeRate().then(bcv => {
     
     if (selectedSlot.paymentStatus === 'PAGADO') {
        if (totalOwed > 0) {
-          appliedTariffName = 'MULTA POR D�A ADICIONAL';
+          appliedTariffName = 'MULTA POR D�A ADICIONAL';
        } else {
           appliedTariffName = 'PAGADO EN PRE-PAGO';
        }
@@ -1459,7 +1507,7 @@ getExchangeRate().then(bcv => {
      return `
      <div style="padding:20px; padding-bottom:120px;">
         <h2 style="font-weight:900; color:var(--primary); margin-bottom:15px;">COBRAR MENSUALIDAD</h2>
-        <input type="text" id="sub-search" placeholder="Buscar por placa o nombre..." value="${subSearchText}" oninput="window.handleAction('UPDATE_SUB_SEARCH', this.value)" style="width:100%; padding:15px; border-radius:15px; border:2px solid #eee; margin-bottom:20px; font-weight:700; font-family:'Montserrat'; outline:none;">
+        <input type="text" id="sub-search" inputmode="text" autocapitalize="characters" placeholder="Buscar por placa o nombre..." value="${subSearchText}" oninput="window.handleAction('UPDATE_SUB_SEARCH', this.value)" style="width:100%; padding:15px; border-radius:15px; border:2px solid #eee; margin-bottom:20px; font-weight:700; font-family:'Montserrat'; outline:none;">
         <button data-action="SEARCH_RESIDENT" style="display:none;"></button>
 
         <div style="display:grid; gap:12px;">
@@ -1712,14 +1760,22 @@ getExchangeRate().then(bcv => {
   }
 
   const renderShiftHandover = async (state, guardName) => {
+    if (!state || !state.buildingId) return null;
     // Buscar el último turno cerrado de este edificio
-    const { data: lastShift } = await supabase
-      .from('guard_shifts')
-      .select('*')
-      .eq('building_id', state.buildingId)
-      .order('ended_at', { ascending: false })
-      .limit(1)
-      .single();
+    let lastShift = null;
+    try {
+      const { data: shifts } = await supabase
+        .from('guard_shifts')
+        .select('*')
+        .eq('building_id', state.buildingId)
+        .order('ended_at', { ascending: false })
+        .limit(1);
+      if (shifts && shifts.length > 0) {
+        lastShift = shifts[0];
+      }
+    } catch (e) {
+      console.warn("Error fetching last shift:", e);
+    }
 
     if (!lastShift) return null; // primer turno, no hay entrega
 
@@ -1794,6 +1850,45 @@ getExchangeRate().then(bcv => {
   const render = async () => {
     const freshState = getParkingState()
     if (!elShell) renderShell(freshState)
+
+    if (currentView === 'PAUSED') {
+      if (elShell) elShell.style.display = 'none';
+      const footer = container.querySelector('#guard-footer-area');
+      if (footer) footer.style.display = 'none';
+
+      const html = `
+        <div style="display:flex; flex-direction:column; align-items:center;
+                    justify-content:center; height:100vh; background:#1a1a2e;
+                    color:white; text-align:center; padding:40px; font-family:'Montserrat', sans-serif;">
+          <div style="font-size:3rem; margin-bottom:16px;">🔒</div>
+          <div style="font-size:1rem; font-weight:900; color:#F5C518;
+                      text-transform:uppercase; letter-spacing:2px;">
+            Turno Pausado
+          </div>
+          <div style="font-size:0.75rem; color:rgba(255,255,255,0.5); margin-top:8px;">
+            Ingresa tu PIN de guardia para continuar
+          </div>
+          <input id="resume-pin-paused" type="password" inputmode="numeric"
+                 maxlength="6" placeholder="••••"
+                 style="margin-top:24px; padding:16px 24px; border-radius:50px;
+                        border:2px solid #F5C518; background:transparent;
+                        color:white; font-size:1.6rem; text-align:center;
+                        width:180px; outline:none; font-weight:900;"
+                 oninput="if(this.value.length >= 4) window.handleAction('RESUME_SHIFT', this.value)" />
+          <div id="resume-pin-error" style="color:#e63946; font-size:0.75rem; font-weight:700; margin-top:12px; display:none;">PIN incorrecto</div>
+        </div>`;
+
+      elContent.innerHTML = html;
+      setTimeout(() => {
+        const input = document.getElementById('resume-pin-paused');
+        if (input) input.focus();
+      }, 100);
+      return;
+    }
+
+    if (elShell) elShell.style.display = 'block';
+    const footerElement = container.querySelector('#guard-footer-area');
+    if (footerElement) footerElement.style.display = 'block';
     elShell.innerHTML = renderHeader(freshState)
     
     let html = ''
@@ -1805,7 +1900,25 @@ getExchangeRate().then(bcv => {
     else if (currentView === 'CLOSURE') html = renderClosureSummary()
     else if (currentView === 'SUB_PAYMENT') html = renderSubPaymentView()
     else if (currentView === 'SUB_PAYMENT_FORM') html = renderSubPaymentForm()
-    else if (currentView === 'SUB_PAYMENT_LOADING') html = `<div style="text-align:center; padding:100px 20px; font-weight:900; color:#999;">CARGANDO RESIDENTES...</div>`
+    else if (currentView === 'SUB_PAYMENT_LOADING') {
+      html = `
+        <div style="padding:20px; font-family:'Montserrat', sans-serif;">
+          <div style="font-size:0.7rem; font-weight:900; color:#999; letter-spacing:2px; text-transform:uppercase; margin-bottom:16px;">Mensualidades</div>
+          <div style="height:48px; background:#eef0f3; border-radius:14px; margin-bottom:20px; animation: pulse 1.5s infinite ease-in-out;"></div>
+          <div style="display:flex; flex-direction:column; gap:12px;">
+            ${[1, 2, 3, 4].map(() => `
+              <div style="background:white; border-radius:20px; padding:16px; border:1px solid #eee; display:flex; justify-content:space-between; align-items:center;">
+                <div style="flex:1;">
+                  <div style="height:14px; width:45%; background:#eef0f3; border-radius:6px; margin-bottom:8px; animation: pulse 1.5s infinite; opacity:0.6;"></div>
+                  <div style="height:10px; width:70%; background:#eef0f3; border-radius:4px; animation: pulse 1.5s infinite; opacity:0.6;"></div>
+                </div>
+                <div style="height:32px; width:70px; background:#eef0f3; border-radius:10px; animation: pulse 1.5s infinite; opacity:0.6;"></div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
     
     if (elContent.innerHTML !== html) {
       elContent.innerHTML = html;
@@ -1859,8 +1972,49 @@ getExchangeRate().then(bcv => {
         if (plate.length < 3) return
 
         const buildingId = localStorage.getItem('sloty_building_id')
-        const { data: subs } = await supabase.from('subscriptions').select('resident_name, apt, vehicle_brand, vehicle_model, vehicle_color').eq('building_id', buildingId).ilike('plate', `%${plate}%`)
-        
+        let subs = []
+        if (navigator.onLine) {
+          try {
+            const { data } = await supabase.from('subscriptions').select('resident_name, apt, vehicle_brand, vehicle_model, vehicle_color').eq('building_id', buildingId).ilike('plate', `%${plate}%`)
+            subs = data || []
+          } catch(e) {
+            console.warn('[Sloty] Error querying subscriptions online, fallback to offline:', e)
+          }
+        }
+
+        // Búsqueda de respaldo offline para residentes en state.levels y cachedResidents
+        if (subs.length === 0) {
+          if (cachedResidents && cachedResidents.length > 0) {
+            const matches = cachedResidents.filter(r => r.plate && r.plate.toUpperCase().includes(plate.toUpperCase()))
+            matches.forEach(m => {
+              subs.push({
+                resident_name: m.resident_name || 'Residente',
+                apt: m.apt || '',
+                vehicle_brand: m.vehicle_brand || '',
+                vehicle_model: m.vehicle_model || '',
+                vehicle_color: m.vehicle_color || ''
+              })
+            })
+          }
+          if (subs.length === 0 && state && state.levels) {
+            state.levels.forEach(level => {
+              if (level.slots) {
+                level.slots.forEach(slot => {
+                  if (slot.plate && slot.plate.toUpperCase().includes(plate.toUpperCase()) && slot.category === 'RESIDENTE') {
+                    subs.push({
+                      resident_name: slot.metadata?.nombre || 'Residente',
+                      apt: slot.metadata?.apto || '',
+                      vehicle_brand: '',
+                      vehicle_model: '',
+                      vehicle_color: ''
+                    })
+                  }
+                })
+              }
+            })
+          }
+        }
+
         if (subs && subs.length > 0) {
            const infoDiv = document.createElement('div')
            infoDiv.id = 'visitor-suggestion'
@@ -1914,24 +2068,32 @@ getExchangeRate().then(bcv => {
 
            setTimeout(() => {
               document.getElementById('btn-use-freq').onclick = () => {
-                 document.getElementById('movement-name').value = found.name || '';
-                 document.getElementById('movement-company').value = found.company || '';
-                 document.getElementById('movement-ci').value = found.ci || '';
-                 
-                 const fields = found.last_custom_fields || {};
-                 if (fields['torre'] && document.getElementById('cf-torre')) document.getElementById('cf-torre').value = fields['torre'];
-                 if (fields['piso'] && document.getElementById('cf-piso')) document.getElementById('cf-piso').value = fields['piso'];
-                 if (fields['apartamento'] && document.getElementById('cf-apartamento')) document.getElementById('cf-apartamento').value = fields['apartamento'];
-                 if (fields['destino_final'] && document.getElementById('cf-destino_final')) document.getElementById('cf-destino_final').value = fields['destino_final'];
-                 
+                  const catBtn = document.querySelector('.cat-chip[data-cat="' + (found.category || 'VISITANTE') + '"]');
+                  if (catBtn) catBtn.click();
+                 const phoneEl = document.getElementById('entry-phone');
+                 if (phoneEl) phoneEl.value = found.phone || '';
+                 const nameEl = document.getElementById('custom-nombre');
+                 if (nameEl) nameEl.value = found.name || found.full_name || '';
+                 const aptoEl = document.getElementById('custom-apto');
+                 if (aptoEl) {
+                    const vTo = found.visits_to || found.r_visits_to || '';
+                    aptoEl.value = vTo.startsWith('Apto ') ? vTo.slice(5) : vTo;
+                 }
                  banner.remove();
-                 document.querySelector('.cat-chip[data-cat="VISITA"]')?.click();
               };
               document.getElementById('btn-edit-freq').onclick = () => {
-                 document.getElementById('movement-name').value = found.name || '';
-                 document.getElementById('movement-ci').value = found.ci || '';
+                 const phoneEl = document.getElementById('entry-phone');
+                  if (phoneEl) phoneEl.value = found.phone || '';
+                  const nameEl = document.getElementById('custom-nombre');
+                  if (nameEl) nameEl.value = found.name || found.full_name || '';
+                  const aptoEl = document.getElementById('custom-apto');
+                  if (aptoEl) {
+                     const vTo = found.visits_to || found.r_visits_to || '';
+                     aptoEl.value = vTo.startsWith('Apto ') ? vTo.slice(5) : vTo;
+                  }
                  banner.remove();
-                 document.querySelector('.cat-chip[data-cat="VISITA"]')?.click();
+                 const catBtn = document.querySelector('.cat-chip[data-cat="' + (found.category || 'VISITANTE') + '"]');
+                  if (catBtn) catBtn.click();
               };
            }, 0);
         }
@@ -1996,19 +2158,33 @@ getExchangeRate().then(bcv => {
   if (state.levels.length) activeLevel = state.levels[0].name
 
   // Realtime: detectar cuando un residente avisa que va en camino
-  const guardRealtimeChannel = supabase
-    .channel('guard-is-coming-live')
-    .on('postgres_changes', {
-      event: 'UPDATE',
-      schema: 'public',
-      table: 'subscriptions',
-      filter: `building_id=eq.${state.buildingId}`
-    }, (payload) => {
-      if (payload.new.is_coming === true && payload.old.is_coming === false) {
-        showToast(`🚗 ${payload.new.resident_name} viene en camino`, 'info')
-      }
-    })
-    .subscribe()
+  let guardRealtimeChannel = null;
+  if (state && state.buildingId) {
+    try {
+      guardRealtimeChannel = supabase
+        .channel('guard-is-coming-live')
+        .on('postgres_changes', {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'subscriptions',
+          filter: `building_id=eq.${state.buildingId}`
+        }, (payload) => {
+          if (payload.new.is_coming === true && payload.old.is_coming === false) {
+            showToast(`🚗 ${payload.new.resident_name} viene en camino`, 'info');
+          }
+        })
+        .subscribe();
+    } catch (e) {
+      console.warn("Realtime subscription failed:", e);
+    }
+  }
 
   startModule()
+
+  container._cleanup = () => {
+    clearInterval(syncInt)
+    if (guardRealtimeChannel) guardRealtimeChannel.unsubscribe()
+    window.removeEventListener('sloty-sync-updated', handleSyncUpdated)
+    window.removeEventListener('sloty-connection-status', handleConnectionStatus)
+  }
 }

@@ -271,14 +271,14 @@ const renderLogin = () => {
     }
     
     // Dynamic loading phrases
-    const phrases = ['Conectando...', 'Preparando experiencia...', 'Cargando tu panel...', 'Casi listos...'];
+    const phrases = ['Conectando...', 'Cargando panel...'];
     let phraseId = 0;
     const interval = setInterval(() => {
       errorEl.textContent = phrases[phraseId % phrases.length];
       phraseId++;
-    }, 800);
+    }, 500);
     
-    $('btn-login').disabled = true
+    $('btn-login').disabled = true;
 
     try {
       // ─── BYPASS PROVISIONAL ──────────────────────────────────────
@@ -312,14 +312,23 @@ const renderLogin = () => {
       // ─────────────────────────────────────────────────────────────
 
       let building;
-      if (email && !isMaster) {
+      // Fast path for mocks
+      if (!isMaster && (email === 'admin@test.com' || email === 'nucita.admin')) {
+          // Skip DB fetch to make mock instant
+      } else if (email && !isMaster) {
         try {
-          const { data } = await supabase
-            .from('buildings')
-            .select('*')
-            .eq('admin_email', email)
-            .maybeSingle()
-          building = data;
+          // If we have cached offline state, we can use it to speed up perceived loading
+          const cached = localStorage.getItem('sloty_state');
+          if(cached) {
+            const state = JSON.parse(cached);
+            if(state.adminInfo && state.adminInfo.email === email) {
+                building = { id: state.buildingId, name: state.buildingName, code: state.buildingCode, plan: state.plan, membership_status: state.membership_status, admin_email: email };
+            }
+          }
+          if(!building) {
+            const { data } = await supabase.from('buildings').select('*').eq('admin_email', email).maybeSingle();
+            building = data;
+          }
         } catch (e) {
           console.warn('Supabase fetch failed, will use fallback mock', e)
         }
@@ -336,28 +345,15 @@ const renderLogin = () => {
          } catch(e) { console.warn('Could not fetch membership expiry') }
       }
       if (!resolvedBuilding && !isMaster) {
-        try {
-          const { data: fallback } = await supabase
-            .from('buildings')
-            .select('*')
-            .limit(1)
-            .maybeSingle()
-          resolvedBuilding = fallback
-        } catch (e) {
-          console.warn('Fallback fetch failed too')
-        }
-        
-        if (!resolvedBuilding) {
-           console.warn('No buildings in DB or DB unreachable. Creating DEV mock building.')
-           resolvedBuilding = {
-             id: 'test-building-id',
-             name: 'Edificio de Prueba',
-             code: 'DEV-123',
-             plan: 'ORO',
-             membership_status: 'ACTIVE',
-             admin_email: email || 'admin@test.com'
-           }
-        }
+         console.warn('Network or missing building. Creating DEV mock building instantly.')
+         resolvedBuilding = {
+           id: 'test-building-id',
+           name: 'Edificio de Prueba',
+           code: 'DEV-123',
+           plan: 'ORO',
+           membership_status: 'ACTIVE',
+           admin_email: email || 'admin@test.com'
+         }
       }
       
       clearInterval(interval);
@@ -1491,7 +1487,7 @@ const checkInvitationLink = async () => {
           renderAlert('¡Cuenta activada con éxito! Iniciando sesión...');
           setTimeout(async () => {
             showOnly('main');
-            await syncDown(buildingData.code);
+            syncDown(buildingData.code).catch(e => console.warn('syncDown error:', e));
             initGuard(screens.main, guard.name);
           }, 1500);
         } else {

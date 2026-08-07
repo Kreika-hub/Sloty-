@@ -1,11 +1,14 @@
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import fs from 'fs';
+import path from 'path';
+
 
 export default defineConfig({
   plugins: [
     VitePWA({
-      registerType: 'autoUpdate',
-      includeAssets: ['icons/pwa-sloty.png', 'sloty-logo-v2.png'],
+      registerType: 'prompt',
+      includeAssets: ['icons/pwa-512x512.png', 'sloty-logo-v2.png'],
       manifest: {
         name: 'Sloty - Estacionamientos',
         short_name: 'Sloty',
@@ -42,7 +45,7 @@ export default defineConfig({
         importScripts: ['/push-sw.js'],
         navigationPreload: false,
         globPatterns: ['**/*.{js,css,html,ico,png,jpg,svg,webp}'],
-        navigateFallback: null,
+        navigateFallback: '/index.html',
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.hostname.includes('supabase.co'),

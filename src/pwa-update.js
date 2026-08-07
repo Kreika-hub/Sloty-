@@ -1,5 +1,8 @@
 import { registerSW } from 'virtual:pwa-register'
 
+// Tiempo de espera (en días) si se cierra el banner antes de volver a presentarlo
+const PWA_DISMISS_DAYS = 3;
+
 // ── INSTALL PROMPT BANNER ─────────────────────────────────────
 // Captura el evento del navegador antes de que desaparezca
 let deferredPrompt = null
@@ -21,11 +24,11 @@ const showInstallBanner = () => {
   // 3. No mostrar si ya se instaló (marca manual)
   if (localStorage.getItem('pwa_installed') === 'true') return
 
-  // 4. No mostrar si se rechazó recientemente (ahora 30 días)
+  // 4. No mostrar si se rechazó recientemente (tiempo unificado)
   const dismissedAt = localStorage.getItem('pwa_dismissed_at')
   if (dismissedAt) {
     const daysSince = (Date.now() - parseInt(dismissedAt)) / (1000 * 60 * 60 * 24)
-    if (daysSince < 30) return 
+    if (daysSince < PWA_DISMISS_DAYS) return 
   }
 
   const banner = document.createElement('div')
@@ -104,12 +107,12 @@ const showInstallBanner = () => {
   }
 }
 
-// No mostrar si fue rechazado hace menos de 3 días
+// No mostrar si fue rechazado hace menos de los días configurados
 window.addEventListener('load', () => {
   const dismissedAt = localStorage.getItem('pwa_dismissed_at')
   if (dismissedAt) {
     const daysSince = (Date.now() - parseInt(dismissedAt)) / (1000 * 60 * 60 * 24)
-    if (daysSince < 3) return // Esperar 3 días antes de volver a mostrar
+    if (daysSince < PWA_DISMISS_DAYS) return // Esperar días configurados antes de volver a mostrar
   }
 })
 

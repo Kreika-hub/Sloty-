@@ -1,0 +1,1000 @@
+import { getParkingState, updateParkingState, logMovement, logNotification, saveClosure, supabase, hasFeature, showToast, logAudit, getExchangeRate } from '../db.js'
+import { searchVisitorByPlate, saveVisitor, logAccess } from '../visitors.js'
+import { subscribeToPushNotifications, renderPushBanner } from './push.js'
+
+window.renderPushBanner = renderPushBanner;
+// Html5Qrcode is loaded via CDN in index.html, accessible globally
+
+export const initGuard = (container, guardName = 'Guardia') => {
+  let state = getParkingState()
+  let selectedSlot = (() => {
+    try {
+      return JSON.parse(localStorage.getItem('sloty_selected_slot')) || null
+    } catch(e) { return null }
+  })()
+  let currentView = 'MAP'
+  let activeLevel = null
+  let currentTab = 'HOME'
+  let qrScanner = null
+  let scannerActive = false
+  let pendingPayment = null // { amount, method, type, slot, plate, category, metadata, phone, entryData }
+  let cachedResidents = []
+  let subPaymentAmount = 0
+  let subPaymentMethod = 'EFECTIVO_USD'
+  let selectedResident = null
+  let elModal = null
+  let elToast = null
+  let elShell = null
+  let elContent = null
+  let subSearchText = ''
+
+
+  let shiftData = {
+    startedAt: new Date().toISOString(),
+    absences: [],
+    pausedAt: null
+  }
+
+  window.handleAction = (type, payload) => {
+    if (actions[type]) actions[type](payload)
+  }
+
+  const showNativePush = (title, msg, icon = '🛡️') => {
+    push.innerHTML = `
+      <div style="flex:1; display:flex; gap:12px; align-items:center;" onclick="this.parentElement.remove()">
+        <div style="width:45px; height:45px; background:var(--primary); border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:1.4rem;">${icon}</div>
+        <div>
+          <div style="font-weight:900; color:var(--primary); font-size:0.85rem; letter-spacing:0.3px;">${title}</div>
+          <div style="font-size:0.75rem; color:#666; font-weight:700;">${msg}</div>
+        </div>
+      </div>
+      <button onclick="this.parentElement.remove()" style="background:none; border:none; padding:10px; font-size:1.2rem; display:flex; align-items:center; justify-content:center; color:#999; cursor:pointer;">×</button>
+    `
+    container.appendChild(push)
+    setTimeout(() => { push.style.transform = 'translateY(0)' }, 100)
+    setTimeout(() => { push.style.transform = 'translateY(-150%)'; setTimeout(() => { push.remove() }, 600) }, 3500)
+  }
+
+  // Welcome Notification
+  setTimeout(() => {
+    showNativePush('¡HOLA, ' + guardName.toUpperCase() + '!', 'Tu turno ha iniciado correctamente. Que tengas una excelente guardia.', '👋')
+    import('./push.js').then(m => m.subscribeToPushNotifications(state.buildingId, 'GUARD', guardName));
+  }, 1000)
+
+  const showToast = (msg, type = 'info') => {
+    if (!elToast) {
+      elToast = document.createElement('div')
+      elToast.style = "position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:9999;padding:12px 24px;border-radius:12px;font-weight:700;font-size:0.8rem;transition:all 0.3s;box-shadow:0 10px 20px rgba(0,0,0,0.1);display:none;"
+      container.appendChild(elToast)
+    }
+    elToast.textContent = msg
+    elToast.style.background = type === 'error' ? '#e63946' : (type === 'success' ? '#22c55e' : '#1a1a2e')
+    elToast.style.color = 'white'
+    elToast.style.display = 'block'
+    setTimeout(() => { elToast.style.display = 'none' }, 3000)
+  }
+
+  const showModal = (title, msg, onConfirm) => {
+    if (!elModal) {
+      elModal = document.createElement('div')
+      elModal.style = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);backdrop-filter:blur(5px);z-index:9998;display:none;align-items:center;justify-content:center;padding:20px;"
+      container.appendChild(elModal)
+    }
+    elModal.innerHTML = `
+      <div style="background:white;border-radius:24px;padding:24px;width:100%;max-width:320px;text-align:center;">
+        <div style="font-weight:900;font-size:1.2rem;margin-bottom:10px;color:#1a1a2e;">${title}</div>
+        <div style="font-size:0.85rem;color:#666;margin-bottom:24px;">${msg}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+           <button id="modal-cancel" style="padding:14px;border:none;border-radius:12px;background:#f0f2f5;font-weight:700;color:#999;">CANCELAR</button>
+           <button id="modal-ok" style="padding:14px;border:none;border-radius:12px;background:#1a1a2e;font-weight:700;color:#F5C518;">CONFIRMAR</button>
+        </div>
+      </div>`
+    elModal.style.display = 'flex'
+    elModal.querySelector('#modal-cancel').onclick = () => { elModal.style.display = 'none' }
+    elModal.querySelector('#modal-ok').onclick = () => { elModal.style.display = 'none'; onConfirm() }
+  }
+
+  const showPinModal = (title, msg, onConfirm) => {
+    if (!elModal) {
+      elModal = document.createElement('div')
+      elModal.style = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);backdrop-filter:blur(5px);z-index:9998;display:none;align-items:center;justify-content:center;padding:20px;"
+      container.appendChild(elModal)
+    }
+    elModal.innerHTML = `
+      <div style="background:white;border-radius:24px;padding:24px;width:100%;max-width:320px;text-align:center;box-shadow:0 20px 40px rgba(0,0,0,0.2);">
+        <div style="font-size:2.5rem;margin-bottom:10px;">🔒</div>
+        <div style="font-weight:900;font-size:1.1rem;margin-bottom:8px;color:#1a1a2e;">${title}</div>
+        <div style="font-size:0.8rem;color:#666;margin-bottom:16px;">${msg}</div>
+        <input id="modal-pin-input" type="password" inputmode="numeric" maxlength="6" placeholder="••••" style="width:100%;box-sizing:border-box;padding:14px;border:2px solid #eee;border-radius:14px;font-size:1.4rem;text-align:center;letter-spacing:4px;font-weight:900;margin-bottom:20px;outline:none;" />
+        <div id="modal-pin-error" style="color:#e63946;font-size:0.75rem;font-weight:700;margin-bottom:12px;display:none;"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+           <button id="modal-pin-cancel" style="padding:14px;border:none;border-radius:12px;background:#f0f2f5;font-weight:800;color:#999;cursor:pointer;">CANCELAR</button>
+           <button id="modal-pin-ok" style="padding:14px;border:none;border-radius:12px;background:#1a1a2e;font-weight:900;color:#F5C518;cursor:pointer;">ACEPTAR</button>
+        </div>
+      </div>`
+    elModal.style.display = 'flex'
+    const input = elModal.querySelector('#modal-pin-input')
+    const errDiv = elModal.querySelector('#modal-pin-error')
+    setTimeout(() => input.focus(), 100)
+    elModal.querySelector('#modal-pin-cancel').onclick = () => { elModal.style.display = 'none' }
+    const submitPin = () => {
+      const val = input.value.trim()
+      if (!val) {
+        errDiv.textContent = 'Ingresa tu PIN'
+        errDiv.style.display = 'block'
+        return
+      }
+      const success = onConfirm(val)
+      if (success !== false) {
+        elModal.style.display = 'none'
+      } else {
+        errDiv.textContent = 'PIN incorrecto'
+        errDiv.style.display = 'block'
+        input.value = ''
+        input.focus()
+      }
+    }
+    elModal.querySelector('#modal-pin-ok').onclick = submitPin
+    input.onkeyup = (e) => { if (e.key === 'Enter') submitPin() }
+  }
+
+  const CAT = [
+    { cat:'VISITANTE',    color:'#F5C518', label:'Visitante', maxHours: 8 },
+    { cat:'RESIDENTE',    color:'#38bdf8', label:'Residente', maxHours: null },
+    { cat:'DISCAPACITADO',color:'#3b82f6', label:'Discap.', maxHours: null },
+    { cat:'ELECTRICO',    color:'#8b5cf6', label:'Eléctrico', maxHours: null },
+    { cat:'MUDANZA',      color:'#a855f7', label:'Mudanza', maxHours: null },
+    { cat:'MERCADO',      color:'#22c55e', label:'Mercado', maxHours: 0.5 },
+  ]
+  const PAY = [
+    { m:'EFECTIVO_USD', label:'Efectivo $'  },
+    { m:'EFECTIVO_BS',  label:'Efectivo Bs' },
+    { m:'PAGO_MOVIL',   label:'Pago Móvil'  },
+    { m:'ZELLE',        label:'Zelle'       },
+    { m:'OTRO',         label:'Otro'        }
+  ]
+  
+  const getCatColor = cat => (state.settings?.categories || CAT).find(c => c.id === cat || c.cat === cat)?.color || '#1a1a2e'
+  const formatTime = iso => {
+    if (!iso) return '00:00:00'
+    const d = Math.floor((Date.now()-new Date(iso))/1000)
+    return [Math.floor(d/3600),Math.floor((d%3600)/60),d%60].map(n=>n.toString().padStart(2,'0')).join(':')
+  }
+  const getWarning = iso => {
+    if (!iso) return null
+    const h = (Date.now()-new Date(iso))/3600000
+    if (h>=8) return 'VENCIDO'
+    if (h>=7.5) return 'POR VENCER'
+    return null
+  }
+
+  const findVisitorByPlate = async (plate) => {
+    if (!plate || plate.length < 2) return null
+    const results = await searchVisitorByPlate(plate)
+    return results?.[0] || null
+  }
+
+  // ── SCANNER LOGIC ──────────────────────────────────────────
+  const stopScanner = async () => {
+    if (qrScanner) {
+      try { 
+        await qrScanner.stop(); 
+        document.getElementById('qr-reader').innerHTML = '';
+        qrScanner = null 
+      } catch (e) {}
+    }
+  }
+
+  const initQRScanner = () => {
+    setTimeout(async () => {
+      const el = document.getElementById('qr-reader')
+      if (!el || qrScanner) return
+      
+      qrScanner = new window.Html5Qrcode("qr-reader")
+      try {
+        await qrScanner.start(
+          { facingMode: "environment" }, 
+          { fps: 10, qrbox: { width: 250, height: 250 } },
+          (text) => {
+            try {
+              const data = JSON.parse(text)
+              if (data.pass_id) {
+                stopScanner()
+                supabase.from('visitor_passes')
+                  .select('*, subscriptions(tower, apt, resident_name)')
+                  .eq('id', data.pass_id)
+                  .eq('is_used', false)
+                  .single().then(({ data: pass }) => {
+                    if (!pass) {
+                      return showToast("Pase inválido o ya utilizado", "error");
+                    }
+                    window.scannedPassData = pass;
+                    showToast("Pase Válido. Selecciona un puesto libre.", "success");
+                    scannerActive = false;
+                    currentView = 'MAP';
+                    render();
+                    
+                    // Notificar al residente que su invitado llegó
+                    supabase.functions.invoke('send-push', { 
+                      body: { 
+                        building_id: state.buildingId, 
+                        role: 'RESIDENT',
+                        identifier: pass.resident_id,
+                        title: '👋 Tu invitado ha llegado', 
+                        body: `El pase de ${pass.visitor_name} fue verificado en la garita.` 
+                      } 
+                    });
+                  });
+              } else if (data.plate && data.slot) {
+                stopScanner()
+                state.levels.forEach(lvl => {
+                  const sIdx = lvl.slots.findIndex(s => s.label === data.slot)
+                  if (sIdx !== -1) {
+                    selectedSlot = { ...lvl.slots[sIdx], levelName: lvl.name, sIdx }
+                    if (selectedSlot) { localStorage.setItem('sloty_selected_slot', JSON.stringify(selectedSlot)) } else { localStorage.removeItem('sloty_selected_slot') }
+                    if (selectedSlot.status === 'FREE') {
+                       showToast("Este puesto está vacío", "error")
+                    } else {
+                       currentView = 'EXIT'
+                       scannerActive = false
+                       render()
+                    }
+                  }
+                })
+              }
+            } catch (e) { showToast("QR no reconocido", "error") }
+          }
+        )
+      } catch (err) {
+        showToast("Error al abrir cámara", "error")
+        scannerActive = false
+        render()
+      }
+    }, 100)
+  }
+
+  // ── PRINT LOGIC ─────────────────────────────────────────────
+  const printTicket = (type = 'INGRESO') => {
+    const slot = selectedSlot
+    const win = window.open('', '_blank', 'width=400,height=600')
+    win.document.write('<html><head><title>Ticket Sloty</title><style>body{font-family:sans-serif;text-align:center;padding:10px;} .qr{margin:20px 0;} .label{font-size:32px;font-weight:bold;}</style><script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></scr' + 'ipt></head><body>')
+    win.document.write('<h2>'+state.buildingName+'</h2><p>TICKET DE '+type+'</p><div class="label">'+slot.label+'</div><p>PLACA: '+(slot.plate||'---')+'</p><div id="qrcode" class="qr"></div><p>'+new Date().toLocaleString()+'</p><p>¡Gracias por usar Sloty!</p>')
+    win.document.write('<script>setTimeout(function(){new QRCode(document.getElementById("qrcode"),{text:JSON.stringify({plate:"'+slot.plate+'",slot:"'+slot.label+'"}),width:180,height:180});setTimeout(function(){window.print();window.close();},500);},500);<\/script></body></html>')
+    win.document.close()
+  }
+
+  // ── ACTIONS ──────────────────────────────────────────────────
+  const actions = {
+    TAB_LEVEL: (btn) => { activeLevel = btn.dataset.level; render() },
+    OPEN_SLOT: (btn) => {
+      const level = state.levels.find(l=>l.name===btn.dataset.level)
+      const sIdx = parseInt(btn.dataset.sidx)
+      selectedSlot = { ...level.slots[sIdx], levelName: btn.dataset.level, sIdx }
+      if (selectedSlot) { localStorage.setItem('sloty_selected_slot', JSON.stringify(selectedSlot)) } else { localStorage.removeItem('sloty_selected_slot') }
+      currentView = selectedSlot.status==='FREE' ? 'ENTRY' : 'EXIT'
+      render()
+    },
+    BACK_MAP: () => { stopScanner(); currentView = 'MAP'; currentTab = 'HOME'; scannerActive = false; render() },
+    UPDATE_SUB_SEARCH: (val) => { subSearchText = val || ''; render() },
+    SWITCH_TAB: (btn) => { 
+       currentTab = btn.dataset.tab; 
+       if (currentTab === 'PAY') actions.SHOW_SUB_PAYMENT();
+       else if (currentTab === 'STATS') { currentView = 'CLOSURE'; render(); }
+       else { currentView = 'MAP'; render(); }
+    },
+    FAST_EXIT_SEARCH: () => {
+       const plate = document.getElementById('fast-exit-plate')?.value.trim().toUpperCase()
+       if (!plate) return showToast("Ingresa una placa", "error")
+       
+       let foundSlot = null
+       state.levels.forEach(lvl => {
+          const sIdx = lvl.slots.findIndex(s => s.plate && s.plate.toUpperCase().includes(plate))
+          if (sIdx !== -1) foundSlot = { ...lvl.slots[sIdx], levelName: lvl.name, sIdx }
+       })
+       if (!foundSlot) return showToast("Vehículo no encontrado", "error")
+       
+       if (foundSlot.status === 'FREE') return showToast("Puesto vacío", "error")
+       selectedSlot = foundSlot
+       if (selectedSlot) { localStorage.setItem('sloty_selected_slot', JSON.stringify(selectedSlot)) } else { localStorage.removeItem('sloty_selected_slot') }
+       currentView = 'EXIT'
+       render()
+    },
+    LOGOUT: () => { showModal('¿Cerrar sesión?', 'Tu progreso se guardará automáticamente.', () => location.reload()) },
+    SHOW_SCANNER: () => {
+      stopScanner(); scannerActive = true; render()
+    },
+    SHOW_SUB_PAYMENT: async () => {
+      currentView = 'SUB_PAYMENT_LOADING'; render()
+      const buildingId = state.buildingId || localStorage.getItem('sloty_building_id')
+      if (!buildingId) { showToast('Edificio no identificado', 'error'); return }
+      
+      const [ { data: subs }, { data: pays } ] = await Promise.all([
+        supabase.from('subscriptions').select('*').eq('building_id', buildingId),
+        supabase.from('payments').select('*').eq('building_id', buildingId).eq('status', 'PENDING')
+      ])
+      
+      cachedResidents = subs || []
+      // We'll store pending payments count or list in a local variable if needed, 
+      // or just join them in cachedResidents
+      cachedResidents.forEach(r => {
+        r.hasPending = (pays || []).some(p => p.subscription_id === r.id)
+      })
+
+      currentView = 'SUB_PAYMENT'; render()
+    },
+    SEARCH_RESIDENT: () => { render() },
+    SELECT_RESIDENT_PAY: (btn) => {
+      const id = btn.dataset.id
+      selectedResident = cachedResidents.find(r => r.id === id)
+      subPaymentAmount = selectedResident.custom_price || 0
+      subPaymentMethod = 'EFECTIVO'
+      currentView = 'SUB_PAYMENT_FORM'; render()
+    },
+    SET_SUB_METHOD: (btn) => {
+      subPaymentMethod = btn.dataset.method; render()
+    },
+    SUBMIT_SUB_PAYMENT: async () => {
+      const amount = parseFloat(document.getElementById('sub-pay-amount').value) || 0
+      const ref = document.getElementById('sub-pay-ref')?.value?.trim() || ''
+      const bank = document.getElementById('sub-pay-bank')?.value || ''
+      const date = document.getElementById('sub-pay-date')?.value || new Date().toISOString().split('T')[0]
+      const method = subPaymentMethod
+
+      if (['PAGO_MOVIL', 'TRANSFERENCIA', 'ZELLE', 'OTRO'].includes(method) && !ref) return showToast('Introduce la referencia o detalles del pago', 'error')
+
+      const evidence_b64 = window.subPaymentPhotoBase64 || null;
+
+      const { data: existing } = await supabase
+        .from('payments')
+        .select('id')
+        .eq('subscription_id', selectedResident.id)
+        .eq('status', 'PENDING')
+        .limit(1)
+      if (existing && existing.length > 0) {
+        showToast('Este residente ya tiene un pago pendiente de aprobación', 'error')
+        return
+      }
+
+      // Registramos el pago como PENDIENTE para aprobación de admin
+      await supabase.from('payments').insert({
+         building_id: state.buildingId || localStorage.getItem('sloty_building_id'),
+         subscription_id: selectedResident.id,
+         amount: amount,
+         method: method,
+         reference: ref,
+         status: 'PENDING',
+         payment_date: date,
+         bank: bank,
+         evidence_b64: evidence_b64
+      })
+
+      // IMPORTANTE: NO actualizamos expiry_date aquí.
+      window.subPaymentPhotoBase64 = null;
+
+
+      logMovement({
+         type: 'MENSUALIDAD',
+         plate: selectedResident.plate.split(',')[0],
+         slot: 'MENSUAL',
+         category: 'RESIDENTE',
+         guardName,
+         amount: amount,
+         payMethod: method,
+         reference: ref,
+         paymentStatus: 'PENDIENTE',
+         metadata: { bank, date }
+      })
+
+      showToast('Pago registrado. Pendiente de aprobación por administración.', 'success')
+      currentView = 'MAP'; render()
+    },
+    SHOW_MANUAL_ENTRY: () => {
+       const level = state.levels.find(l => l.name === (activeLevel || state.levels[0].name))
+       const freeIdx = level.slots.findIndex(s => s.status === 'FREE')
+       if (freeIdx !== -1) {
+          selectedSlot = { ...level.slots[freeIdx], levelName: level.name, sIdx: freeIdx }
+          if (selectedSlot) { localStorage.setItem('sloty_selected_slot', JSON.stringify(selectedSlot)) } else { localStorage.removeItem('sloty_selected_slot') }
+          currentView = 'ENTRY'
+          render()
+       } else showToast("No hay puestos libres", "error")
+    },
+    CONFIRM_ENTRY: () => {
+      const plate = document.getElementById('entry-plate')?.value.trim().toUpperCase()
+      const phone = document.getElementById('entry-phone')?.value.trim()
+      if (!plate) return showToast('Ingresa la placa', 'error')
+
+      // COLLECT CUSTOM FIELDS
+      const metadata = {}
+      let missingField = null
+      (state.settings?.customFields || []).forEach(f => {
+        const val = document.getElementById(`custom-${f.id}`)?.value.trim()
+        if (!val) missingField = f.label
+        metadata[f.id] = val
+      })
+      if (missingField) return showToast(`Falta el campo ${missingField}`, 'error')
+
+      const category = document.querySelector('.cat-active')?.dataset.cat || 'VISITANTE'
+      if (category === 'RESIDENTE') {
+         const rentalCap = state.settings?.rentalSlotsCap;
+         if (rentalCap != null && rentalCap >= 0) {
+            let occupiedResCount = 0;
+            state.levels.forEach(l => {
+               if (l.slots) {
+                  l.slots.forEach(s => {
+                     const isEditingSameSlot = (l.name === selectedSlot.levelName && s.label === selectedSlot.label);
+                     if (!isEditingSameSlot && s.status === 'OCCUPIED' && s.category === 'RESIDENTE') {
+                        occupiedResCount++;
+                     }
+                  });
+               }
+            });
+            if (occupiedResCount >= rentalCap) {
+               return showToast('Cupo de puestos de mensualidad alcanzado', 'error');
+            }
+         }
+      }
+      const timing = document.querySelector('.timing-active')?.dataset.timing || 'EXIT'
+      const payMethod = timing === 'PRE' ? (document.querySelector('#prepay-selector .pay-active')?.dataset.method || 'EFECTIVO_USD') : null
+      
+      const lvl = state.levels.find(l=>l.name===selectedSlot.levelName)
+      const entryData = { 
+        ...lvl.slots[selectedSlot.sIdx], 
+        status:'OCCUPIED', 
+        category, 
+        plate, 
+        phone, 
+        metadata,
+        entryTime: new Date().toISOString(), 
+        guardName, 
+        paymentStatus: timing === 'PRE' ? 'PAGADO' : 'PENDIENTE',
+        payMethod
+      }
+      
+      lvl.slots[selectedSlot.sIdx] = entryData
+      selectedSlot = { ...entryData, levelName: selectedSlot.levelName, sIdx: selectedSlot.sIdx }
+      if (selectedSlot) { localStorage.setItem('sloty_selected_slot', JSON.stringify(selectedSlot)) } else { localStorage.removeItem('sloty_selected_slot') }
+      updateParkingState(state)
+
+      // Guardar visitante en Supabase y registrar acceso
+      const visitorName = metadata?.nombre || plate
+      saveVisitor({
+        full_name: visitorName,
+        phone: phone || '',
+        visits_to: metadata?.apto ? `Apto ${metadata.apto}` : '',
+        notes: '',
+        plate,
+        vehicle_desc: ''
+      }).then(visitor_id => {
+        logAccess({
+          visitor_id,
+          guard_name: guardName,
+          full_name: visitorName,
+          plate,
+          visits_to: metadata?.apto ? `Apto ${metadata.apto}` : '',
+          type: 'ENTRY'
+        })
+      })
+      
+      if (window.scannedPassData) {
+        supabase.from('visitor_passes').update({ is_used: true }).eq('id', window.scannedPassData.id).then(()=>{});
+        window.scannedPassData = null;
+      }
+      
+      if (timing === 'PRE') {
+         const activeTariffs = state.settings?.tariffs?.filter(t => t.active) || [];
+         const amountToCharge = activeTariffs.length > 0 ? activeTariffs[0].baseRate : (state.settings?.baseRate || 1);
+         
+         pendingPayment = { 
+           type:'PREPAGO', 
+           plate, 
+           slot:selectedSlot.label, 
+           category, 
+           guardName, 
+           phone, 
+           metadata,
+           amount: amountToCharge,
+           method: payMethod,
+           entryData: entryData // Save to update slot after payment
+         }
+         currentView = 'PAYMENT'; render()
+         getExchangeRate().then(bcv => {
+           if (!bcv?.rate) return;
+           const amount = pendingPayment?.amount || 0;
+           const bs = Math.round(amount * bcv.rate);
+           const elBs  = document.getElementById('bs-equivalent');
+           const elRate = document.getElementById('bcv-rate-guard');
+           if (elBs)  elBs.textContent  = `Bs. ${bs.toLocaleString('es-VE')}`;
+           if (elRate) elRate.textContent = `Tasa BCV: ${Number(bcv.rate).toLocaleString('es-VE', {minimumFractionDigits:2})} · ${bcv.source === 'auto' ? '✓ Oficial' : '⚠️ Manual'}`;
+         });
+      } else {
+         logMovement({
+            type: 'ENTRY',
+            plate,
+            slot: selectedSlot.label,
+            category,
+            guardName,
+            paymentStatus: 'PENDIENTE',
+            payMethod: null,
+            amount: 0,
+            metadata
+         });
+         currentView='TICKET'; render()
+      }
+    },
+    PRINT_TICKET: () => {
+       const area = document.getElementById('ticket-printable')
+       if (!area) return
+       const win = window.open('', '_blank', 'width=400,height=600')
+       win.document.write(`<html><head><title>Ticket Sloty</title><style>body{font-family:sans-serif;margin:0;padding:20px;text-align:center;} .card{border:2px solid #eee;border-radius:20px;padding:20px;}</style></head><body><div class="card">${area.innerHTML}</div><script>setTimeout(()=> {window.print(); window.close();}, 500)<\/script></body></html>`)
+       win.document.close()
+    },
+    EXIT_PAID: () => {
+      const entryTime = new Date(selectedSlot.entryTime)
+      const hoursStayed = (new Date() - entryTime) / 3600000
+      
+      let totalOwed = 0;
+      const activeTariffs = state.settings?.tariffs?.filter(t => t.active) || [];
+      
+      if (activeTariffs.length > 0) {
+         for (let t of activeTariffs) {
+             if (hoursStayed > t.freeHours || selectedSlot.status === 'DEBT') {
+                 totalOwed = Math.max(totalOwed, t.baseRate);
+             }
+         }
+      } else {
+         const freeHours = state.settings?.freeHours || 8
+         totalOwed = (hoursStayed > freeHours || selectedSlot.status === 'DEBT') ? (state.settings?.baseRate || 1) : 0
+      }
+      
+      if (selectedSlot.paymentStatus === 'PAGADO') totalOwed = 0; // Si ya pre-pagó, no debe nada.
+
+      if (totalOwed > 0) {
+        pendingPayment = {
+          type: 'EXIT',
+          plate: selectedSlot.plate,
+          slot: selectedSlot.label,
+          category: selectedSlot.category,
+          guardName,
+          amount: totalOwed,
+          method: document.querySelector('.pay-active')?.dataset.method || 'EFECTIVO_USD',
+          targetStatus: 'FREE'
+        }
+        currentView = 'PAYMENT'; render()
+getExchangeRate().then(bcv => {
+  if (!bcv?.rate) return;
+  const amount = pendingPayment?.amount || 0;
+  const bs = Math.round(amount * bcv.rate);
+  const elBs  = document.getElementById('bs-equivalent');
+  const elRate = document.getElementById('bcv-rate-guard');
+  if (elBs)  elBs.textContent  = `Bs. ${bs.toLocaleString('es-VE')}`;
+  if (elRate) elRate.textContent = `Tasa BCV: ${Number(bcv.rate).toLocaleString('es-VE', {minimumFractionDigits:2})} · ${bcv.source === 'auto' ? '✓ Oficial' : '⚠️ Manual'}`;
+});
+      } else {
+        processExit('FREE')
+      }
+    },
+    EXIT_DEBT: () => processExit('DEBT'),
+    FORMA_PRINT: () => printTicket('EXIT'),
+    CIERRE_CAJA: () => {
+      currentView = 'CLOSURE'; render()
+    },
+    SUBMIT_PAYMENT: () => {
+      const amountRec = parseFloat(document.getElementById('pay-amount')?.value) || 0
+      const ref = document.getElementById('pay-ref')?.value?.trim() || ''
+      const method = pendingPayment.method
+      
+      if (method === 'PAGO_MOVIL' && !ref) return showToast('Introduce la referencia', 'error')
+      if (amountRec < pendingPayment.amount) return showToast('Monto insuficiente', 'error')
+
+      const mov = {
+        ...pendingPayment,
+        amountRec,
+        reference: ref,
+        paymentStatus: 'PAGADO',
+        payMethod: method,
+        entryTime: selectedSlot?.entryTime || null,
+        exitTime: new Date().toISOString()
+      }
+      
+      logMovement(mov)
+      
+      if (pendingPayment.type === 'EXIT') {
+        processExit(pendingPayment.targetStatus)
+      } else {
+        // PREPAGO case: finalizing the entry
+        currentView = 'TICKET'; render()
+      }
+      pendingPayment = null
+      showToast('Pago registrado correctamente', 'success')
+    },
+    FINALIZE_CLOSURE: async () => {
+      const openMovs = state.movements.filter(m => !m.closed && m.guardName === guardName)
+      const total = openMovs.reduce((a,m) => a + (m.amount || 0), 0)
+      const breakdown = openMovs.reduce((acc, m) => {
+        acc[m.payMethod] = (acc[m.payMethod] || 0) + (m.amount || 0)
+        return acc
+      }, {})
+
+      const notes = document.getElementById('closure-notes')?.value?.trim() || ''
+
+      await saveClosure({
+        guard: guardName,
+        total,
+        methods: breakdown,
+        movements: openMovs,
+        absences: shiftData.absences,
+        startedAt: shiftData.startedAt,
+        notes: notes
+      })
+
+      logNotification('CIERRE_CAJA', guardName, `Cierre completado: $${total.toFixed(2)} acumulados.`)
+      await logAudit('FINALIZE_CLOSURE', {
+        guard_name: guardName,
+        total: total,
+        entries: openMovs.filter(m => m.type === 'ENTRY').length,
+        exits: openMovs.filter(m => m.type === 'EXIT').length
+      });
+      showModal('Cierre Exitoso', 'El reporte ha sido enviado a administración. El contador ha vuelto a 0.', () => location.reload())
+    },
+    ACCEPT_RESERVATION: async (btn) => {
+      const subId = btn.dataset.subId;
+      const plate = btn.dataset.plate;
+      
+      // Find a free slot in the active level
+      const lvl = state.levels.find(l => l.name === (activeLevel || state.levels[0].name));
+      const freeIdx = lvl.slots.findIndex(s => s.status === 'FREE');
+      
+      if (freeIdx === -1) return showToast("No hay puestos libres para reservar", "error");
+
+      const rentalCap = state.settings?.rentalSlotsCap;
+      if (rentalCap != null && rentalCap >= 0) {
+         let occupiedResCount = 0;
+         state.levels.forEach(l => {
+            if (l.slots) {
+               l.slots.forEach(s => {
+                  if (s.category === 'RESIDENTE') {
+                     occupiedResCount++;
+                  }
+               });
+            }
+         });
+         if (occupiedResCount >= rentalCap) {
+            return showToast('Cupo de puestos de mensualidad alcanzado (mensualidades llenas)', 'error');
+         }
+      }
+      
+      lvl.slots[freeIdx] = { 
+        ...lvl.slots[freeIdx], 
+        status: 'RESERVED', 
+        plate: plate,
+        category: 'RESIDENTE',
+        entryTime: new Date().toISOString()
+      };
+      
+      // Update Supabase to say the resident is no longer 'coming' (now it's reserved)
+      await supabase.from('subscriptions').update({ is_coming: false }).eq('id', subId);
+      
+      updateParkingState(state);
+      render();
+      showToast(`Puesto ${lvl.slots[freeIdx].label} reservado para ${plate}`, "success");
+    },
+    PAUSE_SHIFT: () => {
+      showPinModal('Pausar Turno', 'Ingresa tu PIN de guardia para pausar el turno:', (pin) => {
+        const guard = state.personnel?.find(p => p.pin === pin);
+        if (!guard) return false;
+
+        if (shiftData) shiftData.pausedAt = new Date().toISOString();
+
+        document.body.innerHTML = `
+          <div style="display:flex; flex-direction:column; align-items:center;
+                      justify-content:center; height:100vh; background:#1a1a2e;
+                      color:white; text-align:center; padding:40px;">
+            <div style="font-size:3rem; margin-bottom:16px;">🔒</div>
+            <div style="font-size:1rem; font-weight:900; color:#F5C518;
+                        text-transform:uppercase; letter-spacing:2px;">
+              Turno Pausado
+            </div>
+            <div style="font-size:0.75rem; color:rgba(255,255,255,0.5);
+                        margin-top:8px;">
+              Ingresa tu PIN para continuar
+            </div>
+            <input id="resume-pin" type="password" inputmode="numeric"
+                   maxlength="6" placeholder="••••••"
+                   style="margin-top:24px; padding:12px 20px; border-radius:50px;
+                          border:2px solid #F5C518; background:transparent;
+                          color:white; font-size:1.2rem; text-align:center;
+                          width:160px; outline:none;"
+                   oninput="if(this.value.length>=4) handleAction('RESUME_SHIFT', this.value)" />
+          </div>`;
+        return true;
+      });
+    },
+    RESUME_SHIFT: async (pin) => {
+      const guard = state.personnel?.find(p => p.pin === pin);
+      if (!guard) {
+        document.querySelector('#resume-pin').value = '';
+        document.querySelector('#resume-pin').placeholder = 'PIN incorrecto';
+        return;
+      }
+
+      // Registrar fin de ausencia
+      if (shiftData?.pausedAt) {
+        const from = shiftData.pausedAt;
+        const to = new Date().toISOString();
+        const duration_min = Math.round((new Date(to) - new Date(from)) / 60000);
+        shiftData.absences = shiftData.absences || [];
+        shiftData.absences.push({ from, to, duration_min });
+        shiftData.pausedAt = null;
+      }
+
+      // Volver al panel normal (restaurar shell si fue borrado por innerHTML global)
+      location.reload();
+    },
+    CONFIRM_HANDOVER: async () => {
+      await render();
+    },
+    REPORT_INCIDENT: (prefilled) => {
+      const types = ['RAYÓN', 'ACCIDENTE', 'SOSPECHOSO', 'OBJETO PERDIDO', 'TIEMPO EXCEDIDO', 'OTRO'];
+      const pPlate = prefilled?.plate || '';
+      const pSlot = prefilled?.slot || '';
+      const pType = prefilled?.type || null;
+      window.selectedIncidentType = pType;
+
+      const typeButtons = types.map((t) => `
+        <button class="incident-type-btn" onclick="handleAction('SELECT_INCIDENT_TYPE','${t}')"
+          style="background:${pType === t ? '#e63946' : '#f8f9fa'}; border:1.5px solid ${pType === t ? '#e63946' : '#eee'}; border-radius:12px;
+                 padding:10px 14px; font-size:0.75rem; font-weight:900;
+                 cursor:pointer; text-align:left; color:${pType === t ? 'white' : '#1a1a2e'};">
+          ${t}
+        </button>`).join('');
+
+      elModal.innerHTML = `
+        <div style="position:fixed; inset:0; background:rgba(0,0,0,0.6);
+                    z-index:9999; display:flex; align-items:flex-end;">
+          <div style="background:white; border-radius:24px 24px 0 0;
+                      padding:24px; width:100%; max-height:90vh; overflow-y:auto;">
+            <div style="font-size:0.7rem; font-weight:900; color:#999;
+                        letter-spacing:2px; text-transform:uppercase; margin-bottom:16px;">
+              Reportar Incidente
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:16px;">
+              ${typeButtons}
+            </div>
+            <div style="font-size:0.7rem; font-weight:900; color:#999;
+                        text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">
+              Placa involucrada (opcional)
+            </div>
+            <input id="incident-plate" placeholder="ABC-123" value="${pPlate}"
+                   style="width:100%; padding:12px 16px; border:1.5px solid #eee;
+                          border-radius:12px; font-size:0.85rem; font-weight:700;
+                          margin-bottom:12px; box-sizing:border-box;" />
+            <div style="font-size:0.7rem; font-weight:900; color:#999;
+                        text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">
+              Puesto involucrado (opcional)
+            </div>
+            <input id="incident-slot" placeholder="A-01" value="${pSlot}"
+                   style="width:100%; padding:12px 16px; border:1.5px solid #eee;
+                          border-radius:12px; font-size:0.85rem; font-weight:700;
+                          margin-bottom:12px; box-sizing:border-box;" />
+            <div style="font-size:0.7rem; font-weight:900; color:#999;
+                        text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">
+              Descripción
+            </div>
+            <textarea id="incident-desc" rows="3" placeholder="Describe lo que ocurrió..."
+                   style="width:100%; padding:12px 16px; border:1.5px solid #eee;
+                          border-radius:12px; font-size:0.85rem; font-weight:700;
+                          margin-bottom:16px; box-sizing:border-box; resize:none;"></textarea>
+            <div style="display:flex; gap:8px;">
+              <button onclick="handleAction('SUBMIT_INCIDENT')"
+                style="flex:1; background:#e63946; color:white; border:none;
+                       border-radius:50px; padding:14px; font-size:0.8rem;
+                       font-weight:900; cursor:pointer;">
+                REPORTAR
+              </button>
+              <button onclick="handleAction('CLOSE_MODAL')"
+                style="flex:1; background:#f8f9fa; color:#1a1a2e; border:none;
+                       border-radius:50px; padding:14px; font-size:0.8rem;
+                       font-weight:900; cursor:pointer;">
+                CANCELAR
+              </button>
+            </div>
+            <button onclick="handleAction('VIEW_INCIDENTS')" style="width:100%; background:none; color:#1a1a2e; border:1.5px solid #1a1a2e; border-radius:50px; padding:12px; font-size:0.8rem; font-weight:900; cursor:pointer; margin-top:10px;">VER MIS REPORTES</button>
+          </div>
+        </div>`;
+      elModal.style.display = 'flex';
+    },
+    SELECT_INCIDENT_TYPE: (payload) => {
+      window.selectedIncidentType = payload;
+      document.querySelectorAll('.incident-type-btn').forEach(b => {
+        const isMatch = b.textContent.trim() === payload;
+        b.style.background = isMatch ? '#e63946' : '#f8f9fa';
+        b.style.borderColor = isMatch ? '#e63946' : '#eee';
+        b.style.color = isMatch ? 'white' : '#1a1a2e';
+      });
+    },
+    SUBMIT_INCIDENT: async () => {
+      const selectedType = window.selectedIncidentType;
+
+      if (!selectedType) {
+        showToast('Selecciona el tipo de incidente', 'error');
+        return;
+      }
+
+      const desc = document.querySelector('#incident-desc')?.value?.trim();
+      if (!desc) {
+        showToast('Agrega una descripción del incidente', 'error');
+        return;
+      }
+
+      const plate = document.querySelector('#incident-plate')?.value?.trim() || null;
+      const slot  = document.querySelector('#incident-slot')?.value?.trim() || null;
+
+      const { error } = await supabase.from('incidents').insert({
+        building_id: state.buildingId,
+        guard_name:  shiftData.guardName || guardName,
+        type:        selectedType,
+        description: desc,
+        plate,
+        slot,
+        resolved:    false
+      });
+
+      if (error) {
+        showToast('Error al reportar el incidente. Intenta de nuevo.', 'error');
+        console.error(error);
+        return;
+      }
+
+      await logAudit('REPORT_INCIDENT', { type: selectedType, plate, slot });
+
+      supabase.functions.invoke('send-push', { 
+        body: { 
+          building_id: state.buildingId, 
+          role: 'ADMIN', 
+          title: '⚠️ Nuevo incidente reportado', 
+          body: `${selectedType} — ${desc.slice(0,60)}` 
+        } 
+      });
+
+      elModal.style.display = 'none';
+      elModal.innerHTML = '';
+      showToast('Incidente reportado exitosamente', 'success');
+    },
+    CLOSE_MODAL: () => {
+      elModal.style.display = 'none';
+      elModal.innerHTML = '';
+    },
+    VIEW_INCIDENTS: async () => {
+      elModal.innerHTML = `<div style="padding:40px;text-align:center;color:white;font-weight:900;">Cargando tus reportes...</div>`;
+      elModal.style.display = 'block';
+
+      const { data, error } = await supabase.from('incidents')
+        .select('*')
+        .eq('building_id', state.buildingId)
+        .eq('guard_name', guardName)
+        .order('created_at', { ascending: false })
+        .limit(10);
+        
+      let listHtml = '';
+      if (error || !data || data.length === 0) {
+         listHtml = '<div style="color:#999;font-weight:700;text-align:center;margin:20px 0;">No hay incidentes previos reportados por ti.</div>';
+      } else {
+         listHtml = data.map(inc => `
+           <div style="background:#f8f9fa; border-radius:12px; padding:15px; margin-bottom:10px; text-align:left; border-left:4px ${inc.resolved ? 'solid #22c55e' : 'solid #e63946'};">
+             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                <span style="font-size:0.75rem; font-weight:900; color:var(--primary);">${inc.type}</span>
+                <span style="font-size:0.6rem; color:#bbb; font-weight:800;">${new Date(inc.created_at).toLocaleDateString()}</span>
+             </div>
+             <div style="font-size:0.7rem; color:#666; font-weight:700; margin-bottom:8px;">${inc.description}</div>
+             ${inc.admin_response ? `
+               <div style="background:#eaf3de; padding:10px; border-radius:8px; border:1px solid #bbf7d0;">
+                 <div style="font-size:0.6rem; font-weight:900; color:#166534; margin-bottom:3px;">RESPUESTA ADMIN:</div>
+                 <div style="font-size:0.7rem; color:#166534; font-weight:700;">"${inc.admin_response}"</div>
+               </div>
+             ` : `<div style="font-size:0.6rem; color:#e63946; font-weight:900;">EN ESPERA DE RESPUESTA</div>`}
+           </div>
+         `).join('');
+      }
+      
+      elModal.innerHTML = `
+          <div style="position:fixed; top:0; left:0; width:100%; height:100vh;
+                      background:rgba(0,0,0,0.8); z-index:99999; display:flex;
+                      align-items:center; justify-content:center; padding:20px;">
+            <div style="background:white; width:100%; max-width:400px;
+                        border-radius:24px; padding:24px; text-align:center;
+                        animation: popIn 0.3s forwards;">
+               <h3 style="font-weight:900; color:var(--primary); margin:0 0 15px;">MIS REPORTES (Últimos 10)</h3>
+               <div style="max-height:60vh; overflow-y:auto; margin-bottom:20px;">${listHtml}</div>
+               <button onclick="handleAction('CLOSE_MODAL')" style="width:100%; background:#f8f9fa; color:#1a1a2e; border:none; border-radius:50px; padding:14px; font-size:0.8rem; font-weight:900; cursor:pointer;">CERRAR</button>
+            </div>
+          </div>
+      `;
+    }
+  }
+
+  const processExit = (newStatus) => {
+    const payMethod = document.querySelector('.pay-active')?.dataset.method || 'EFECTIVO_USD'
+    const lvl = state.levels.find(l=>l.name===selectedSlot.levelName)
+    const slotData = lvl.slots[selectedSlot.sIdx]
+    lvl.slots[selectedSlot.sIdx] = { ...slotData, status:newStatus, plate: newStatus==='FREE'?null:slotData.plate, phone: newStatus==='FREE'?null:slotData.phone, entryTime: newStatus==='FREE'?null:slotData.entryTime }
+    updateParkingState(state); 
+    const realAmount = pendingPayment?.amount || 0
+    logMovement({ 
+      type: 'EXIT', 
+      plate: slotData.plate, 
+      slot: slotData.label, 
+      category: slotData.category, 
+      guardName, 
+      paymentStatus: newStatus === 'FREE' ? 'PAGADO' : 'DEUDA', 
+      payMethod, 
+      amount: realAmount,
+      entryTime: slotData.entryTime,
+      exitTime: new Date().toISOString()
+    })
+    
+    // Persistir sesión de estacionamiento en Supabase
+    const vState = getParkingState()
+    const finalAmount = pendingPayment?.amount || 0
+    supabase.from('parking_sessions').insert({
+      building_id: vState.buildingId,
+      vehicle_plate: selectedSlot?.plate || '',
+      entry_time: selectedSlot?.entryTime || new Date().toISOString(),
+      exit_time: new Date().toISOString(),
+      guard_name: vState.guardName || '',
+      category: selectedSlot?.category || '',
+      slot_label: selectedSlot?.label || '',
+      amount: finalAmount || 0,
+      pay_method: payMethod || '',
+      status: 'EXITED'
+    }).then(({ error }) => {
+      if (error) console.warn('[Sloty] parking_sessions insert error:', error)
+    })
+
+    // Registrar salida en trazabilidad
+    import('../visitors.js').then(m => {
+      m.logAccess({
+        visitor_id: null,
+        guard_name: guardName,
+        full_name: slotData.metadata?.nombre || 'Vehículo Estacionado',
+        plate: slotData.plate || '',
+        visits_to: slotData.metadata?.apto ? `Apto ${slotData.metadata.apto}` : '',
+        type: 'EXIT'
+      });
+    });
+
+    currentView='MAP'; render()
+  }
+
+  const checkOvertimeVisitors = (state) => {
+     let overstayMsg = '';
+     
+     state.levels.forEach(level => {
+        level.slots.forEach(slot => {
+           if (slot.status === 'OCCUPIED' && slot.entryTime && slot.category) {
+              const list = state.settings?.categories || CAT;
+              const catObj = list.find(c => c.id === slot.category || c.cat === slot.category);
+              const maxHours = catObj ? catObj.maxHours : null;
+              
+              if (maxHours != null && maxHours > 0) {
+                 const hoursStayed = (new Date() - new Date(slot.entryTime)) / 3600000;
+                 if (hoursStayed > maxHours) {
+                    const labelName = catObj.label || slot.category;
+                    const name = slot.metadata?.nombre || slot.plate || labelName;
+                    const phone = slot.phone || '';
+                    
+                    let waButton = '';
+                    if (phone) {
+                       let cleaned = phone.replace(/[\s\-\(\)\+]/g, '');
+                       if (cleaned.length === 10 || cleaned.length === 11) {
+                          if (!cleaned.startsWith('58')) {
+                             cleaned = '58' + (cleaned.length === 11 ? cleaned.slice(1) : cleaned);
+                          }
+                       } else if (cleaned.length > 7 && !cleaned.startsWith('58')) {
+                          cleaned = ''; // formateo no válido
+                       }
+                       
+                       if (cleaned.length >= 10 && cleaned.startsWith('58')) {
+                          const message = encodeURIComponent(`Hola ${name}, te escribimos desde ${state.buildingName} — tu tiempo de visita (${labelName}) está por vencer, por favor coordina tu salida.`);
+                          waButton = `<button onclick="window.open('https://wa.me/${cleaned}?text=${message}', '_blank')" style="background:#22c55e; color:white; border:none; padding:8px 12px; border-radius:10px; font-weight:900; cursor:pointer; font-size:0.65rem; margin-top:8px;">ESCRÍBELE AL VISITANTE (WP)</button>`;
+                       }
+                    }

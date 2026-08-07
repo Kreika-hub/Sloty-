@@ -1,0 +1,11 @@
+const fs = require('fs');
+console.log('--- ADMIN ---');
+const textAdmin = fs.readFileSync('src/modules/admin.js', 'utf8').split(/\r?\n/);
+console.log(textAdmin.slice(335, 355).join('\n'));
+console.log('--- GUARD PAUSE SHIFT ---');
+const textGuard = fs.readFileSync('src/modules/guard.js', 'utf8').split(/\r?\n/);
+console.log(textGuard.slice(675, 755).map((l,i) => (675+i)+': '+l).join('\n'));
+console.log('--- GUARD CONFIRM ENTRY REGISTRATION ---');
+console.log(textGuard.slice(1870, 1920).map((l,i) => (1870+i)+': '+l).join('\n'));
+console.log('--- GUARD ACTIONS OBJ ---');
+console.log(textGuard.slice(300, 420).map((l,i) => (300+i)+': '+l).join('\n'));
