@@ -277,6 +277,8 @@ export const syncDown = async (buildingCode) => {
         }
         
         const buildingId = bData.id
+        initGlobalRealtime(buildingId, bData.code)
+        
         const [ { data: sData }, { data: aData }, { data: pData } ] = await Promise.all([
             supabase.from('parking_slots').select('*').eq('building_id', buildingId),
             supabase.from('access_logs').select('*').eq('building_id', buildingId).limit(200).order('timestamp', { ascending: false }),
@@ -424,11 +426,19 @@ export const updateParkingState = (state) => saveParkingState(state)
 
 export const logMovement = (movement) => {
   const state = getParkingState()
+  const rate = Number(_bcvCache?.rate || 40.0)
+  
+  const amountUsd = Number(Number(movement.amount || 0).toFixed(2))
+  const amountBs = Number(Number(amountUsd * rate).toFixed(2))
+
   const entry = {
     ...movement,
     id: `m-${Date.now()}`,
     timestamp: new Date().toISOString(),
-    closed: false
+    closed: false,
+    amount_usd: amountUsd,
+    amount_bs: amountBs,
+    bcv_rate_used: rate
   }
   state.movements.unshift(entry)
   
@@ -454,6 +464,9 @@ export const logMovement = (movement) => {
           guard_name: entry.guardName,
           pay_method: entry.payMethod,
           amount: entry.amount,
+          amount_usd: amountUsd,
+          amount_bs: amountBs,
+          bcv_rate_used: rate,
           reference: entry.reference,
           payment_status: entry.paymentStatus,
           metadata: entry.metadata,
@@ -465,7 +478,7 @@ export const logMovement = (movement) => {
       enqueueSync({
           table: 'visitor_plates',
           action: 'UPSERT',
-          onConflict: 'plate', // assuming 'plate' is the unique column
+          onConflict: 'plate',
           data: { plate: entry.plate, category: entry.category, last_seen: entry.timestamp }
       })
   }
@@ -698,4 +711,82 @@ export const getExchangeRate = async () => {
 export const invalidateBCVCache = () => {
   _bcvCache = null;
   localStorage.removeItem('sloty_bcv_cache');
+};
+
+let globalRealtimeChannel = null;
+
+export const initGlobalRealtime = (buildingId, buildingCode) => {
+  if (globalRealtimeChannel) {
+    console.log('[Sloty Realtime] Canal Realtime global ya existe, omitiendo.');
+    return;
+  }
+  if (!buildingId) {
+    console.warn('[Sloty Realtime] No se puede inicializar realtime sin buildingId');
+    return;
+  }
+  console.log('[Sloty Realtime] Iniciando canal global para edificio:', buildingId);
+  globalRealtimeChannel = supabase
+    .channel('global-sync-changes')
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'parking_slots',
+      filter: `building_id=eq.${buildingId}`
+    }, (payload) => {
+      console.log('[Sloty Realtime] Cambios detectados en parking_slots:', payload);
+      syncDown(buildingCode).then(() => {
+        window.dispatchEvent(new CustomEvent('sloty-sync-downloaded'));
+      });
+    })
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'personnel',
+      filter: `building_id=eq.${buildingId}`
+    }, (payload) => {
+      console.log('[Sloty Realtime] Cambios detectados en personnel:', payload);
+      syncDown(buildingCode).then(() => {
+        window.dispatchEvent(new CustomEvent('sloty-sync-downloaded'));
+      });
+    })
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'access_logs',
+      filter: `building_id=eq.${buildingId}`
+    }, (payload) => {
+      console.log('[Sloty Realtime] Cambios detectados en access_logs:', payload);
+      syncDown(buildingCode).then(() => {
+        window.dispatchEvent(new CustomEvent('sloty-sync-downloaded'));
+      });
+    })
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'subscriptions',
+      filter: `building_id=eq.${buildingId}`
+    }, (payload) => {
+      console.log('[Sloty Realtime] Cambios detectados en subscriptions:', payload);
+      if (payload.new && payload.new.is_coming) {
+        window.dispatchEvent(new CustomEvent('sloty-resident-coming', { detail: payload.new }));
+      }
+      syncDown(buildingCode).then(() => {
+        window.dispatchEvent(new CustomEvent('sloty-subscriptions-updated', { detail: payload.new }));
+      });
+    })
+    .subscribe((status) => {
+      console.log('[Sloty Realtime] Estado de suscripción:', status);
+    });
+};
+
+export const unsubscribeGlobalRealtime = () => {
+  if (globalRealtimeChannel) {
+    console.log('[Sloty Realtime] Desuscribiendo canal global realtime...');
+    try {
+      supabase.removeChannel(globalRealtimeChannel);
+    } catch (e) {
+      console.warn('[Sloty Realtime] Falló removeChannel:', e);
+    }
+    globalRealtimeChannel = null;
+  }
 };

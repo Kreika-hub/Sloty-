@@ -9,11 +9,12 @@ import { ICONS, SKELETONS } from './admin/admin-ui-components.js'
 
 // Submodule UI renderers and action binders
 import { loadHomeMetrics, renderHome, checkExpiringSubscriptions } from './admin/admin-dashboard.js'
-import { initUserActions, renderMonthlySystem, renderAbonos, setupAbonosHooks } from './admin/admin-users.js'
+import { initUserActions, renderMonthlySystem, renderAbonos, setupAbonosHooks, setupMonthlySystemHooks } from './admin/admin-users.js'
 import { initFinanceActions, renderFinanceSummary } from './admin/admin-finance.js'
 import { initStructureActions, renderLevels } from './admin/admin-structure.js'
 import { initGuardActions, renderPersonnel, setupGuardHooks } from './admin/admin-guards.js'
 import { initSettingsActions, renderSettings, renderReports } from './admin/admin-settings.js'
+import { shouldShowOnboarding, renderOnboardingWizard } from './onboarding.js'
 
 // Fallback renders for legacy/unused tabs to prevent runtime crashes
 const renderNotifications = () => `
@@ -448,6 +449,7 @@ export const initAdmin = (container) => {
     elMain.innerHTML = `<div class="responsive-container" style="padding-bottom:100px;">${html}</div>`; 
     if(renderingTab==='PERSONAL') setupGuardHooks(elMain)
     if(renderingTab==='ABONOS') setupAbonosHooks(elMain)
+    if(renderingTab==='SUBS') setupMonthlySystemHooks(elMain)
   }
 
   const render = async () => {
@@ -509,6 +511,17 @@ export const initAdmin = (container) => {
     store.currentBcv = bcv || store.currentBcv;
     await render();
     const state = getParkingState();
+    
+    // Check onboarding
+    if (shouldShowOnboarding(state)) {
+      const wizardHost = document.createElement('div');
+      wizardHost.id = 'onboarding-wizard-host';
+      document.body.appendChild(wizardHost);
+      renderOnboardingWizard(wizardHost, state, () => {
+        render();
+      });
+    }
+
     setTimeout(() => checkExpiringSubscriptions(state.buildingId), 2000);
   });
 }

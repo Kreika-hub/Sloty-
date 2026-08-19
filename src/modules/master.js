@@ -16,12 +16,13 @@ export const initMaster = (container) => {
   let elShell = null
 
   const FEATURES = [
-    { key: 'whatsapp_alerts',   label: 'Alertas WhatsApp',     icon: '📱' },
-    { key: 'debt_tracking',     label: 'Control de Deudas',    icon: '💸' },
-    { key: 'frequent_visitors', label: 'Visitantes Frecuentes',icon: '🔁' },
-    { key: 'audit_log',         label: 'Bitácora de Auditoría',icon: '📋' },
-    { key: 'finance_report',    label: 'Reporte Financiero',   icon: '📊' },
-    { key: 'multi_level',       label: 'Multinivel',           icon: '🏢' },
+    { key: 'finance_module',         label: 'Módulo de Finanzas / Caja', icon: '💰' },
+    { key: 'whatsapp_notifications', label: 'Notificaciones WhatsApp',   icon: '📱' },
+    { key: 'reports_module',         label: 'Módulo de Reportes',        icon: '📊' },
+    { key: 'debt_tracking',          label: 'Control de Deudas',         icon: '💸' },
+    { key: 'frequent_visitors',      label: 'Visitantes Frecuentes',     icon: '🔁' },
+    { key: 'audit_log',              label: 'Bitácora de Auditoría',     icon: '📋' },
+    { key: 'multi_level',            label: 'Multinivel / Pisos',        icon: '🏢' },
   ]
   const PLANS = [
     { key: 'TRIAL',  label: 'Trial',  maxSlots: 10,  color: '#888' },
@@ -36,6 +37,39 @@ export const initMaster = (container) => {
     TAB: (btn) => { activeTab = btn.dataset.tab; selectedBuilding = null; render() },
     SET_NOTIFY_FILTER: (id) => { masterNotifyFilter = id; render() },
     BACK: () => { selectedBuilding = null; render() },
+    APPROVE_BUILDING: async (id) => {
+      if (!id) return;
+      await supabase.from('buildings').update({ membership_status: 'ACTIVE' }).eq('id', id);
+      alert('✓ Edificio aprobado y activado con éxito.');
+      if (document.getElementById('dossier-overlay')) {
+        document.getElementById('dossier-overlay').remove();
+        actions.OPEN_DOSSIER(id);
+      }
+      render();
+    },
+    REJECT_BUILDING: async (id) => {
+      if (!id) return;
+      if (!confirm('¿Rechazar solicitud de este edificio?')) return;
+      await supabase.from('buildings').update({ membership_status: 'REJECTED' }).eq('id', id);
+      alert('Edificio marcado como RECHAZADO.');
+      if (document.getElementById('dossier-overlay')) {
+        document.getElementById('dossier-overlay').remove();
+        actions.OPEN_DOSSIER(id);
+      }
+      render();
+    },
+    TOGGLE_FEATURE: async (param) => {
+      const [bId, featKey] = (param || '').split('|');
+      if (!bId || !featKey) return;
+      const { data: bld } = await supabase.from('buildings').select('features').eq('id', bId).single();
+      const currentFeatures = bld?.features || {};
+      const updated = { ...currentFeatures, [featKey]: !currentFeatures[featKey] };
+      await supabase.from('buildings').update({ features: updated }).eq('id', bId);
+      if (document.getElementById('dossier-overlay')) {
+        document.getElementById('dossier-overlay').remove();
+        actions.OPEN_DOSSIER(bId);
+      }
+    },
     SELECT_BUILDING: async (btn) => { 
       const id = btn.dataset.id;
       actions.OPEN_DOSSIER(id);
@@ -514,6 +548,55 @@ export const initMaster = (container) => {
         </div>
       </div>
 
+          <!-- SOLICITUD DE CUENTA / ESTADO DE APROBACIÓN -->
+          ${bld?.membership_status === 'PENDING' || bld?.membership_status === 'PENDING_APPROVAL' ? `
+            <div style="background:rgba(245,197,24,0.12); border:2px solid #F5C518; border-radius:18px; padding:18px; margin-bottom:16px; text-align:center;">
+              <div style="font-size:2rem; margin-bottom:6px;">⏳</div>
+              <div style="font-size:0.95rem; font-weight:900; color:#F5C518; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">
+                SOLICITUD DE REGISTRO PENDIENTE
+              </div>
+              <div style="font-size:0.75rem; color:rgba(255,255,255,0.7); margin-bottom:14px;">
+                Este condominio se ha registrado y está esperando aprobación del Master para comenzar a operar.
+              </div>
+              <div style="display:flex; gap:10px;">
+                <button onclick="window.handleMasterAction('APPROVE_BUILDING','${buildingId}')"
+                  style="flex:2; padding:14px; background:#22c55e; color:white; border:none; border-radius:12px; font-weight:900; font-size:0.8rem; cursor:pointer; text-transform:uppercase;">
+                  ✓ APROBAR CONDOMINIO
+                </button>
+                <button onclick="window.handleMasterAction('REJECT_BUILDING','${buildingId}')"
+                  style="flex:1; padding:14px; background:rgba(230,57,70,0.2); color:#e63946; border:1px solid #e63946; border-radius:12px; font-weight:900; font-size:0.8rem; cursor:pointer; text-transform:uppercase;">
+                  RECHAZAR
+                </button>
+              </div>
+            </div>
+          ` : ''}
+
+          <!-- FEATURE FLAGS / RESTRICCIÓN DE MÓDULOS -->
+          <div style="background:rgba(255,255,255,0.06); border-radius:16px; padding:16px; margin-bottom:16px;">
+            <div style="font-size:0.65rem; font-weight:900; color:#F5C518; text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">
+              ⚡ Control de Módulos (Feature Flags)
+            </div>
+            <div style="display:grid; gap:8px;">
+              ${FEATURES.map(f => {
+                const isEnabled = bld?.features ? (bld.features[f.key] !== false) : true;
+                return `
+                  <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.2); padding:10px 14px; border-radius:12px; border:1px solid rgba(255,255,255,0.05);">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                      <span style="font-size:1.1rem;">${f.icon}</span>
+                      <span style="font-size:0.8rem; font-weight:800; color:white;">${f.label}</span>
+                    </div>
+                    <button onclick="window.handleMasterAction('TOGGLE_FEATURE','${buildingId}|${f.key}')"
+                      style="padding:6px 14px; border-radius:20px; font-size:0.65rem; font-weight:900; cursor:pointer; border:none; transition:all 0.2s;
+                             background:${isEnabled ? '#22c55e' : 'rgba(255,255,255,0.1)'};
+                             color:${isEnabled ? 'white' : 'rgba(255,255,255,0.4)'};">
+                      ${isEnabled ? 'ACTIVO' : 'INACTIVO'}
+                    </button>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+
       <!-- COMPROBANTES PENDIENTES -->
       ${pendingProofs.length > 0 ? `
         <div style="margin-bottom:16px;">
@@ -932,7 +1015,11 @@ export const initMaster = (container) => {
        }
     },
     LOGOUT: () => {
-      localStorage.removeItem('sloty_session'); location.reload();
+      if (window.slotyLogout) window.slotyLogout()
+      else {
+        localStorage.clear()
+        location.reload()
+      }
     }
   }
 

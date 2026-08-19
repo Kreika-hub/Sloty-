@@ -13,7 +13,14 @@ export const store = {
   // Cache: Home metrics
   cachedMetrics: null,
   metricsLoading: false,
-  currentBcv: null,
+  currentBcv: (() => {
+    try {
+      const cached = localStorage.getItem('sloty_bcv_cache')
+      return cached ? JSON.parse(cached) : { rate: 40.0, source: 'fallback_static', fecha: new Date().toISOString().slice(0, 10) }
+    } catch (e) {
+      return { rate: 40.0, source: 'fallback_static', fecha: new Date().toISOString().slice(0, 10) }
+    }
+  })(),
 
   // Cache: Subscriptions
   cachedSubs: null,

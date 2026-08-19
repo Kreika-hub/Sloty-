@@ -407,10 +407,17 @@ export const initGuard = (container, guardName = 'Guardia') => {
       }
 
       // Registramos el pago como PENDIENTE para aprobación de admin
+      const rateVal = Number(_bcvCache?.rate || 40.0);
+      const amountUsd = Number(amount.toFixed(2));
+      const amountBs = Number((amountUsd * rateVal).toFixed(2));
+
       await supabase.from('payments').insert({
          building_id: state.buildingId || localStorage.getItem('sloty_building_id'),
          subscription_id: selectedResident.id,
          amount: amount,
+         amount_usd: amountUsd,
+         amount_bs: amountBs,
+         bcv_rate_used: rateVal,
          method: method,
          reference: ref,
          status: 'PENDING',
@@ -1491,19 +1498,20 @@ getExchangeRate().then(bcv => {
                  <input id="pay-ref" type="text" placeholder="Ej: 4522" 
                     style="width:100%; border:2px solid #eee; border-radius:18px; padding:18px; font-size:1.4rem; font-weight:900; outline:none; font-family:'Montserrat';">
               </div>
-<div style="background:rgba(245,197,24,0.1); border:1.5px solid #F5C518;
-            border-radius:14px; padding:12px; margin-top:12px; text-align:left;">
-  <div style="font-size:0.65rem; font-weight:900; color:#D97706; margin-bottom:6px;">
-    ⚠️ Equivalente en Bolívares
-  </div>
-  <div id="bs-equivalent" style="font-size:1.2rem; font-weight:900; color:#1a1a2e;">
-    Calculando...
-  </div>
-  <div id="bcv-rate-guard" style="font-size:0.6rem; color:#999; font-weight:700; margin-top:2px;">
-    Cargando tasa BCV...
-  </div>
-</div>
-             ` : ''}
+            ` : ''}
+            
+            <div style="background:rgba(255,255,255,0.06); border:1.5px solid rgba(255,255,255,0.15);
+                        border-radius:14px; padding:12px; margin-top:12px; text-align:left;">
+              <div style="font-size:0.65rem; font-weight:900; color:#D97706; margin-bottom:6px;">
+                ⚠️ Equivalente en Bolívares
+              </div>
+              <div id="bs-equivalent" style="font-size:1.25rem; font-weight:900; color:#1a1a2e;">
+                Calculando...
+              </div>
+              <div id="bcv-rate-guard" style="font-size:0.6rem; color:#999; font-weight:700; margin-top:2px;">
+                Cargando tasa BCV...
+              </div>
+            </div>
          </div>
 
          <button data-action="SUBMIT_PAYMENT" style="width:100%; padding:22px; background:#22c55e; color:white; border:none; border-radius:22px; font-weight:900; font-size:1rem; box-shadow:0 10px 25px rgba(34,197,94,0.3);">
@@ -1584,6 +1592,7 @@ getExchangeRate().then(bcv => {
            <div style="margin-bottom:20px;">
               <label style="font-size:0.65rem; font-weight:900; color:#bbb; margin-bottom:8px; display:block;">ABONO A REGISTRAR</label>
               <input id="sub-pay-amount" type="number" step="0.01" value="${subPaymentAmount}" style="width:100%; border:2px solid #eee; border-radius:18px; padding:18px; font-size:1.4rem; font-weight:900; outline:none; font-family:'Montserrat';">
+              <div id="sub-pay-ves-calc" style="font-size:0.75rem; font-weight:800; color:#18181b; margin-top:8px; text-align:center; padding:10px; background:#f4f4f5; border-radius:14px; display:none; border:1px solid #e4e4e7;"></div>
            </div>
 
            <div style="margin-bottom:20px;">
@@ -2147,6 +2156,41 @@ getExchangeRate().then(bcv => {
         c.style.background='#1a1a2e'; c.style.borderColor='#1a1a2e'; c.style.color='#F5C518'; c.classList.add('pay-active')
       }
     })
+
+    // Cálculo de bolívares en vivo para el pago de visitas
+    const payAmountInput = document.getElementById('pay-amount')
+    if (payAmountInput) {
+      const updateVisitorBs = () => {
+        getExchangeRate().then(bcv => {
+          const val = parseFloat(payAmountInput.value) || 0
+          const rateVal = bcv?.rate || 40.0
+          const bsVal = Math.round(val * rateVal)
+          const elBs = document.getElementById('bs-equivalent')
+          const elRate = document.getElementById('bcv-rate-guard')
+          if (elBs) elBs.textContent = 'Bs. ' + bsVal.toLocaleString('es-VE')
+          if (elRate) elRate.textContent = 'Tasa BCV: ' + Number(rateVal).toLocaleString('es-VE', {minimumFractionDigits:2}) + ' · ' + (bcv?.source === 'auto' ? '✓ Oficial' : '⚠️ Manual')
+        })
+      }
+      payAmountInput.oninput = updateVisitorBs
+      updateVisitorBs()
+    }
+
+    // Cálculo de bolívares en vivo para el pago de mensualidades del guardia
+    const subPayAmountInput = document.getElementById('sub-pay-amount')
+    const subPayVesCalc = document.getElementById('sub-pay-ves-calc')
+    if (subPayAmountInput && subPayVesCalc) {
+      const updateSubBs = () => {
+        getExchangeRate().then(bcv => {
+          const val = parseFloat(subPayAmountInput.value) || 0
+          const rateVal = bcv?.rate || 40.0
+          const vesVal = val * rateVal
+          subPayVesCalc.innerHTML = 'Equivale a: <strong style="color:#111827;">Bs. ' + vesVal.toLocaleString('es-VE', {minimumFractionDigits:2}) + '</strong><br><span style="font-size:0.6rem; color:#6b7280; font-weight:700;">Tasa BCV: Bs. ' + rateVal.toFixed(2) + '</span>'
+          subPayVesCalc.style.display = 'block'
+        })
+      }
+      subPayAmountInput.oninput = updateSubBs
+      updateSubBs()
+    }
   }
 
   container.onclick = (e) => {

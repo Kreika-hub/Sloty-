@@ -33,6 +33,15 @@ const renderSuspendedScreen = () => `
   </div>
 `;
 
+const renderPendingApprovalScreen = () => `
+  <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#1a1a2e; color:white; text-align:center; padding:40px; font-family:'Montserrat',sans-serif;">
+    <div style="font-size:3.5rem; margin-bottom:20px;">⏳</div>
+    <div style="font-size:1.3rem; font-weight:900; color:#F5C518; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Cuenta en Aprobación</div>
+    <div style="font-size:0.85rem; color:rgba(255,255,255,0.7); max-width:340px; line-height:1.5; margin-bottom:25px;">Tu condominio ha sido registrado exitosamente y se encuentra en revisión. El equipo de Sloty activará tu cuenta en breve.</div>
+    <button onclick="localStorage.clear(); location.reload();" style="padding:14px 24px; background:rgba(255,255,255,0.1); color:white; border:none; border-radius:14px; font-weight:800; cursor:pointer; font-size:0.8rem;">CERRAR SESIÓN</button>
+  </div>
+`;
+
 const screens = {
   welcome: $('welcome-screen'),
   login: $('login-screen'),
@@ -616,6 +625,7 @@ const renderRegister = () => {
         admin_name: data.adminName,
         plan: 'ORO',
         membership_status: 'ACTIVE',
+        is_first_login: true,
         terms_accepted: true,
         terms_accepted_at: new Date().toISOString()
       }]).select().single()
@@ -630,9 +640,12 @@ const renderRegister = () => {
            admin_email: data.email,
            admin_name: data.adminName,
            plan: 'ORO',
-           membership_status: 'ACTIVE'
+           membership_status: 'ACTIVE',
+           is_first_login: true
         }
       }
+
+      localStorage.setItem(`sloty_first_login_${finalBld.id}`, 'true');
 
       // 2. Sync local state
       const state = getParkingState()
@@ -1611,13 +1624,58 @@ async function init() {
     localStorage.setItem('sloty_active_building', bParam)
     renderGuardPin(); showOnly('guardPin'); return
   }
-  // Primero mostramos la pantalla de bienvenida (PWA feel)
-  renderWelcome(); showOnly('welcome')
-  
-  // Verificar sesión en segundo plano
-  const session = await getSession()
-  if (session) await redirectByRole(session.user.id)
-  
+
+  // De manera síncrona, verificar y restaurar la sesión para evitar parpadeos de UI
+  let sessionRestored = false;
+  try {
+    const rawSession = localStorage.getItem('sloty_session')
+    if (rawSession) {
+      const session = JSON.parse(rawSession)
+      if (session?.user?.id) {
+        const role = localStorage.getItem('sloty_role')
+        if (role) {
+          showOnly('main')
+          if (role === 'MASTER') {
+            initMaster(screens.main)
+          } else if (role === 'ADMIN') {
+            let isSuspended = false
+            let isPending = false
+            try {
+              const state = JSON.parse(localStorage.getItem('sloty_state'))
+              if (state?.membership_status === 'SUSPENDED') isSuspended = true
+              if (state?.membership_status === 'PENDING' || state?.membership_status === 'PENDING_APPROVAL') isPending = true
+            } catch (e) {}
+            if (isSuspended) {
+              screens.main.innerHTML = renderSuspendedScreen()
+            } else if (isPending) {
+              screens.main.innerHTML = renderPendingApprovalScreen()
+            } else {
+              initAdmin(screens.main)
+            }
+          } else if (role === 'GUARD') {
+            renderGuardPin()
+            showOnly('guardPin')
+          } else {
+            await redirectByRole(session.user.id)
+          }
+          sessionRestored = true
+        } else {
+          // Sesión existe pero no el rol, redirigir normalmente
+          await redirectByRole(session.user.id)
+          sessionRestored = true
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[Sloty] Fallo en la restauración síncrona de sesión:', e)
+  }
+
+  if (!sessionRestored) {
+    // Si no hay sesión activa: mostrar pantalla de bienvenida
+    renderWelcome()
+    showOnly('welcome')
+  }
+
   initUpdateBanner()
   loadBCVRate()
 }

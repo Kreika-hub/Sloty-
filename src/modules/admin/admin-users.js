@@ -51,6 +51,7 @@ export const renderMonthlySystem = async (state) => {
                <div>
                   <label style="font-size:0.5rem; color:rgba(255,255,255,0.4); display:block; margin-bottom:4px;">PRECIO ACORDADO ($)</label>
                   <input type="number" id="new-sub-price" value="${bld?.monthly_rate || 0}" style="width:100%; padding:15px; border-radius:12px; border:none; background:rgba(255,255,255,0.1); color:white; font-weight:900;">
+                  <div id="new-sub-price-ves" style="font-size:0.6rem; color:rgba(255,255,255,0.6); margin-top:4px; font-weight:700;">Equivale a: Bs. --.--</div>
                </div>
                <div>
                   <label style="font-size:0.5rem; color:rgba(255,255,255,0.4); display:block; margin-bottom:4px;">CANT. PUESTOS</label>
@@ -273,6 +274,22 @@ export const setupAbonosHooks = (container) => {
     container.querySelectorAll('.abono-card').forEach(c => {
       c.style.display = c.dataset.search.includes(term) ? 'flex' : 'none'
     })
+  }
+}
+
+export const setupMonthlySystemHooks = (container) => {
+  initPlateAdder()
+  const priceInput = container.querySelector('#new-sub-price')
+  const vesLabel = container.querySelector('#new-sub-price-ves')
+  if (priceInput && vesLabel) {
+    const updateVes = () => {
+      const val = parseFloat(priceInput.value) || 0
+      const rateVal = store.currentBcv?.rate || 40.0
+      const vesVal = val * rateVal
+      vesLabel.textContent = `Equivale a: Bs. ${vesVal.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`
+    }
+    priceInput.oninput = updateVes
+    updateVes()
   }
 }
 
@@ -593,8 +610,17 @@ export const initUserActions = (actions, container, refresh) => {
       const daysToAdd = Math.round((amount / price) * 30)
       startBase.setDate(startBase.getDate() + daysToAdd)
 
+      const rateVal = Number(store.currentBcv?.rate || 40.0)
+      const amountUsd = Number(amount.toFixed(2))
+      const amountBs = Number((amountUsd * rateVal).toFixed(2))
+
       const [{ error: e1 }, { error: e2 }] = await Promise.all([
-        supabase.from('payments').update({ status: 'CONFIRMED' }).eq('id', pid),
+        supabase.from('payments').update({
+           status: 'CONFIRMED',
+           amount_usd: amountUsd,
+           amount_bs: amountBs,
+           bcv_rate_used: rateVal
+        }).eq('id', pid),
         supabase.from('subscriptions').update({ expiry_date: startBase.toISOString() }).eq('id', sid)
       ]);
 
@@ -919,16 +945,10 @@ export const initUserActions = (actions, container, refresh) => {
         const days = Math.round((val / price) * 30);
         preview.textContent = `Extenderá: ${days} días aprox.`;
         
-        const method = methodSelect.value;
-        const isBs = ['EFECTIVO_BS', 'PAGO_MOVIL', 'TRANSFERENCIA'].includes(method);
-        if (isBs) {
-          const rateVal = store.currentBcv?.rate || 40;
-          const vesVal = val * rateVal;
-          vesCalc.innerHTML = `Equivale a: <strong style="color:#111827;">Bs. ${vesVal.toLocaleString('es-VE', {minimumFractionDigits:2})}</strong><br><span style="font-size:0.6rem; color:#6b7280; font-weight:700;">Tasa BCV: Bs. ${rateVal.toFixed(2)}</span>`;
-          vesCalc.style.display = 'block';
-        } else {
-          vesCalc.style.display = 'none';
-        }
+        const rateVal = store.currentBcv?.rate || 40;
+        const vesVal = val * rateVal;
+        vesCalc.innerHTML = `Equivale a: <strong style="color:#111827;">Bs. ${vesVal.toLocaleString('es-VE', {minimumFractionDigits:2})}</strong><br><span style="font-size:0.6rem; color:#6b7280; font-weight:700;">Tasa BCV: Bs. ${rateVal.toFixed(2)}</span>`;
+        vesCalc.style.display = 'block';
       };
 
       amountInput.oninput = updateAbonoVesCalc;
@@ -964,10 +984,17 @@ export const initUserActions = (actions, container, refresh) => {
 
       const state = getParkingState();
       
+      const rateVal = Number(store.currentBcv?.rate || 40.0)
+      const amountUsd = Number(amount.toFixed(2))
+      const amountBs = Number((amountUsd * rateVal).toFixed(2))
+
       await supabase.from('payments').insert({
         building_id: state.buildingId,
         subscription_id: id,
         amount: amount,
+        amount_usd: amountUsd,
+        amount_bs: amountBs,
+        bcv_rate_used: rateVal,
         method: method,
         reference: ref,
         status: 'CONFIRMED',

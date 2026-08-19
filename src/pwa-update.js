@@ -118,7 +118,7 @@ window.addEventListener('load', () => {
 
 // ── UPDATE BANNER ─────────────────────────────────────────────
 export function initUpdateBanner() {
-  registerSW({
+  const updateSW = registerSW({
     onNeedRefresh() {
       const banner = document.createElement('div')
       banner.style.cssText = `
@@ -132,7 +132,7 @@ export function initUpdateBanner() {
       `
       banner.innerHTML = `
         <span style="color:rgba(255,255,255,0.8);">Nueva versión disponible</span>
-        <button onclick="window.location.reload()"
+        <button id="pwa-force-update-btn"
           style="background:#F5C518;color:#1a1a2e;border:none;padding:6px 14px;
           border-radius:8px;font-family:'Montserrat',sans-serif;font-weight:900;
           font-size:0.75rem;cursor:pointer;">
@@ -140,6 +140,9 @@ export function initUpdateBanner() {
         </button>
       `
       document.body.appendChild(banner)
+      document.getElementById('pwa-force-update-btn').onclick = () => {
+        updateSW(true)
+      }
     },
     onOfflineReady() {
       console.log('Sloty lista para usar offline')
