@@ -1,82 +1,5 @@
 import { getParkingState, saveParkingState, logAudit, getCleanPrefix, supabase, logMovement, syncDown, hasFeature, getBuildingPlan, showToast, getExchangeRate, getSyncQueueCount } from '../db.js'
 import { escapeHTML } from '../utils/sanitize.js';
-
-
-const compressBase64Image = (base64Str, max = 200, quality = 0.6) => {
-  return new Promise((resolve) => {
-    if (!base64Str || !base64Str.startsWith('data:image')) {
-      resolve(base64Str);
-      return;
-    }
-    if (base64Str.length < 55000) {
-      resolve(base64Str);
-      return;
-    }
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      let w = img.width; let h = img.height;
-      if (w > h) { if (w > max) { h *= max / w; w = max; } }
-      else { if (h > max) { w *= max / h; h = max; } }
-      canvas.width = w; canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL('image/jpeg', quality));
-    };
-    img.onerror = () => {
-      resolve(base64Str);
-    };
-    img.src = base64Str;
-  });
-};
-
-const checkExpiringSubscriptions = async (buildingId) => {
-  const today   = new Date();
-  const in3days = new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000);
-
-  const [{ data: expired }, { data: expiring }] = await Promise.all([
-    supabase.from('subscriptions')
-      .select('id, resident_name, expiry_date, phone')
-      .eq('building_id', buildingId)
-      .lt('expiry_date', today.toISOString())
-      .eq('status', 'ACTIVE'),
-    supabase.from('subscriptions')
-      .select('id, resident_name, expiry_date, phone')
-      .eq('building_id', buildingId)
-      .lte('expiry_date', in3days.toISOString())
-      .gte('expiry_date', today.toISOString())
-  ]);
-
-  const expiredCount  = (expired  || []).length;
-  const expiringCount = (expiring || []).length;
-  if (expiredCount === 0 && expiringCount === 0) return;
-
-  const existing = document.getElementById('expiry-alert-banner');
-  if (existing) existing.remove();
-
-  const banner = document.createElement('div');
-  banner.id = 'expiry-alert-banner';
-  banner.style.cssText = `position:fixed;top:0;left:0;right:0;z-index:9999;
-    background:#e63946;color:white;padding:calc(env(safe-area-inset-top, 0px) + 10px) 16px 10px 16px;font-size:0.75rem;
-    font-weight:900;display:flex;justify-content:space-between;align-items:center;`;
-  banner.innerHTML = `
-    <span>
-      ${expiredCount  > 0 ? `🚨 ${expiredCount} vencida${expiredCount  !== 1 ? 's' : ''}` : ''}
-      ${expiringCount > 0 ? `⚠️ ${expiringCount} vence${expiringCount !== 1 ? 'n' : ''} en 3 días` : ''}
-    </span>
-    <div style="display:flex;gap:8px;align-items:center;">
-      <button onclick="handleAction('GO_TO_SUBS')"
-        style="background:white;color:#e63946;border:none;border-radius:6px;
-               padding:4px 10px;font-size:0.65rem;font-weight:900;cursor:pointer;">
-        VER
-      </button>
-      <button onclick="document.getElementById('expiry-alert-banner').remove()"
-        style="background:transparent;color:white;border:none;
-               font-size:1.2rem;cursor:pointer;line-height:1;">×</button>
-    </div>`;
-  document.body.appendChild(banner);
-};
-
 export const initAdmin = (container) => {
   console.log('[Sloty] Inicializando Panel Admin...')
   let activeTab = 'HOME'
@@ -124,104 +47,14 @@ export const initAdmin = (container) => {
   let editingResident = null // Resident ID being edited
   let openPaletteLevel = null // Level name with open palette
   let activeSettingsMenu = 'MAIN' // MAIN, TARIFFS, VISITORS, AUDIT
-  let cachedMetrics = null
-  let metricsLoading = false
-  let currentBcv = null
 
   window.handleAction = (type, payload) => {
     if (actions[type]) actions[type](payload)
   }
 
-  let cachedSubs = null;
-  let cachedSubsAt = 0;
-  const SUBS_TTL = 30_000;
 
-  let cachedFinance = null;
-  let cachedFinanceAt = 0;
-  const FINANCE_TTL = 60_000;
 
-  let financeChannel = null;
 
-  const subscribeFinanceRealtime = (buildingId) => {
-    if (financeChannel) return; // ya suscrito
-    financeChannel = supabase
-      .channel('finance-payments')
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'payments',
-        filter: `building_id=eq.${buildingId}`
-      }, () => {
-        cachedFinance = null; // invalida cache
-        cachedSubsAt = 0;     // invalida subs también
-      })
-      .subscribe();
-  };
-
-  const unsubscribeFinanceRealtime = () => {
-    if (financeChannel) {
-      supabase.removeChannel(financeChannel);
-      financeChannel = null;
-    }
-  };
-
-  const getSubsCached = async (buildingId) => {
-    if (cachedSubs && Date.now() - cachedSubsAt < SUBS_TTL) return cachedSubs;
-    let subsResData = [];
-    let bldResData = null;
-    try {
-      const [subsRes, bldRes] = await Promise.all([
-        supabase.from('subscriptions')
-          .select('id,resident_name,plate,expiry_date,custom_price,tower,apt,phone,is_coming,slots_count,status')
-          .eq('building_id', buildingId)
-          .order('created_at', { ascending: false }),
-        supabase.from('buildings')
-          .select('monthly_rate,monthly_slots_limit')
-          .eq('id', buildingId).single()
-      ]);
-      subsResData = subsRes?.data || [];
-      bldResData = bldRes?.data || null;
-    } catch (e) {
-      console.warn('[Sloty] Error fetching subscriptions or building plan:', e);
-    }
-    cachedSubs = { subs: subsResData, bld: bldResData };
-    cachedSubsAt = Date.now();
-    return cachedSubs;
-  };
-
-  const ICONS = {
-    HOME: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
-    HISTORY: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
-    FINANCE: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`,
-    STRUCTURE: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>`,
-    PERSONAL: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
-    LOGOUT: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>`,
-    TRASH: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18m-2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6m4-4v6"/></svg>`,
-    EDIT: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
-    PLUS: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
-    SETTINGS: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
-    BELL: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>`,
-    PALETTE: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.647-.494 2.091-1.243.221-.374.332-.811.391-1.242.16-.58.148-1.167.373-1.607.453-.88 1.447-1.408 2.51-1.408H20c1.1 0 2-.9 2-2 0-5.5-4.5-10-10-10z"/></svg>`,
-    SUBS: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="16" y1="11" x2="22" y2="11"/></svg>`,
-    CARD: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="7" y1="8" x2="17" y2="8"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="7" y1="16" x2="12" y2="16"/></svg>`,
-    WHATSAPP: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-7.6 8.38 8.38 0 0 1 9 9.1z"/></svg>`
-  }
-
-  // --- DOM Elements Cache ---
-  let elMain = null
-  let elStatus = null
-
-  const getCategoryColor = (cat, categories = []) => {
-    const found = categories.find(c => c.id === cat)
-    return found ? found.color : '#F5C518'
-  }
-
-  const getCategoryLabel = (cat, categories = []) => {
-    const found = categories.find(c => c.id === cat)
-    return found ? found.tag : 'V'
-  }
-
-  // --- ACTIONS ---
   const actions = {
     ACTIVATE_PUSH: async () => {
       const { subscribeToPushNotifications } = await import('./push.js');
@@ -1012,7 +845,7 @@ export const initAdmin = (container) => {
           body: `Tu pago de $${amount} ha sido aprobado.`
         }
       }).catch(e => console.warn('[Sloty] push error:', e))
-      cachedMetrics = null
+      store.cachedMetrics = null
       cachedFinance = null
       render()
     },
@@ -1029,7 +862,7 @@ export const initAdmin = (container) => {
         }
       }).catch(e => console.warn('[Sloty] push error:', e))
       await logAudit('REJECT_PAYMENT', { payment_id: btn.dataset.id });
-      cachedMetrics = null
+      store.cachedMetrics = null
       render()
     },
     RESIDENT_PAYMENTS: async (btn) => {
@@ -1093,7 +926,7 @@ export const initAdmin = (container) => {
             </div>
             ${!paysWithProofs.length ? '<div style="text-align:center;padding:40px;color:#555555;font-size:0.85rem;font-weight:700;">Sin reportes de pago</div>' : paysWithProofs.map(p => {
               const isBsPay = ['PAGO_MOVIL', 'TRANSFERENCIA', 'EFECTIVO_BS', 'EFECTIVO'].includes(p.method);
-              const rateVal = currentBcv?.rate || 40;
+              const rateVal = store.currentBcv?.rate || 40;
               const vesText = isBsPay ? ` <span style="font-size:0.75rem; color:#4b5563; font-weight:800;">≈ Bs. ${(p.amount * rateVal).toLocaleString('es-VE', {minimumFractionDigits:2})}</span>` : '';
               return `
               <div style="background:${p.status==='CONFIRMED'?'#f0fdf4':p.status==='REJECTED'?'#fff1f2':'#fafafa'};border:1.5px solid ${p.status==='CONFIRMED'?'#86efac':p.status==='REJECTED'?'#fca5a5':'#e5e7eb'};border-radius:20px;padding:18px;margin-bottom:12px;">
@@ -1913,224 +1746,6 @@ export const initAdmin = (container) => {
       </div>`
   }
 
-  const loadHomeMetrics = async () => {
-    if (metricsLoading) return
-    metricsLoading = true
-    const s = getParkingState()
-    const now = new Date()
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-    
-    const [subsRes, paysRes, pendRes] = await Promise.all([
-      supabase.from('subscriptions').select('id,custom_price,expiry_date,status').eq('building_id', s.buildingId),
-      supabase.from('payments').select('amount').eq('building_id', s.buildingId).eq('status', 'CONFIRMED').gte('payment_date', monthStart),
-      supabase.from('payments').select('id').eq('building_id', s.buildingId).eq('status', 'PENDING')
-    ])
-    
-    cachedMetrics = {
-      subs: subsRes.data || [],
-      pays: paysRes.data || [],
-      pends: pendRes.data || [],
-      loadedAt: Date.now()
-    }
-    metricsLoading = false
-  }
-
-  const renderHome = async (state, ads = []) => {
-    const movements = state.movements || []
-    const stats = state.stats || { totalSpots: 0, occupied: 0 }
-    const total = stats.totalSpots || 0
-    const occ = stats.occupied || 0
-    const perc = total > 0 ? Math.round((occ / total) * 100) : 0
-    const dash = 251.2
-    const offset = dash - (perc / 100) * dash
-
-    const activeAds = (ads || []).filter(a => a.active) || []
-
-    let avgHours = 0;
-    const salidas = movements.filter(m => m.type === 'EXIT');
-    if (salidas.length > 0) {
-      let totalMs = 0; let counted = 0;
-      salidas.forEach(sal => {
-        const ing = movements.find(m => (m.type === 'ENTRY' || m.type === 'INGRESO') && m.plate === sal.plate && m.timestamp < sal.timestamp);
-        if (ing) { totalMs += (new Date(sal.timestamp) - new Date(ing.timestamp)); counted++; }
-      });
-      if (counted > 0) avgHours = (totalMs / counted) / (1000 * 60 * 60);
-    }
-
-    // --- MONTHLY INTELLIGENCE: fetch live data ---
-    const now = new Date()
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-    const in7days = new Date(now.getTime() + 7 * 86400000).toISOString()
-
-    if (!cachedMetrics) cachedMetrics = { subs: [], pays: [], pends: [] };
-    const subs = cachedMetrics?.subs || []
-    const pays = cachedMetrics?.pays || []
-    const pends = cachedMetrics?.pends || []
-
-    const proyectado = subs.reduce((a, s) => a + (s.custom_price || 0), 0)
-    const cobradoMes = pays.reduce((a, p) => a + (p.amount || 0), 0)
-    const pendientesCount = pends.length
-    const porVencer = subs.filter(s => {
-      const exp = new Date(s.expiry_date)
-      return exp > now && exp <= new Date(in7days)
-    }).length
-    const vencidos = subs.filter(s => new Date(s.expiry_date) < now).length
-    const activos = subs.filter(s => new Date(s.expiry_date) >= now).length
-
-    // Alertas de suscripción proximas a vencer (Master requirement)
-    const alertSus = subs.filter(s => {
-      const exp = new Date(s.expiry_date);
-      const diff = (exp - now) / 86400000;
-      return diff <= 3; // Vencidos o por vencer en 3 días
-    }).sort((a,b) => new Date(a.expiry_date) - new Date(b.expiry_date)).slice(0, 3);
-
-    const alertHtml = alertSus.length > 0 ? `
-      <div style="margin-bottom:25px;">
-        <div style="font-size:0.6rem; font-weight:900; color:#e63946; letter-spacing:1px; margin-bottom:10px;">🔴 ALERTAS DE VENCIMIENTO</div>
-        <div style="display:grid; gap:10px;">
-          ${alertSus.map(s => {
-            const exp = new Date(s.expiry_date);
-            const diff = Math.ceil((exp - now) / 86400000);
-            return `
-              <div data-action="TAB" data-tab="SUBS" style="background:rgba(230,57,70,0.05); border:1.5px solid rgba(230,57,70,0.2); border-radius:18px; padding:15px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
-                <div style="flex:1;">
-                   <div style="font-size:0.8rem; font-weight:900; color:#1a1a2e; text-transform:uppercase;">${s.resident_name || 'Residente'}</div>
-                   <div style="font-size:0.6rem; color:#e63946; font-weight:700;">${diff < 0 ? `Vencido hace ${Math.abs(diff)} días` : diff === 0 ? 'Vence hoy' : `Vence en ${diff} días`}</div>
-                </div>
-                <div style="background:#e63946; color:white; font-size:0.55rem; font-weight:900; padding:4px 10px; border-radius:8px;">COBRAR</div>
-              </div>
-            `;
-          }).join('')}
-        </div>
-      </div>
-    ` : '';
-
-    const statCard = (label, value, sub, color, tab = 'SUBS') => `
-      <div data-action="TAB" data-tab="${tab}" style="background:white;padding:18px;border-radius:22px;border:1px solid #f0f0f0;cursor:pointer;box-shadow:0 4px 15px rgba(0,0,0,0.03);">
-        <div style="font-size:0.5rem;font-weight:800;color:#555555;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">${label}</div>
-        <div style="font-size:1.5rem;font-weight:900;color:${color};">${value}</div>
-        <div style="font-size:0.55rem;font-weight:700;color:#555555;margin-top:4px;">${sub}</div>
-      </div>`
-
-    // CAJA EN VIVO
-    const liveUsd = movements.filter(m => !m.closed && m.payMethod === 'EFECTIVO_USD').reduce((a,m)=>a+(m.amount||0),0);
-    const liveBs = movements.filter(m => !m.closed && m.payMethod === 'EFECTIVO_BS').reduce((a,m)=>a+(m.amount||0),0);
-    const livePm = movements.filter(m => !m.closed && m.payMethod === 'PAGO_MOVIL').reduce((a,m)=>a+(m.amount||0),0);
-    const liveTransfer = movements.filter(m => !m.closed && m.payMethod === 'TRANSFERENCIA').reduce((a,m)=>a+(m.amount||0),0);
-    const liveZelle = movements.filter(m => !m.closed && m.payMethod === 'ZELLE').reduce((a,m)=>a+(m.amount||0),0);
-
-    const rate = currentBcv?.rate || 40;
-    const liveTotalUsd = liveUsd + liveBs + livePm + liveTransfer + liveZelle;
-    const liveTotalBs = (liveBs + livePm + liveTransfer) * rate;
-
-    const cajaEnVivoHtml = `
-      <div data-action="TAB" data-tab="FINANCE" style="cursor:pointer; background:linear-gradient(135deg, #1a1a2e 0%, #2a2a4e 100%); border-radius:24px; padding:22px; margin-bottom:25px; box-shadow:0 10px 30px rgba(0,0,0,0.15); display:flex; justify-content:space-between; align-items:center; position:relative; overflow:hidden;">
-        <div style="position:absolute; right:-20px; top:-20px; width:120px; height:120px; background:rgba(255,255,255,0.03); border-radius:50%;"></div>
-        <div style="position:absolute; right:40px; bottom:-40px; width:80px; height:80px; background:rgba(34,197,94,0.05); border-radius:50%;"></div>
-        <div style="z-index:1;">
-           <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-             <div style="width:8px; height:8px; background:#22c55e; border-radius:50%; box-shadow:0 0 10px #22c55e; animation:skPulse 1.5s infinite;"></div>
-             <div style="font-size:0.65rem; font-weight:900; color:white; letter-spacing:1px; text-transform:uppercase;">CAJA EN VIVO (Garita)</div>
-           </div>
-           <div style="display:flex; align-items:baseline; gap:10px;">
-             <div style="font-size:2.2rem; font-weight:900; color:#22c55e; line-height:1;">$${liveTotalUsd.toFixed(2)}</div>
-             <div style="font-size:1.1rem; font-weight:700; color:#ffffff;">≈ Bs. ${liveTotalBs.toLocaleString('es-VE', {minimumFractionDigits:2})}</div>
-           </div>
-           <div style="font-size:0.6rem; font-weight:800; color:rgba(255,255,255,0.85); margin-top:8px; display:flex; gap:10px; flex-wrap:wrap;">
-             <span>USD: $${liveUsd.toFixed(2)}</span>
-             <span>Bs (Efect.): Bs. ${(liveBs * rate).toLocaleString('es-VE', {maximumFractionDigits:0})}</span>
-             <span>P. Móvil: Bs. ${(livePm * rate).toLocaleString('es-VE', {maximumFractionDigits:0})}</span>
-             <span>Zelle: $${liveZelle.toFixed(2)}</span>
-           </div>
-        </div>
-        <div style="background:rgba(255,255,255,0.1); width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; z-index:1;">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:20px; height:20px;"><polyline points="9 18 15 12 9 6"/></svg>
-        </div>
-      </div>
-    `;
-
-    return `
-      <div style="padding:20px; padding-bottom:100px; background:#f8f9fa;">
-        ${cajaEnVivoHtml}
-        ${alertHtml}
-
-
-        <!-- STATS DASHBOARD -->
-        <div class="stats-dashboard">
-           <div class="usage-circle-container">
-              <div style="font-size:0.6rem; font-weight:800; color:#999; margin-bottom:15px; text-transform:uppercase;">DENSIDAD DE USO</div>
-              <div style="position:relative; width:100px; height:100px;">
-                <svg width="100" height="100" viewBox="0 0 100 100" style="transform:rotate(-90deg);">
-                  <circle cx="50" cy="50" r="40" stroke="#eee" stroke-width="10" fill="none" />
-                  <circle cx="50" cy="50" r="40" stroke="#22c55e" stroke-width="10" fill="none"
-                    stroke-dasharray="${dash}" stroke-dashoffset="${offset}" stroke-linecap="round" style="transition:all 1s;" />
-                </svg>
-                <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:1.2rem; font-weight:900; color:var(--primary);">${perc}%</div>
-              </div>
-              <div style="margin-top:15px; text-align:center;">
-                <div style="font-size:0.8rem; font-weight:900; color:var(--primary);">${occ} de ${total}</div>
-                <div style="font-size:0.55rem; font-weight:700; color:#999;">OCUPADOS</div>
-              </div>
-           </div>
-           <div class="mini-stat-card">
-              <div style="font-size:0.55rem; font-weight:800; color:#999; text-transform:uppercase;">FLUJO DEL DÍA</div>
-              <div style="font-size:1.4rem; font-weight:900; color:var(--primary);">${(state.movements || []).filter(m => new Date(m.timestamp) >= new Date().setHours(0,0,0,0)).length}</div>
-              <div style="font-size:0.5rem; color:#22c55e; font-weight:700;">Hoy</div>
-           </div>
-           <div class="mini-stat-card">
-              <div style="font-size:0.55rem; font-weight:800; color:#999; text-transform:uppercase;">PERMANENCIA</div>
-              <div style="font-size:1.4rem; font-weight:900; color:var(--primary);">${avgHours > 0 ? avgHours.toFixed(1) + 'h' : '0.0h'}</div>
-              <div style="font-size:0.5rem; color:#bbb; font-weight:700;">Promedio</div>
-           </div>
-        </div>
-
-        <!-- RESUMEN MENSUAL -->
-        <div style="margin-bottom:25px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-            <div style="font-size:0.7rem; font-weight:900; color:var(--primary); text-transform:uppercase; letter-spacing:1px;">RESUMEN MENSUAL</div>
-            <div style="font-size:0.6rem; font-weight:700; color:#bbb;">${now.toLocaleString('es-ES',{month:'long',year:'numeric'}).toUpperCase()}</div>
-          </div>
-
-          <!-- PROYECTADO + COBRADO: destacados -->
-          <div style="background:#1a1a2e; border-radius:24px; padding:22px; margin-bottom:12px; display:grid; grid-template-columns:1fr 1fr; gap:0;">
-            <div style="border-right:1px solid rgba(255,255,255,0.1); padding-right:20px;">
-              <div style="font-size:0.5rem;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">INGRESO PROYECTADO</div>
-              <div style="font-size:1.8rem;font-weight:900;color:#F5C518;">$${proyectado}</div>
-              <div style="font-size:0.55rem;font-weight:700;color:rgba(255,255,255,0.3);margin-top:4px;">${activos} residentes activos</div>
-            </div>
-            <div style="padding-left:20px;">
-              <div style="font-size:0.5rem;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">COBRADO ESTE MES</div>
-              <div style="font-size:1.8rem;font-weight:900;color:#22c55e;">$${cobradoMes.toFixed(0)}</div>
-              <div style="font-size:0.55rem;font-weight:700;color:rgba(255,255,255,0.3);margin-top:4px;">${proyectado > 0 ? Math.round((cobradoMes/proyectado)*100) : 0}% del proyectado</div>
-            </div>
-          </div>
-
-          <!-- ALERTAS: grid 2x2 -->
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-            ${statCard('PENDIENTES DE CONFIRMAR', pendientesCount, 'Pagos reportados', pendientesCount > 0 ? '#f59e0b' : '#22c55e', 'SUBS')}
-            ${statCard('POR VENCER', porVencer, 'Próximos 7 días', porVencer > 0 ? '#f59e0b' : '#22c55e', 'SUBS')}
-            ${statCard('MOROSOS', vencidos, 'Suscripción vencida', vencidos > 0 ? '#e63946' : '#22c55e', 'SUBS')}
-            ${statCard('AL CORRIENTE', activos, 'Solventes hoy', '#22c55e', 'SUBS')}
-          </div>
-        </div>
-
-        <!-- GESTIÓN RÁPIDA REMOVED POR SOLICITUD -->
-
-           <!-- ADS CAROUSEL ALIGNED AL FINAL -->
-           ${activeAds.length ? `
-             <div style="margin-top: 20px;">
-               <div style="font-size:0.7rem; font-weight:900; color:var(--primary); margin-bottom:15px; text-transform:uppercase;">NOTICIAS & ANUNCIOS</div>
-               <div class="carousel-container glass-card" style="border-radius:24px; padding:0; height:180px;">
-                 <div class="carousel-track" id="main-carousel">
-                   ${activeAds.map(ad => `<div class="ad-card" style="aspect-ratio:auto; height:180px;"><img src="${ad.image_url}" style="object-fit:cover;"></div>`).join('')}
-                 </div>
-               </div>
-             </div>
-           ` : ''}
-
-      </div>`
-  }
-
   const renderLevels = (state) => `
     <div style="padding:20px; padding-bottom:120px;">
       <h2 style="font-weight:900; color:var(--primary); font-size:1.4rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:20px;">GESTIÓN DE ESTRUCTURA</h2>
@@ -2229,8 +1844,8 @@ export const initAdmin = (container) => {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
   const todayStr = new Date().toISOString().split('T')[0]
 
-  const subsPays = cachedFinance?.subsPays || [];
-  const todayPays = cachedFinance?.todayPays || [];
+  const subsPays = store.cachedFinance?.subsPays || [];
+  const todayPays = store.cachedFinance?.todayPays || [];
 
   let bcvRate  = null;
   let bcvFecha = null;
@@ -2254,7 +1869,7 @@ export const initAdmin = (container) => {
     });
   }, 50);
 
-  const guardShifts = cachedFinance?.guardShifts || [];
+  const guardShifts = store.cachedFinance?.guardShifts || [];
 
   // Agrupar por guardia
   const byGuard = {};
@@ -2895,37 +2510,6 @@ export const initAdmin = (container) => {
     </div>`;
   }
 
-  // ─── SKELETON LOADERS ─────────────────────────────────────────
-  const SKELETONS = {
-    pulse: `<style>.sk-pulse{animation:skPulse 1.4s ease-in-out infinite}.sk-pulse2{animation:skPulse 1.4s ease-in-out 0.2s infinite}.sk-pulse3{animation:skPulse 1.4s ease-in-out 0.4s infinite}@keyframes skPulse{0%,100%{opacity:1}50%{opacity:0.4}} button { transition: transform 0.1s cubic-bezier(0.4, 0, 0.2, 1); } button:active { transform: scale(0.95); }</style>`,
-    HOME: `<div style="padding:20px;">
-      <div class="sk-pulse" style="height:90px;background:#e8e8e8;border-radius:24px;margin-bottom:12px;"></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-        <div class="sk-pulse" style="height:100px;background:#e8e8e8;border-radius:24px;"></div>
-        <div class="sk-pulse" style="height:100px;background:#e8e8e8;border-radius:24px;animation-delay:0.15s;"></div>
-      </div>
-      <div class="sk-pulse" style="height:64px;background:#e8e8e8;border-radius:20px;margin-bottom:12px;animation-delay:0.3s;"></div>
-      <div class="sk-pulse" style="height:64px;background:#e8e8e8;border-radius:20px;margin-bottom:12px;animation-delay:0.45s;"></div>
-      <div class="sk-pulse" style="height:64px;background:#e8e8e8;border-radius:20px;animation-delay:0.6s;"></div>
-    </div>`,
-    SUBS: `<div style="padding:20px;">
-      <div class="sk-pulse" style="height:52px;background:#e8e8e8;border-radius:16px;margin-bottom:16px;"></div>
-      ${[0,1,2,3,4].map(i => `<div class="sk-pulse" style="height:80px;background:#e8e8e8;border-radius:20px;margin-bottom:10px;animation-delay:${i*0.1}s;"></div>`).join('')}
-    </div>`,
-    FINANCE: `<div style="padding:20px;">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-        <div class="sk-pulse" style="height:100px;background:#e8e8e8;border-radius:28px;"></div>
-        <div class="sk-pulse" style="height:100px;background:#e8e8e8;border-radius:28px;animation-delay:0.15s;"></div>
-      </div>
-      <div class="sk-pulse" style="height:100px;background:#e8e8e8;border-radius:28px;margin-bottom:12px;animation-delay:0.3s;"></div>
-      <div class="sk-pulse" style="height:52px;background:#e8e8e8;border-radius:16px;margin-bottom:12px;animation-delay:0.45s;"></div>
-      ${[0,1,2].map(i => `<div class="sk-pulse" style="height:64px;background:#e8e8e8;border-radius:20px;margin-bottom:10px;animation-delay:${0.6+i*0.1}s;"></div>`).join('')}
-    </div>`,
-    DEFAULT: `<div style="padding:20px;">
-      ${[0,1,2,3].map(i => `<div class="sk-pulse" style="height:72px;background:#e8e8e8;border-radius:20px;margin-bottom:10px;animation-delay:${i*0.12}s;"></div>`).join('')}
-    </div>`
-  }
-
   const renderTabContent = async (state) => {
     if (!elMain) return; let html = ''
     
@@ -2940,8 +2524,8 @@ export const initAdmin = (container) => {
 
     switch(renderingTab) {
       case 'HOME': {
-        if (!cachedMetrics || !window._cachedAds) {
-          if (!metricsLoading) {
+        if (!store.cachedMetrics || !window._cachedAds) {
+          if (!store.metricsLoading) {
             Promise.all([
               loadHomeMetrics(),
               supabase.from('ads').select('*').or(`building_id.is.null,building_id.eq.${state.buildingId}`).order('timestamp', { ascending: false })
@@ -2958,7 +2542,7 @@ export const initAdmin = (container) => {
         break;
       }
       case 'SUBS': {
-        if (!cachedSubs) {
+        if (!store.cachedSubs) {
           getSubsCached(state.buildingId).then(() => {
             if (activeTab === 'SUBS' || activeTab === 'ABONOS') render();
           });
@@ -2970,7 +2554,7 @@ export const initAdmin = (container) => {
         break;
       }
       case 'ABONOS': {
-        if (!cachedSubs) {
+        if (!store.cachedSubs) {
           getSubsCached(state.buildingId).then(() => {
             if (activeTab === 'SUBS' || activeTab === 'ABONOS') render();
           });
@@ -2982,7 +2566,7 @@ export const initAdmin = (container) => {
         break;
       }
       case 'FINANCE': {
-        if (!cachedFinance || (Date.now() - cachedFinanceAt >= FINANCE_TTL)) {
+        if (!store.cachedFinance || (Date.now() - store.cachedFinanceAt >= store.FINANCE_TTL)) {
           const nowObj = new Date();
           const monthStart = new Date(nowObj.getFullYear(), nowObj.getMonth(), 1).toISOString();
           const todayStr = new Date().toISOString().split('T')[0];
@@ -2991,16 +2575,16 @@ export const initAdmin = (container) => {
             supabase.from('payments').select('amount, method').eq('building_id', state.buildingId).eq('status', 'CONFIRMED').gte('payment_date', todayStr),
             supabase.from('guard_shifts').select('id, guard_name, started_at, ended_at, total_cash, total_mobile, total_bs, entries, exits, absences').eq('building_id', state.buildingId).order('ended_at', { ascending: false }).limit(200)
           ]).then(([subsPayRes, todayPayRes, shiftsRes]) => {
-            cachedFinance = {
+            store.cachedFinance = {
               subsPays: subsPayRes?.data || [],
               todayPays: todayPayRes?.data || [],
               guardShifts: shiftsRes?.data || []
             };
-            cachedFinanceAt = Date.now();
+            store.cachedFinanceAt = Date.now();
             if (activeTab === 'FINANCE') render();
           });
 
-          if (!cachedFinance) {
+          if (!store.cachedFinance) {
             const skeleton = SKELETONS.FINANCE;
             elMain.innerHTML = `<div class="responsive-container" style="padding-bottom:100px;">${SKELETONS.pulse}${skeleton}</div>`;
             return;
@@ -3537,7 +3121,7 @@ export const initAdmin = (container) => {
         const method = methodSelect.value;
         const isBs = ['EFECTIVO_BS', 'PAGO_MOVIL', 'TRANSFERENCIA'].includes(method);
         if (isBs) {
-          const rateVal = currentBcv?.rate || 40;
+          const rateVal = store.currentBcv?.rate || 40;
           const vesVal = val * rateVal;
           vesCalc.innerHTML = `Equivale a: <strong style="color:#111827;">Bs. ${vesVal.toLocaleString('es-VE', {minimumFractionDigits:2})}</strong><br><span style="font-size:0.6rem; color:#6b7280; font-weight:700;">Tasa BCV: Bs. ${rateVal.toFixed(2)}</span>`;
           vesCalc.style.display = 'block';
@@ -3609,7 +3193,7 @@ export const initAdmin = (container) => {
 
       logAudit(`Registró abono de $${amount} para residente ID ${id}`);
       pendingAction = null;
-      cachedMetrics = null;
+      store.cachedMetrics = null;
       render();
     }
   });
@@ -3682,7 +3266,7 @@ export const initAdmin = (container) => {
     loadHomeMetrics(),
     getExchangeRate().catch(e => console.warn('Failed to load BCV rate on start:', e))
   ]).then(async ([_, bcv]) => {
-    currentBcv = bcv || currentBcv;
+    store.currentBcv = bcv || store.currentBcv;
     await render();
     const state = getParkingState();
     setTimeout(() => checkExpiringSubscriptions(state.buildingId), 2000);
