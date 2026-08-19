@@ -27,6 +27,10 @@ export const store = {
 
   // Realtime channel reference
   financeChannel: null,
+
+  // UI state variables shared across modules
+  editingResident: null,
+  pendingAction: null,
 }
 
 // ─── SUBSCRIPTIONS CACHE ──────────────────────────────────────
