@@ -1,38 +1,43 @@
 import { execSync } from 'child_process';
 try {
-  console.log('=== STEP 1: Static Module Verification ===');
+  console.log('=== AUDIT TEST SUITE: Static Check ===');
   const files = [
     'src/modules/admin/admin-store.js',
     'src/modules/admin.js',
     'src/modules/admin/admin-users.js',
     'src/modules/admin/admin-finance.js',
+    'src/modules/admin/admin-dashboard.js',
+    'src/modules/admin/admin-guards.js',
+    'src/modules/admin/admin-settings.js',
+    'src/modules/admin/admin-structure.js',
     'src/modules/master.js',
     'src/modules/onboarding.js',
-    'src/main.js'
+    'src/modules/guard.js',
+    'src/main.js',
+    'src/db.js'
   ];
 
   files.forEach(f => {
     execSync(`node --check ${f}`);
-    console.log(`✓ ${f} is valid JavaScript`);
+    console.log(`✓ ${f} static check PASSED`);
   });
 
-  console.log('\n=== STEP 2: Running Vite Build ===');
+  console.log('\n=== AUDIT TEST SUITE: Production Build ===');
   const build = execSync('npm run build', { encoding: 'utf8' });
   console.log(build);
 
-  console.log('\n=== STEP 3: Git Status & Commit ===');
-  execSync('git add src/ run_build.js package.json');
-  const commitRes = execSync('git commit -m "feat: complete SaaS finance suite, expenses with net balance, dynamic feature flags, and resident debt tracking"', { encoding: 'utf8' });
+  console.log('\n=== AUDIT TEST SUITE: Git Commit & Push ===');
+  execSync('git add src/ run_build.js');
+  const commitRes = execSync('git commit -m "fix(security & resilience): sanitize dynamic HTML interpolations, add offline enqueueSync for expenses and abonos, and harden numeric validations"', { encoding: 'utf8' });
   console.log(commitRes);
 
-  console.log('\n=== STEP 4: Git Push to Remote ===');
   const pushRes = execSync('git push origin main', { encoding: 'utf8' });
   console.log(pushRes);
 
   const finalStatus = execSync('git status -uno', { encoding: 'utf8' });
   console.log('Final Status:\n', finalStatus);
 } catch (e) {
-  console.log('Verification Error / Output:');
+  console.log('Audit Error / Result:');
   console.log(e.stdout || '');
   console.log(e.stderr || '');
   console.log(e.message);

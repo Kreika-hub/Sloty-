@@ -2,7 +2,7 @@
  * Admin Users — Residents and abonos (SUBS & ABONOS tabs)
  * Extracted from admin.js (Phase C Lot 2 refactor)
  */
-import { supabase, getParkingState, logAudit, logMovement, showToast } from '../../db.js'
+import { supabase, getParkingState, logAudit, logMovement, showToast, enqueueSync } from '../../db.js'
 import { escapeHTML } from '../../utils/sanitize.js'
 import { ICONS } from './admin-ui-components.js'
 import { store, getSubsCached } from './admin-store.js'
@@ -370,7 +370,7 @@ export const initUserActions = (actions, container, refresh) => {
          
          store.pendingAction = {
            type: 'CUSTOM_MODAL',
-           title: `Historial: ${name}`,
+           title: `Historial: ${escapeHTML(name)}`,
            content: `
              <div style="max-height:300px; overflow-y:auto; padding:10px; text-align:left;">
                 ${history.map(h => {
@@ -379,7 +379,7 @@ export const initUserActions = (actions, container, refresh) => {
                   <div style="padding:15px; border-bottom:1px solid #f8f8f8; display:flex; justify-content:space-between; align-items:center;">
                      <div>
                         <div style="font-size:0.8rem; font-weight:900;">$${h.amount.toFixed(2)}</div>
-                        <div style="font-size:0.55rem; color:#bbb;">${new Date(h.payment_date).toLocaleDateString()} · ${h.method}</div>
+                        <div style="font-size:0.55rem; color:#bbb;">${new Date(h.payment_date).toLocaleDateString()} · ${escapeHTML(h.method || 'PAGO')}</div>
                      </div>
                      <div style="font-size:0.6rem; color:${bdg.c}; font-weight:900; background:${bdg.bg}; padding:4px 8px; border-radius:6px;">${bdg.t}</div>
                   </div>
@@ -755,7 +755,7 @@ export const initUserActions = (actions, container, refresh) => {
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:25px;">
               <div>
                 <div style="font-size:0.7rem;font-weight:800;color:#4b5563;text-transform:uppercase;">Pagos Reportados</div>
-                <div style="font-size:1.1rem;font-weight:900;color:#1a1a2e;">${name}</div>
+                <div style="font-size:1.1rem;font-weight:900;color:#1a1a2e;">${escapeHTML(name)}</div>
               </div>
               <button data-action="CANCEL_MODAL" style="background:#f4f4f4;border:none;width:36px;height:36px;border-radius:50%;font-size:1.2rem;cursor:pointer;">×</button>
             </div>
@@ -902,7 +902,7 @@ export const initUserActions = (actions, container, refresh) => {
         <div style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);backdrop-filter:blur(15px);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;">
           <div style="background:white; border-radius:35px; width:100%; max-width:400px; padding:35px 25px; box-shadow:0 25px 50px rgba(0,0,0,0.3); animation: slideUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);">
             <h2 style="font-weight:900; color:var(--primary); margin-bottom:5px; text-align:center;">REGISTRAR ABONO</h2>
-            <div style="font-size:0.8rem; font-weight:700; color:#555555; text-align:center; margin-bottom:25px;">${name}</div>
+            <div style="font-size:0.8rem; font-weight:700; color:#555555; text-align:center; margin-bottom:25px;">${escapeHTML(name)}</div>
             
             <div style="margin-bottom:20px;">
               <label style="font-size:0.65rem; font-weight:900; color:#4b5563; margin-bottom:8px; display:block; text-transform:uppercase;">Monto del Abono ($)</label>
@@ -1011,7 +1011,7 @@ export const initUserActions = (actions, container, refresh) => {
       const amountUsd = Number(amount.toFixed(2))
       const amountBs = Number((amountUsd * rateVal).toFixed(2))
 
-      await supabase.from('payments').insert({
+      const paymentPayload = {
         building_id: state.buildingId,
         subscription_id: id,
         amount: amount,
@@ -1023,11 +1023,18 @@ export const initUserActions = (actions, container, refresh) => {
         status: 'CONFIRMED',
         payment_date: date,
         bank: bank
-      });
+      };
 
-      await supabase.from('subscriptions').update({
-        expiry_date: startBase.toISOString()
-      }).eq('id', id);
+      try {
+        await supabase.from('payments').insert(paymentPayload);
+        await supabase.from('subscriptions').update({
+          expiry_date: startBase.toISOString()
+        }).eq('id', id);
+      } catch (err) {
+        console.warn('[Sloty] Error inserting payment or updating subscription online, enqueuing sync:', err);
+        enqueueSync({ table: 'payments', action: 'INSERT', data: paymentPayload });
+        enqueueSync({ table: 'subscriptions', action: 'UPSERT', data: { id, expiry_date: startBase.toISOString() } });
+      }
 
       logMovement({
         type: 'MENSUALIDAD',

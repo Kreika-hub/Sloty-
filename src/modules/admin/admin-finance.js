@@ -2,7 +2,7 @@
  * Admin Finance — Live cash, payments, audits and reports (FINANCE tab)
  * Extracted from admin.js (Phase C Lot 2 refactor)
  */
-import { supabase, getParkingState, saveParkingState, logAudit, showToast, getExchangeRate } from '../../db.js'
+import { supabase, getParkingState, saveParkingState, logAudit, showToast, getExchangeRate, enqueueSync } from '../../db.js'
 import { escapeHTML } from '../../utils/sanitize.js'
 import { ICONS } from './admin-ui-components.js'
 import { store, getExpensesCached, invalidateExpensesCache, hasFeature } from './admin-store.js'
@@ -341,8 +341,8 @@ export const initFinanceActions = (actions, container, refresh) => {
       const amountUsd = parseFloat(document.getElementById('expense-amount-usd')?.value);
       const method = document.getElementById('expense-method')?.value || 'EFECTIVO_USD';
 
-      if (!amountUsd || amountUsd <= 0) {
-        alert('Por favor ingresa un monto válido.');
+      if (!amountUsd || isNaN(amountUsd) || amountUsd <= 0) {
+        alert('Por favor ingresa un monto válido mayor a $0.00.');
         return;
       }
       if (!desc) {
@@ -369,7 +369,8 @@ export const initFinanceActions = (actions, container, refresh) => {
       try {
         await supabase.from('building_expenses').insert([expensePayload]);
       } catch (e) {
-        console.warn('[Sloty] Error inserting to building_expenses in Supabase, using local fallback:', e);
+        console.warn('[Sloty] Error inserting to building_expenses in Supabase, enqueuing sync:', e);
+        enqueueSync({ table: 'building_expenses', action: 'INSERT', data: [expensePayload] });
       }
 
       // Guardar también en estado local
