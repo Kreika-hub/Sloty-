@@ -1,4 +1,6 @@
 import { getParkingState, saveParkingState, logAudit, getCleanPrefix, supabase, logMovement, syncDown, hasFeature, getBuildingPlan, showToast, getExchangeRate, getSyncQueueCount } from '../db.js'
+import { escapeHTML } from '../utils/sanitize.js';
+
 
 const compressBase64Image = (base64Str, max = 200, quality = 0.6) => {
   return new Promise((resolve) => {
@@ -100,6 +102,12 @@ export const initAdmin = (container) => {
 
   window.addEventListener('sloty-sync-updated', handleSyncUpdated)
   window.addEventListener('sloty-connection-status', handleConnectionStatus)
+
+  const handleSyncDownloaded = () => {
+    debouncedRender()
+  }
+  window.addEventListener('sloty-sync-downloaded', handleSyncDownloaded)
+  window.addEventListener('sloty-subscriptions-updated', handleSyncDownloaded)
 
   let renderTimeout = null
   const debouncedRender = () => {
@@ -406,7 +414,7 @@ export const initAdmin = (container) => {
         if (error) throw error;
 
         const url = `${window.location.origin}/?setup_guard=${g.id}&bld=${state.buildingCode}`;
-        const msg = `¡Bienvenido a Sloty, ${g.name}! 🛡️\n\nTu acceso para ${state.buildingName} (${state.buildingCode}) está listo.\n\nPor favor, ingresa al siguiente enlace para activar tu cuenta y crear tu PIN de acceso:\n\n${url}`;
+        const msg = `¡Bienvenido a Sloty, ${escapeHTML(g.name)}! 🛡️\n\nTu acceso para ${state.buildingName} (${state.buildingCode}) está listo.\n\nPor favor, ingresa al siguiente enlace para activar tu cuenta y crear tu PIN de acceso:\n\n${url}`;
         
         window.open(`https://wa.me/${g.phone.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`, '_blank');
       } catch (err) {
@@ -628,12 +636,11 @@ export const initAdmin = (container) => {
       render();
     },
     LOGOUT: () => {
-      localStorage.removeItem('sloty_session')
-      localStorage.removeItem('sloty_state')
-      localStorage.removeItem('sloty_selected_slot')
-      localStorage.removeItem('sloty_building_id')
-      localStorage.removeItem('sloty_active_building')
-      location.reload()
+      if (window.slotyLogout) window.slotyLogout()
+      else {
+        localStorage.clear()
+        location.reload()
+      }
     },
     FILTER_REPORTS: (btn) => { reportFilter = btn.dataset.filter; render() },
     SAVE_SETTINGS: () => {
@@ -790,10 +797,7 @@ export const initAdmin = (container) => {
             tower: tower,
             floor: floor,
             apt: apt,
-            phone: phone,
-            vehicle_brand: brand,
-            vehicle_model: model,
-            vehicle_color: color
+            phone: phone
           }).eq('id', editingResident);
           error = err;
 
@@ -832,10 +836,7 @@ export const initAdmin = (container) => {
             floor: floor,
             apt: apt,
             phone: phone,
-            pin: null,
-            vehicle_brand: brand,
-            vehicle_model: model,
-            vehicle_color: color
+            pin: null
           }).select('id').single();
           error = err;
 
@@ -924,9 +925,18 @@ export const initAdmin = (container) => {
       document.getElementById('new-sub-floor').value = res.floor || '';
       document.getElementById('new-sub-apt').value = res.apt || '';
       document.getElementById('new-sub-phone').value = res.phone || '';
-      document.getElementById('vehicle-brand').value = res.vehicle_brand || '';
-      document.getElementById('vehicle-model').value = res.vehicle_model || '';
-      document.getElementById('vehicle-color').value = res.vehicle_color || '';
+
+      try {
+        const { data: veh } = await supabase.from('vehicles').select('brand, model, color').eq('subscription_id', id).limit(1).maybeSingle();
+        document.getElementById('vehicle-brand').value = veh?.brand || '';
+        document.getElementById('vehicle-model').value = veh?.model || '';
+        document.getElementById('vehicle-color').value = veh?.color || '';
+      } catch (e) {
+        console.warn('Error al obtener datos del vehículo:', e);
+        document.getElementById('vehicle-brand').value = '';
+        document.getElementById('vehicle-model').value = '';
+        document.getElementById('vehicle-color').value = '';
+      }
 
       const container = document.getElementById('new-sub-plates-container');
       container.innerHTML = '';
@@ -1177,13 +1187,13 @@ export const initAdmin = (container) => {
 
                 <div style="margin-bottom:25px;">
                    <div style="font-size:0.55rem; color:rgba(255,255,255,0.4); text-transform:uppercase; font-weight:800; letter-spacing:1px; margin-bottom:5px;">Nombre del Propietario</div>
-                   <div style="font-size:1.1rem; font-weight:900; letter-spacing:0.5px;">${res.resident_name}</div>
+                   <div style="font-size:1.1rem; font-weight:900; letter-spacing:0.5px;">${escapeHTML(res.resident_name)}</div>
                 </div>
 
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:15px;">
                    <div>
                       <div style="font-size:0.55rem; color:rgba(255,255,255,0.4); text-transform:uppercase; font-weight:800; letter-spacing:1px; margin-bottom:5px;">Vehículo / Placa</div>
-                      <div style="font-size:1.2rem; font-weight:900; color:var(--accent);">${res.plate}</div>
+                      <div style="font-size:1.2rem; font-weight:900; color:var(--accent);">${escapeHTML(res.plate)}</div>
                    </div>
                    <div>
                       <div style="font-size:0.55rem; color:rgba(255,255,255,0.4); text-transform:uppercase; font-weight:800; letter-spacing:1px; margin-bottom:5px;">Puesto</div>
@@ -1292,12 +1302,12 @@ export const initAdmin = (container) => {
       const movsHtml = (c.movements || []).map(m => `
          <div style="padding:12px; border-bottom:1px solid #f3f4f6; display:flex; justify-content:space-between; align-items:center;">
             <div>
-               <div style="font-size:0.75rem; font-weight:900; color:#1f2937;">${m.plate}</div>
-               <div style="font-size:0.6rem; color:#4b5563; font-weight:700;">${m.slot} · ${(m.payMethod || '').replace('_', ' ')}</div>
+               <div style="font-size:0.75rem; font-weight:900; color:#1f2937;">${escapeHTML(m.plate)}</div>
+               <div style="font-size:0.6rem; color:#4b5563; font-weight:700;">${escapeHTML(m.slot)} · ${(m.payMethod || '').replace('_', ' ')}</div>
             </div>
             <div style="text-align:right;">
                <div style="font-size:0.75rem; font-weight:900; color:#22c55e;">$${(m.amount||0).toFixed(2)}</div>
-               <div style="font-size:0.55rem; color:#4b5563; font-weight:700;">Ref: ${m.reference || 'EFEC'}</div>
+               <div style="font-size:0.55rem; color:#4b5563; font-weight:700;">Ref: ${escapeHTML(m.reference) || 'EFEC'}</div>
             </div>
          </div>
       `).join('')
@@ -2425,7 +2435,7 @@ export const initAdmin = (container) => {
            ${excedents.length ? excedents.map(m => `
              <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; border-bottom:1px solid #f9f9f9;">
                 <div>
-                  <div style="font-size:0.75rem; font-weight:900; color:var(--primary);">${m.category === 'RESIDENTE' ? '⭐ ' : ''}${m.plate || '---'} <span style="font-size:0.55rem; color:#999; font-weight:800;">${m.type === 'MENSUALIDAD' ? '(Mensualidad)' : '(Excedente)'}</span></div>
+                  <div style="font-size:0.75rem; font-weight:900; color:var(--primary);">${m.category === 'RESIDENTE' ? '⭐ ' : ''}${escapeHTML(m.plate) || '---'} <span style="font-size:0.55rem; color:#999; font-weight:800;">${m.type === 'MENSUALIDAD' ? '(Mensualidad)' : '(Excedente)'}</span></div>
                    <div style="font-size:0.55rem; color:#bbb; font-weight:700;">${new Date(m.timestamp).toLocaleTimeString()}</div>
                 </div>
                 <div style="font-size:0.9rem; font-weight:900; color:#22c55e;">+$${m.amount.toFixed(2)}</div>
@@ -2715,12 +2725,12 @@ export const initAdmin = (container) => {
             <div style="background:white; padding:18px; border-radius:24px; border:1px solid #f0f0f0; box-shadow:0 10px 30px rgba(0,0,0,0.02);">
               <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
                 <div>
-                  <div style="font-size:1rem; font-weight:900; color:#1a1a2e;">${m.plate || '---'}</div>
+                  <div style="font-size:1rem; font-weight:900; color:#1a1a2e;">${escapeHTML(m.plate) || '---'}</div>
                   <div style="font-size:0.7rem; font-weight:700; color:#999; margin-top:2px;">${new Date(m.timestamp).toLocaleString()}</div>
                 </div>
                 <div style="text-align:right;">
                   <div style="font-weight:900; color:${(m.type==='ENTRY'||m.type==='INGRESO')?'#22c55e':'#3b82f6'}; font-size:0.6rem; letter-spacing:1px;">${m.type}</div>
-                  <div style="font-size:0.8rem; font-weight:900; color:#1a1a2e; margin-top:2px;">${m.slot || '--'}</div>
+                  <div style="font-size:0.8rem; font-weight:900; color:#1a1a2e; margin-top:2px;">${escapeHTML(m.slot) || '--'}</div>
                 </div>
               </div>
               
@@ -2781,12 +2791,12 @@ export const initAdmin = (container) => {
                 </div>
               </div>
               <div style="font-size:0.8rem; font-weight:700; color:#1a1a2e; margin-bottom:4px;">
-                ${inc.description}
+                ${escapeHTML(inc.description)}
               </div>
               ${inc.admin_response ? `
                 <div style="background:#f8f9fa; border-left:3px solid #22c55e; padding:10px; margin-top:10px; border-radius:8px;">
                   <div style="font-size:0.6rem; font-weight:900; color:#22c55e; margin-bottom:4px;">TU RESPUESTA</div>
-                  <div style="font-size:0.8rem; font-weight:700; color:#666;">${inc.admin_response}</div>
+                  <div style="font-size:0.8rem; font-weight:700; color:#666;">${escapeHTML(inc.admin_response)}</div>
                   <div style="font-size:0.5rem; color:#bbb; font-weight:700; margin-top:4px;">Enviado: ${new Date(inc.responded_at || inc.created_at).toLocaleString('es-VE')}</div>
                 </div>
               ` : ''}
@@ -2863,8 +2873,8 @@ export const initAdmin = (container) => {
                 </div>
                 <div>
                   <div style="display:flex; align-items:center; gap:8px;">
-                     <div style="font-weight:900; color:var(--primary); font-size:1rem;">${p.name}</div>
-                     <div style="font-size:0.5rem; background:#f0f0f0; padding:2px 8px; border-radius:10px; font-weight:800; color:#999; text-transform:uppercase;">${p.shift}</div>
+                     <div style="font-weight:900; color:var(--primary); font-size:1rem;">${escapeHTML(p.name)}</div>
+                     <div style="font-size:0.5rem; background:#f0f0f0; padding:2px 8px; border-radius:10px; font-weight:800; color:#999; text-transform:uppercase;">${escapeHTML(p.shift)}</div>
                   </div>
                   <div style="font-size:0.7rem; color:#bbb; font-weight:700; margin-top:2px;">
                      ${p.pin ? `PIN: <span style="color:var(--primary); letter-spacing:2px;">●●●●</span>` : '<span style="color:#e63946;">PENDIENTE ACTIVACIÓN</span>'} · 
@@ -3431,12 +3441,12 @@ export const initAdmin = (container) => {
           ${(state.movements || []).filter(m => m.type === 'MENSUALIDAD').slice(0, 5).map(m => `
             <div style="padding:15px 20px; border-bottom:1px solid #f9f9f9; display:flex; justify-content:space-between; align-items:center;">
               <div>
-                <div style="font-size:0.85rem; font-weight:900; color:var(--primary);">${m.plate}</div>
-                <div style="font-size:0.55rem; color:#bbb; font-weight:700;">${new Date(m.timestamp).toLocaleString()} · ${m.payMethod}</div>
+                <div style="font-size:0.85rem; font-weight:900; color:var(--primary);">${escapeHTML(m.plate)}</div>
+                <div style="font-size:0.55rem; color:#bbb; font-weight:700;">${new Date(m.timestamp).toLocaleString()} · ${escapeHTML(m.payMethod)}</div>
               </div>
               <div style="text-align:right;">
                 <div style="font-size:0.9rem; font-weight:900; color:#22c55e;">+$${m.amount.toFixed(2)}</div>
-                <div style="font-size:0.45rem; color:#999; font-weight:800; text-transform:uppercase;">Ref: ${m.reference || 'EFEC'}</div>
+                <div style="font-size:0.45rem; color:#999; font-weight:800; text-transform:uppercase;">Ref: ${escapeHTML(m.reference) || 'EFEC'}</div>
               </div>
             </div>
           `).join('') || '<div style="padding:40px; text-align:center; color:#ccc; font-weight:700; font-size:0.7rem;">No hay abonos recientes</div>'}

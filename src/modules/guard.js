@@ -1,5 +1,5 @@
 import { getParkingState, updateParkingState, logMovement, logNotification, saveClosure, supabase, hasFeature, showToast, logAudit, getExchangeRate, getSyncQueueCount, isTaskPending } from '../db.js'
-import { html } from '../utils/sanitize.js';
+import { html, escapeHTML } from '../utils/sanitize.js';
 
 import { searchVisitorByPlate, saveVisitor, logAccess } from '../visitors.js'
 import { subscribeToPushNotifications, renderPushBanner } from './push.js'
@@ -944,14 +944,14 @@ getExchangeRate().then(bcv => {
          listHtml = data.map(inc => `
            <div style="background:#f8f9fa; border-radius:12px; padding:15px; margin-bottom:10px; text-align:left; border-left:4px ${inc.resolved ? 'solid #22c55e' : 'solid #e63946'};">
              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-                <span style="font-size:0.75rem; font-weight:900; color:var(--primary);">${inc.type}</span>
+                <span style="font-size:0.75rem; font-weight:900; color:var(--primary);">${escapeHTML(inc.type)}</span>
                 <span style="font-size:0.6rem; color:#bbb; font-weight:800;">${new Date(inc.created_at).toLocaleDateString()}</span>
              </div>
-             <div style="font-size:0.7rem; color:#666; font-weight:700; margin-bottom:8px;">${inc.description}</div>
+             <div style="font-size:0.7rem; color:#666; font-weight:700; margin-bottom:8px;">${escapeHTML(inc.description)}</div>
              ${inc.admin_response ? `
                <div style="background:#eaf3de; padding:10px; border-radius:8px; border:1px solid #bbf7d0;">
                  <div style="font-size:0.6rem; font-weight:900; color:#166534; margin-bottom:3px;">RESPUESTA ADMIN:</div>
-                 <div style="font-size:0.7rem; color:#166534; font-weight:700;">"${inc.admin_response}"</div>
+                 <div style="font-size:0.7rem; color:#166534; font-weight:700;">"${escapeHTML(inc.admin_response)}"</div>
                </div>
              ` : `<div style="font-size:0.6rem; color:#e63946; font-weight:900;">EN ESPERA DE RESPUESTA</div>`}
            </div>
@@ -1164,9 +1164,9 @@ getExchangeRate().then(bcv => {
           ${(state.personnel || []).map(p => `
             <div class="guard-card" data-id="${p.id}" style="background:rgba(255,255,255,0.05);padding:20px 10px;border-radius:18px;text-align:center;cursor:pointer;border:2px solid transparent;transition:all 0.2s;">
               <div style="width:60px;height:60px;border-radius:50%;background:#333;margin:0 auto 10px;overflow:hidden;border:2px solid rgba(255,255,255,0.1);">
-                ${p.photo ? `<img src="${p.photo}" style="width:100%;height:100%;object-fit:cover;">` : `<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#666;font-weight:900;">${p.name.charAt(0)}</div>`}
+                ${p.photo ? `<img src="${escapeHTML(p.photo)}" style="width:100%;height:100%;object-fit:cover;">` : `<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#666;font-weight:900;">${escapeHTML(p.name.charAt(0))}</div>`}
               </div>
-              <div style="color:white;font-weight:700;font-size:0.8rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.name}</div>
+              <div style="color:white;font-weight:700;font-size:0.8rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHTML(p.name)}</div>
             </div>
           `).join(state.personnel?.length ? '' : '<p style="color:rgba(255,255,255,0.3);grid-column:span 2;padding:40px 0;">No hay guardias registrados.</p>')}
         </div>
@@ -2045,10 +2045,10 @@ getExchangeRate().then(bcv => {
            infoDiv.style = "background:#F5C518; color:#1a1a2e; padding:10px; border-radius:10px; margin-bottom:10px; font-weight:900; font-size:0.75rem; text-align:center;"
            const res = subs[0];
            infoDiv.innerHTML = `
-             <div>🚗 RESIDENTE: ${res.resident_name} (Apto ${res.apt || '-'})</div>
+             <div>🚗 RESIDENTE: ${escapeHTML(res.resident_name)} (Apto ${escapeHTML(res.apt) || '-'})</div>
              ${res.vehicle_brand || res.vehicle_model || res.vehicle_color ? `
                <div style="font-size:0.6rem; color:rgba(26,26,46,0.6); font-weight:700; margin-top:4px;">
-                 ${[res.vehicle_brand, res.vehicle_model, res.vehicle_color].filter(Boolean).join(' · ')}
+                 ${escapeHTML([res.vehicle_brand, res.vehicle_model, res.vehicle_color].filter(Boolean).join(' · '))}
                </div>` : ''}
            `;
            plateEl.parentNode.insertBefore(infoDiv, plateEl.nextSibling)
