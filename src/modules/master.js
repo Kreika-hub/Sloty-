@@ -188,10 +188,19 @@ export const initMaster = (container) => {
         const expiry = new Date();
         expiry.setDate(expiry.getDate() + days);
 
+        const PLAN_FEATURES = {
+          TRIAL:  { finance_module: true, whatsapp_notifications: false, reports_module: false, debt_tracking: false, max_guards: 2 },
+          BRONCE: { finance_module: true, whatsapp_notifications: false, reports_module: false, debt_tracking: true, max_guards: 4 },
+          PLATA:  { finance_module: true, whatsapp_notifications: true, reports_module: true, debt_tracking: true, max_guards: 8 },
+          ORO:    { finance_module: true, whatsapp_notifications: true, reports_module: true, debt_tracking: true, expenses_module: true, max_guards: 999 }
+        };
+        const newFeatures = PLAN_FEATURES[selectedPlan] || PLAN_FEATURES.BRONCE;
+
         const updates = [supabase.from('buildings').update({
           plan: selectedPlan,
           membership_status: 'ACTIVE',
-          membership_expiry: expiry.toISOString()
+          membership_expiry: expiry.toISOString(),
+          features: newFeatures
         }).eq('id', id)];
 
         if (paid && amount > 0) {

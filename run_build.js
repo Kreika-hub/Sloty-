@@ -1,17 +1,14 @@
 import { execSync } from 'child_process';
-import fs from 'fs';
-
 try {
   console.log('=== STEP 1: Static Module Verification ===');
   const files = [
-    'src/db.js',
-    'src/main.js',
-    'src/modules/admin.js',
     'src/modules/admin/admin-store.js',
+    'src/modules/admin.js',
     'src/modules/admin/admin-users.js',
-    'src/modules/guard.js',
+    'src/modules/admin/admin-finance.js',
+    'src/modules/master.js',
     'src/modules/onboarding.js',
-    'src/modules/master.js'
+    'src/main.js'
   ];
 
   files.forEach(f => {
@@ -23,28 +20,19 @@ try {
   const build = execSync('npm run build', { encoding: 'utf8' });
   console.log(build);
 
-  console.log('\n=== STEP 3: Git Status Verification ===');
-  const status = execSync('git status --short', { encoding: 'utf8' });
-  console.log(status);
+  console.log('\n=== STEP 3: Git Status & Commit ===');
+  execSync('git add src/ run_build.js package.json');
+  const commitRes = execSync('git commit -m "feat: complete SaaS finance suite, expenses with net balance, dynamic feature flags, and resident debt tracking"', { encoding: 'utf8' });
+  console.log(commitRes);
 
-  console.log('\n=== STEP 4: Git Commit & Push ===');
-  execSync('git add src/ run_build.js');
-  try {
-    const commitRes = execSync('git commit -m "feat: implement live BCV audit conversions, admin onboarding wizard, and master panel feature flags"', { encoding: 'utf8' });
-    console.log(commitRes);
-  } catch (e) {
-    console.log('Commit note:', e.message);
-  }
+  console.log('\n=== STEP 4: Git Push to Remote ===');
+  const pushRes = execSync('git push origin main', { encoding: 'utf8' });
+  console.log(pushRes);
 
-  try {
-    const pushRes = execSync('git push', { encoding: 'utf8' });
-    console.log(pushRes);
-  } catch (e) {
-    console.log('Git push note (offline/no remote configured):', e.message);
-  }
-
+  const finalStatus = execSync('git status -uno', { encoding: 'utf8' });
+  console.log('Final Status:\n', finalStatus);
 } catch (e) {
-  console.log("VERIFICATION ERROR:");
+  console.log('Verification Error / Output:');
   console.log(e.stdout || '');
   console.log(e.stderr || '');
   console.log(e.message);

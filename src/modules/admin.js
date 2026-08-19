@@ -4,7 +4,7 @@
  */
 import { getParkingState, saveParkingState, logAudit, supabase, syncDown, getExchangeRate, getSyncQueueCount } from '../db.js'
 import { escapeHTML } from '../utils/sanitize.js'
-import { store, getSubsCached, unsubscribeFinanceRealtime } from './admin/admin-store.js'
+import { store, getSubsCached, unsubscribeFinanceRealtime, hasFeature } from './admin/admin-store.js'
 import { ICONS, SKELETONS } from './admin/admin-ui-components.js'
 
 // Submodule UI renderers and action binders
@@ -15,6 +15,23 @@ import { initStructureActions, renderLevels } from './admin/admin-structure.js'
 import { initGuardActions, renderPersonnel, setupGuardHooks } from './admin/admin-guards.js'
 import { initSettingsActions, renderSettings, renderReports } from './admin/admin-settings.js'
 import { shouldShowOnboarding, renderOnboardingWizard } from './onboarding.js'
+
+const renderLockedFeature = (featureName) => `
+  <div style="padding:60px 20px; text-align:center; font-family:'Montserrat',sans-serif;">
+    <div style="font-size:3.5rem; margin-bottom:15px;">🔒</div>
+    <h3 style="font-size:1.2rem; font-weight:900; color:var(--primary); margin-bottom:8px; text-transform:uppercase;">
+      Función Bloqueada
+    </h3>
+    <p style="font-size:0.85rem; color:#666; max-width:320px; margin:0 auto 24px; line-height:1.5;">
+      El módulo <strong>${escapeHTML(featureName)}</strong> no está habilitado en el plan actual de tu condominio.
+    </p>
+    <a href="https://wa.me/584120770776?text=Hola,%20deseo%20activar%20el%20modulo%20${encodeURIComponent(featureName)}%20en%20Sloty"
+       target="_blank"
+       style="display:inline-block; padding:16px 28px; background:#1a1a2e; color:var(--accent); text-decoration:none; border-radius:18px; font-weight:900; font-size:0.85rem; text-transform:uppercase; letter-spacing:0.5px;">
+      CONTACTAR SOPORTE MÁSTER
+    </a>
+  </div>
+`;
 
 // Fallback renders for legacy/unused tabs to prevent runtime crashes
 const renderNotifications = () => `
@@ -408,6 +425,10 @@ export const initAdmin = (container) => {
         break;
       }
       case 'FINANCE': {
+        if (!hasFeature('finance_module')) {
+          html = renderLockedFeature('Módulo de Finanzas y Caja');
+          break;
+        }
         if (!store.cachedFinance || (Date.now() - store.cachedFinanceAt >= store.FINANCE_TTL)) {
           const nowObj = new Date();
           const monthStart = new Date(nowObj.getFullYear(), nowObj.getMonth(), 1).toISOString();
@@ -438,7 +459,14 @@ export const initAdmin = (container) => {
       }
       case 'PERSONAL': html = renderPersonnel(state); break;
       case 'STRUCTURE': html = renderLevels(state); break;
-      case 'REPORTES': html = await renderReports(state); break;
+      case 'REPORTES': {
+        if (!hasFeature('reports_module')) {
+          html = renderLockedFeature('Módulo de Reportes y Estadísticas');
+          break;
+        }
+        html = await renderReports(state);
+        break;
+      }
       case 'SETTINGS': html = renderSettings(state); break;
       case 'NOTIFICATIONS': html = renderNotifications(); break;
       case 'PROFILE': html = renderProfile(state); break;

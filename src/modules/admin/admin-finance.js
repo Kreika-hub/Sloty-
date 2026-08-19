@@ -2,19 +2,19 @@
  * Admin Finance — Live cash, payments, audits and reports (FINANCE tab)
  * Extracted from admin.js (Phase C Lot 2 refactor)
  */
-import { supabase, getParkingState, logAudit, showToast, getExchangeRate, hasFeature } from '../../db.js'
+import { supabase, getParkingState, saveParkingState, logAudit, showToast, getExchangeRate } from '../../db.js'
 import { escapeHTML } from '../../utils/sanitize.js'
 import { ICONS } from './admin-ui-components.js'
-import { store } from './admin-store.js'
+import { store, getExpensesCached, invalidateExpensesCache, hasFeature } from './admin-store.js'
 
 // ─── FINANCE TAB RENDERER (FINANCE) ───────────────────────────
 export const renderFinanceSummary = async (state) => {
-  if (!hasFeature('finance_report')) {
+  if (!hasFeature('finance_module')) {
     return `<div style="padding:40px; text-align:center; color:#999;">
       <div style="font-size:2rem; margin-bottom:12px;">🔒</div>
       <div style="font-weight:900; color:#1a1a2e;">Función no disponible</div>
       <div style="font-size:0.75rem; margin-top:8px;">
-        Disponible desde plan Plata. Contacta a tu administrador Sloty.
+        Disponible desde plan Bronce. Contacta a tu administrador Sloty.
       </div>
     </div>`
   }
@@ -25,6 +25,7 @@ export const renderFinanceSummary = async (state) => {
   const subsPays = store.cachedFinance?.subsPays || [];
   const todayPays = store.cachedFinance?.todayPays || [];
   const guardShifts = store.cachedFinance?.guardShifts || [];
+  const expenses = await getExpensesCached(state.buildingId);
 
   // Group by guard
   const byGuard = {};
@@ -39,10 +40,11 @@ export const renderFinanceSummary = async (state) => {
   const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000)
   const movs = state.movements || []
   
-  // Revenue calculations
+  // Revenue & Expenses calculations
   const revToday = movs.filter(m => new Date(m.timestamp) >= todayStart).reduce((a, m) => a + (m.amount || 0), 0)
-  const revWeek = movs.filter(m => new Date(m.timestamp) >= sevenDaysAgo).reduce((a, m) => a + (m.amount || 0), 0)
-  const projection = revWeek > 0 ? (revWeek / 7) * 7 : 0 
+  const totalIncomeMonth = subsRevMonth + revToday;
+  const totalExpensesMonth = (expenses || []).reduce((a, x) => a + (Number(x.amount_usd) || Number(x.amount) || 0), 0);
+  const netBalanceMonth = totalIncomeMonth - totalExpensesMonth;
 
   // Inventory
   const successfulCollections = movs.filter(m => (m.amount || 0) > 0).length
@@ -66,13 +68,11 @@ export const renderFinanceSummary = async (state) => {
           <div style="font-size:0.5rem; color:rgba(255,255,255,0.4); font-weight:700;">${bcv.source === 'manual' ? '⚠️ Manual' : '✓ BCV'} · ${bcv.fecha}</div>
         `;
       }
-      const f2 = document.getElementById('finance-month-bcv');
-      if (f2) {
-        f2.innerHTML = `Bs. ${Number(bcv.rate).toLocaleString('es-VE', {minimumFractionDigits:2})} / USD ${bcv.source === 'manual' ? '· ⚠️ Manual' : '· ✓ BCV'} · ${bcv.fecha}`;
-        f2.style.display = 'block';
-      }
     });
   }, 50);
+
+  const rateVal = store.currentBcv?.rate || 40.0;
+  const netBalanceBs = netBalanceMonth * rateVal;
 
   return `
   <div style="padding:20px; padding-bottom:120px; background:#f8f9fa;">
@@ -83,22 +83,90 @@ export const renderFinanceSummary = async (state) => {
          <div style="font-size:0.6rem; color:#999; font-weight:800; text-transform:uppercase; margin-top:2px;">Centro contable administrativo</div>
        </div>
        <div id="finance-bcv-rate" style="background:#1a1a2e; color:white; border-radius:16px; padding:8px 15px; text-align:right; border:1px solid rgba(255,255,255,0.1);">
-          <div style="font-size:0.95rem; font-weight:900; color:#F5C518;">Bs. --.--</div>
-          <div style="font-size:0.5rem; color:rgba(255,255,255,0.4); font-weight:700;">Cargando...</div>
+          <div style="font-size:0.95rem; font-weight:900; color:#F5C518;">Bs. ${rateVal.toLocaleString('es-VE', {minimumFractionDigits:2})}</div>
+          <div style="font-size:0.5rem; color:rgba(255,255,255,0.4); font-weight:700;">Tasa Activa</div>
+       </div>
+    </div>
+
+    <!-- TARJETA PRINCIPAL: BALANCE NETO REAL -->
+    <div style="background:#1a1a2e; color:white; border-radius:30px; padding:25px; margin-bottom:20px; box-shadow:0 15px 35px rgba(26,26,46,0.15); border:1px solid rgba(255,255,255,0.08);">
+       <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:15px;">
+          <div>
+             <div style="font-size:0.6rem; font-weight:800; color:#F5C518; text-transform:uppercase; letter-spacing:1px;">BALANCE NETO DE CAJA (MES)</div>
+             <div style="font-size:2.2rem; font-weight:950; color:${netBalanceMonth >= 0 ? '#22c55e' : '#e63946'}; margin-top:2px;">
+                ${netBalanceMonth >= 0 ? '+' : ''}$${netBalanceMonth.toFixed(2)}
+             </div>
+             <div style="font-size:0.75rem; color:rgba(255,255,255,0.7); font-weight:700; margin-top:2px;">
+                ≈ Bs. ${netBalanceBs.toLocaleString('es-VE', {minimumFractionDigits:2})}
+             </div>
+          </div>
+          <button data-action="SHOW_EXPENSE_MODAL" style="background:#F5C518; color:#1a1a2e; border:none; padding:12px 18px; border-radius:14px; font-weight:900; font-size:0.7rem; cursor:pointer; text-transform:uppercase; display:flex; align-items:center; gap:6px; box-shadow:0 6px 15px rgba(245,197,24,0.3);">
+             <span>+</span> REGISTRAR GASTO
+          </button>
+       </div>
+
+       <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; border-top:1px solid rgba(255,255,255,0.1); padding-top:15px;">
+          <div>
+             <div style="font-size:0.55rem; color:#999; font-weight:800; text-transform:uppercase;">TOTAL INGRESOS</div>
+             <div style="font-size:1.1rem; font-weight:900; color:#22c55e; margin-top:2px;">+$${totalIncomeMonth.toFixed(2)}</div>
+          </div>
+          <div style="text-align:right;">
+             <div style="font-size:0.55rem; color:#999; font-weight:800; text-transform:uppercase;">TOTAL GASTOS / EGRESOS</div>
+             <div style="font-size:1.1rem; font-weight:900; color:#e63946; margin-top:2px;">-$${totalExpensesMonth.toFixed(2)}</div>
+          </div>
        </div>
     </div>
 
     <!-- TARJETAS DESTACADAS -->
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px;">
        <div style="background:white; padding:20px; border-radius:24px; border:1px solid #eee; box-shadow:0 10px 30px rgba(0,0,0,0.02);">
-          <div style="font-size:0.5rem; font-weight:800; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Ingresos Totales (Garita)</div>
+          <div style="font-size:0.5rem; font-weight:800; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Ingresos Garita (Hoy)</div>
           <div style="font-size:1.6rem; font-weight:950; color:var(--primary);">$${revToday.toFixed(2)}</div>
-          <div style="font-size:0.55rem; font-weight:700; color:#22c55e; margin-top:4px;">Hoy (${successfulCollections} Transacciones)</div>
+          <div style="font-size:0.55rem; font-weight:700; color:#22c55e; margin-top:4px;">${successfulCollections} Transacciones</div>
        </div>
        <div style="background:white; padding:20px; border-radius:24px; border:1px solid #eee; box-shadow:0 10px 30px rgba(0,0,0,0.02);">
-          <div style="font-size:0.5rem; font-weight:800; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Cobros de Mensualidades</div>
-          <div style="font-size:1.6rem; font-weight:950; color:#22c55e;">$${subsRevToday.toFixed(2)}</div>
-          <div style="font-size:0.55rem; font-weight:700; color:#555555; margin-top:4px;">Hoy ($${subsRevMonth.toFixed(0)} este mes)</div>
+          <div style="font-size:0.5rem; font-weight:800; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Mensualidades (Mes)</div>
+          <div style="font-size:1.6rem; font-weight:950; color:#22c55e;">$${subsRevMonth.toFixed(2)}</div>
+          <div style="font-size:0.55rem; font-weight:700; color:#555555; margin-top:4px;">Hoy: $${subsRevToday.toFixed(2)}</div>
+       </div>
+    </div>
+
+    <!-- LISTADO DE GASTOS / EGRESOS DEL MES -->
+    <div style="background:white; padding:25px; border-radius:28px; border:1px solid #eee; margin-bottom:25px; box-shadow:0 10px 30px rgba(0,0,0,0.02);">
+       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+          <div style="font-size:0.75rem; font-weight:900; color:var(--primary); text-transform:uppercase; letter-spacing:1px;">
+             Egresos & Gastos Operativos (${(expenses || []).length})
+          </div>
+          <button data-action="SHOW_EXPENSE_MODAL" style="background:#f4f4f4; color:var(--primary); border:none; padding:6px 12px; border-radius:10px; font-weight:800; font-size:0.6rem; cursor:pointer;">
+             + NUEVO GASTO
+          </button>
+       </div>
+       <div style="display:grid; gap:10px;">
+          ${(expenses || []).slice(0, 8).map(x => {
+             const xUsd = Number(x.amount_usd) || Number(x.amount) || 0;
+             const xBs = Number(x.amount_bs) || (xUsd * (x.bcv_rate_used || rateVal));
+             return `
+             <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 16px; background:#fafafa; border-radius:16px; border:1px solid #f0f0f0;">
+                <div>
+                   <div style="display:flex; align-items:center; gap:6px;">
+                      <span style="background:rgba(230,57,70,0.1); color:#e63946; padding:2px 8px; border-radius:6px; font-size:0.55rem; font-weight:900; text-transform:uppercase;">
+                         ${escapeHTML(x.category || 'GASTO')}
+                      </span>
+                      <span style="font-size:0.8rem; font-weight:800; color:var(--primary);">
+                         ${escapeHTML(x.description || 'Sin descripción')}
+                      </span>
+                   </div>
+                   <div style="font-size:0.55rem; color:#999; font-weight:700; margin-top:4px;">
+                      ${new Date(x.expense_date || x.created_at).toLocaleDateString()} · ${escapeHTML(x.payment_method || 'EFECTIVO')}
+                   </div>
+                </div>
+                <div style="text-align:right;">
+                   <div style="font-size:0.95rem; font-weight:900; color:#e63946;">-$${xUsd.toFixed(2)}</div>
+                   <div style="font-size:0.55rem; color:#999; font-weight:700;">≈ Bs. ${xBs.toLocaleString('es-VE', {minimumFractionDigits:2})}</div>
+                </div>
+             </div>
+             `;
+          }).join('') || '<div style="text-align:center; padding:25px; color:#ccc; font-weight:700; font-size:0.7rem;">Sin egresos registrados este mes</div>'}
        </div>
     </div>
 
@@ -194,6 +262,127 @@ export const initFinanceActions = (actions, container, refresh) => {
       store.pendingAction = null;
       store.cachedFinance = null; 
       store.cachedSubsAt = 0; 
+      refresh();
+    },
+    SHOW_EXPENSE_MODAL: () => {
+      const rateVal = store.currentBcv?.rate || 40.0;
+      store.pendingAction = {
+        type: 'CUSTOM_MODAL',
+        title: 'Registrar Gasto / Egreso',
+        content: `
+          <div style="padding:10px; font-family:'Montserrat',sans-serif; text-align:left;">
+            <div style="margin-bottom:15px;">
+              <label style="font-size:0.65rem; font-weight:800; color:#666; text-transform:uppercase;">Categoría de Gasto</label>
+              <select id="expense-category" style="width:100%; padding:14px; border-radius:14px; border:1.5px solid #eee; margin-top:6px; font-weight:700; font-family:inherit; background:#fafafa;">
+                <option value="MANTENIMIENTO">🛠️ Mantenimiento / Reparaciones</option>
+                <option value="NOMINA_GUARDIAS">👮 Nómina / Pago Guardias</option>
+                <option value="SERVICIOS">⚡ Servicios (Luz, Agua, Internet)</option>
+                <option value="CAJA_CHICA">📦 Caja Chica / Insumos</option>
+                <option value="HONORARIOS">⚖️ Honorarios Profesionales</option>
+                <option value="OTRO">📝 Otro Egreso Operativo</option>
+              </select>
+            </div>
+
+            <div style="margin-bottom:15px;">
+              <label style="font-size:0.65rem; font-weight:800; color:#666; text-transform:uppercase;">Descripción del Gasto</label>
+              <input type="text" id="expense-desc" placeholder="Ej. Bombillos garita, quincena operador..." style="width:100%; padding:14px; border-radius:14px; border:1.5px solid #eee; margin-top:6px; font-weight:700; font-family:inherit; background:#fafafa;">
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:15px;">
+              <div>
+                <label style="font-size:0.65rem; font-weight:800; color:#666; text-transform:uppercase;">Monto en Dólares ($)</label>
+                <input type="number" step="0.01" id="expense-amount-usd" placeholder="0.00" style="width:100%; padding:14px; border-radius:14px; border:1.5px solid #eee; margin-top:6px; font-weight:900; font-size:1.1rem; color:#e63946; font-family:inherit; background:#fafafa;">
+              </div>
+              <div>
+                <label style="font-size:0.65rem; font-weight:800; color:#666; text-transform:uppercase;">Método de Pago</label>
+                <select id="expense-method" style="width:100%; padding:14px; border-radius:14px; border:1.5px solid #eee; margin-top:6px; font-weight:700; font-family:inherit; background:#fafafa;">
+                  <option value="EFECTIVO_USD">💵 Efectivo USD</option>
+                  <option value="PAGO_MOVIL">📱 Pago Móvil</option>
+                  <option value="TRANSFERENCIA">🏦 Transferencia</option>
+                  <option value="EFECTIVO_BS">💵 Efectivo Bs</option>
+                  <option value="ZELLE">🇺🇸 Zelle</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- EQUIVALENTE EN BOLÍVARES EN VIVO -->
+            <div id="expense-ves-preview" style="background:#f8f9fa; border:1px solid #eee; border-radius:14px; padding:12px 14px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:0.65rem; font-weight:800; color:#999; text-transform:uppercase;">Equivalente en Bs:</span>
+              <span id="expense-ves-val" style="font-size:0.95rem; font-weight:900; color:#1a1a2e;">Bs. 0,00</span>
+            </div>
+
+            <div style="display:flex; gap:10px;">
+              <button data-action="BACK_TO_FINANCE" style="flex:1; padding:15px; border-radius:14px; background:#f4f4f4; color:#666; font-weight:900; font-size:0.75rem; border:none; cursor:pointer;">
+                CANCELAR
+              </button>
+              <button data-action="SUBMIT_EXPENSE" style="flex:2; padding:15px; border-radius:14px; background:#e63946; color:white; font-weight:900; font-size:0.75rem; border:none; cursor:pointer; text-transform:uppercase; box-shadow:0 6px 15px rgba(230,57,70,0.3);">
+                ✓ REGISTRAR EGRESO
+              </button>
+            </div>
+          </div>
+        `
+      };
+      refresh();
+
+      setTimeout(() => {
+        const usdInput = document.getElementById('expense-amount-usd');
+        const vesVal = document.getElementById('expense-ves-val');
+        if (usdInput && vesVal) {
+          usdInput.addEventListener('input', () => {
+            const val = parseFloat(usdInput.value) || 0;
+            vesVal.textContent = `Bs. ${(val * rateVal).toLocaleString('es-VE', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+          });
+        }
+      }, 100);
+    },
+    SUBMIT_EXPENSE: async () => {
+      const cat = document.getElementById('expense-category')?.value || 'OTRO';
+      const desc = document.getElementById('expense-desc')?.value?.trim();
+      const amountUsd = parseFloat(document.getElementById('expense-amount-usd')?.value);
+      const method = document.getElementById('expense-method')?.value || 'EFECTIVO_USD';
+
+      if (!amountUsd || amountUsd <= 0) {
+        alert('Por favor ingresa un monto válido.');
+        return;
+      }
+      if (!desc) {
+        alert('Por favor ingresa una breve descripción del gasto.');
+        return;
+      }
+
+      const rateVal = store.currentBcv?.rate || 40.0;
+      const amountBs = parseFloat((amountUsd * rateVal).toFixed(2));
+      const state = getParkingState();
+
+      const expensePayload = {
+        id: `exp-${Date.now()}`,
+        building_id: state.buildingId,
+        category: cat,
+        description: desc,
+        amount_usd: amountUsd,
+        amount_bs: amountBs,
+        bcv_rate_used: rateVal,
+        payment_method: method,
+        expense_date: new Date().toISOString()
+      };
+
+      try {
+        await supabase.from('building_expenses').insert([expensePayload]);
+      } catch (e) {
+        console.warn('[Sloty] Error inserting to building_expenses in Supabase, using local fallback:', e);
+      }
+
+      // Guardar también en estado local
+      state.expenses = state.expenses || [];
+      state.expenses.unshift(expensePayload);
+      saveParkingState(state);
+
+      logAudit('REGISTRO_EGRESO', { category: cat, desc, amount_usd: amountUsd, amount_bs: amountBs });
+      invalidateExpensesCache();
+      showToast('Egreso registrado con éxito', 'success');
+
+      store.pendingAction = null;
+      store.cachedFinance = null;
       refresh();
     },
     VIEW_CLOSURE: (btn) => {

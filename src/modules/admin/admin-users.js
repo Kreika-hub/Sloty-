@@ -194,21 +194,41 @@ export const renderAbonos = async (state) => {
       <div id="abonos-list" style="display:grid; gap:15px;">
         ${(subs || []).map(r => {
           const exp = new Date(r.expiry_date);
-          const isExpired = exp < now;
+          const daysDiff = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
           const monthlyPrice = r.custom_price || 0;
           
           const periodStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
           const paidThisMonth = (state.movements || []).filter(m => m.type === 'MENSUALIDAD' && m.plate.includes(r.plate.split(',')[0]) && m.timestamp >= periodStart).reduce((a,b)=>a+(b.amount||0), 0);
           
           const pending = Math.max(0, monthlyPrice - paidThisMonth);
-          const hasDebt = isExpired || pending > 0;
+
+          let statusKey = 'PAID';
+          let statusBadge = `<span style="background:#dcfce7; color:#15803d; padding:3px 8px; border-radius:8px; font-size:0.6rem; font-weight:900;">🟢 AL DÍA</span>`;
+          
+          if (daysDiff < 0) {
+            statusKey = 'OVERDUE';
+            statusBadge = `<span style="background:#fee2e2; color:#b91c1c; padding:3px 8px; border-radius:8px; font-size:0.6rem; font-weight:900;">🔴 EN MORA (${Math.abs(daysDiff)}d)</span>`;
+          } else if (paidThisMonth > 0 && pending > 0) {
+            statusKey = 'PARTIAL';
+            statusBadge = `<span style="background:#f3e8ff; color:#7e22ce; padding:3px 8px; border-radius:8px; font-size:0.6rem; font-weight:900;">🟣 ABONADO</span>`;
+          } else if (daysDiff <= 5) {
+            statusKey = 'PENDING';
+            statusBadge = `<span style="background:#fef9c3; color:#a16207; padding:3px 8px; border-radius:8px; font-size:0.6rem; font-weight:900;">🟡 POR VENCER (${daysDiff}d)</span>`;
+          }
+
+          const hasDebt = statusKey === 'OVERDUE' || pending > 0;
+          const rateVal = store.currentBcv?.rate || 40.0;
+          const pendingBs = pending * rateVal;
 
           return `
           <div class="abono-card" data-search="${r.resident_name.toLowerCase()} ${r.plate.toLowerCase()}" style="background:white; padding:22px; border-radius:30px; border:1.5px solid ${hasDebt ? '#ffccd5' : '#f0f0f0'}; display:flex; flex-direction:column; gap:15px; box-shadow:0 12px 35px rgba(0,0,0,0.03); transition:transform 0.2s;">
              <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                 <div>
-                   <div style="font-weight:900; color:var(--primary); font-size:1.1rem;">${escapeHTML(r.resident_name)}</div>
-                   <div style="font-size:0.7rem; font-weight:700; color:#999; margin-top:2px;">🚗 ${escapeHTML(r.plate)}</div>
+                   <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                     <div style="font-weight:900; color:var(--primary); font-size:1.1rem;">${escapeHTML(r.resident_name)}</div>
+                     ${statusBadge}
+                   </div>
+                   <div style="font-size:0.7rem; font-weight:700; color:#999;">🚗 ${escapeHTML(r.plate)}</div>
                 </div>
                 <div style="text-align:right;">
                    <div style="font-size:1rem; font-weight:950; color:var(--primary);">$${monthlyPrice}</div>
@@ -223,16 +243,19 @@ export const renderAbonos = async (state) => {
                 </div>
                 <div style="text-align:right;">
                    <div style="font-size:0.55rem; font-weight:800; color:#999; text-transform:uppercase; margin-bottom:4px;">PENDIENTE</div>
-                   <div style="font-size:0.9rem; font-weight:900; color:${pending > 0 ? '#e63946' : '#22c55e'};">${pending > 0 ? `-$${pending.toFixed(2)}` : 'SOLVENTE'}</div>
+                   <div style="font-size:0.9rem; font-weight:900; color:${pending > 0 ? '#e63946' : '#22c55e'};">
+                     ${pending > 0 ? `-$${pending.toFixed(2)}` : 'SOLVENTE'}
+                   </div>
+                   ${pending > 0 ? `<div style="font-size:0.55rem; color:#999; font-weight:700; margin-top:2px;">≈ Bs. ${pendingBs.toLocaleString('es-VE', {minimumFractionDigits:2})}</div>` : ''}
                 </div>
              </div>
 
              <div style="display:flex; justify-content:space-between; align-items:center;">
-                <div style="font-size:0.7rem; font-weight:800; color:${isExpired ? '#e63946' : '#666'};">
-                   Vence: ${exp.toLocaleDateString()} ${isExpired ? '<span style="background:#fee2e2; color:#ef4444; padding:2px 6px; border-radius:6px; margin-left:5px;">VENCIDO</span>' : ''}
+                <div style="font-size:0.7rem; font-weight:800; color:${statusKey === 'OVERDUE' ? '#e63946' : '#666'};">
+                   Vence: ${exp.toLocaleDateString()}
                 </div>
                 <div style="display:flex; gap:8px;">
-                   <button data-action="SEND_DEBT_WS" data-id="${r.id}" data-name="${escapeHTML(r.resident_name)}" data-debt="${pending}" data-phone="${escapeHTML(r.phone)}" style="background:none; border:none; padding:0; width:38px; height:38px; display:flex; align-items:center; justify-content:center; cursor:pointer;" title="Notificar Deuda">
+                   <button data-action="SEND_DEBT_WS" data-id="${r.id}" data-name="${escapeHTML(r.resident_name)}" data-debt="${pending || monthlyPrice}" data-days="${daysDiff}" data-phone="${escapeHTML(r.phone)}" style="background:none; border:none; padding:0; width:38px; height:38px; display:flex; align-items:center; justify-content:center; cursor:pointer;" title="Notificar Deuda">
                       <img src="/icons/whatsapp-svgrepo-com.svg" style="width:28px; height:28px; filter:drop-shadow(0 2px 4px rgba(34,197,94,0.3));"/>
                    </button>
                    <button data-action="SHOW_RESIDENT_HISTORY" data-id="${r.id}" data-name="${escapeHTML(r.resident_name)}" style="background:#f4f4f4; color:#666; border:none; width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer;" title="Historial"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg></button>

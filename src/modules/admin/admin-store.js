@@ -35,6 +35,16 @@ export const store = {
   // Realtime channel reference
   financeChannel: null,
 
+  // Tenant SaaS & Feature Flags
+  features: null,
+  membershipStatus: 'ACTIVE',
+  billingDueDate: null,
+
+  // Cache: Expenses
+  cachedExpenses: null,
+  cachedExpensesAt: 0,
+  EXPENSES_TTL: 60_000,
+
   // UI state variables shared across modules
   editingResident: null,
   pendingAction: null,
@@ -45,6 +55,12 @@ export const store = {
   activeSettingsMenu: 'MAIN',
   reportFilter: 'HOY',
 }
+
+// ─── FEATURE FLAGS EVALUATOR ──────────────────────────────────
+export const hasFeature = (featureKey) => {
+  if (!store.features) return true;
+  return store.features[featureKey] !== false;
+};
 
 // ─── SUBSCRIPTIONS CACHE ──────────────────────────────────────
 export const getSubsCached = async (buildingId) => {
@@ -58,11 +74,16 @@ export const getSubsCached = async (buildingId) => {
         .eq('building_id', buildingId)
         .order('created_at', { ascending: false }),
       supabase.from('buildings')
-        .select('monthly_rate,monthly_slots_limit')
+        .select('monthly_rate,monthly_slots_limit,features,membership_status,membership_expiry,plan')
         .eq('id', buildingId).single()
     ]);
     subsResData = subsRes?.data || [];
     bldResData = bldRes?.data || null;
+    if (bldResData) {
+      if (bldResData.features) store.features = bldResData.features;
+      if (bldResData.membership_status) store.membershipStatus = bldResData.membership_status;
+      if (bldResData.membership_expiry) store.billingDueDate = bldResData.membership_expiry;
+    }
   } catch (e) {
     console.warn('[Sloty] Error fetching subscriptions or building plan:', e);
   }
@@ -93,4 +114,33 @@ export const unsubscribeFinanceRealtime = () => {
     supabase.removeChannel(store.financeChannel);
     store.financeChannel = null;
   }
+};
+
+// ─── EXPENSES CACHE ───────────────────────────────────────────
+export const getExpensesCached = async (buildingId) => {
+  if (store.cachedExpenses && (Date.now() - store.cachedExpensesAt < store.EXPENSES_TTL)) {
+    return store.cachedExpenses;
+  }
+  let expenses = [];
+  try {
+    const { data } = await supabase
+      .from('building_expenses')
+      .select('id, category, description, amount_usd, amount_bs, bcv_rate_used, payment_method, expense_date, created_at')
+      .eq('building_id', buildingId)
+      .order('expense_date', { ascending: false })
+      .limit(100);
+    expenses = data || [];
+  } catch (e) {
+    console.warn('[Sloty] Error fetching building expenses from DB, fallback to local state:', e);
+    const s = JSON.parse(localStorage.getItem('sloty_state') || '{}');
+    expenses = s.expenses || [];
+  }
+  store.cachedExpenses = expenses;
+  store.cachedExpensesAt = Date.now();
+  return store.cachedExpenses;
+};
+
+export const invalidateExpensesCache = () => {
+  store.cachedExpenses = null;
+  store.cachedExpensesAt = 0;
 };
