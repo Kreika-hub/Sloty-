@@ -1,4 +1,6 @@
 import { getParkingState, updateParkingState, logMovement, logNotification, saveClosure, supabase, hasFeature, showToast, logAudit, getExchangeRate, getSyncQueueCount, isTaskPending } from '../db.js'
+import { html } from '../utils/sanitize.js';
+
 import { searchVisitorByPlate, saveVisitor, logAccess } from '../visitors.js'
 import { subscribeToPushNotifications, renderPushBanner } from './push.js'
 
@@ -59,19 +61,35 @@ export const initGuard = (container, guardName = 'Guardia') => {
       el.style.background = e.detail.online ? 'rgba(34,197,94,0.15)' : 'rgba(245,197,24,0.15)'
       el.style.color = e.detail.online ? '#22c55e' : '#ce8a05'
       el.style.borderColor = e.detail.online ? 'rgba(34,197,94,0.3)' : 'rgba(245,197,24,0.3)'
-      el.innerHTML = `● ${e.detail.online ? 'En Línea' : 'Offline'}`
+      el.innerHTML = html`● ${e.detail.online ? 'En Línea' : 'Offline'}`
     }
   }
 
   window.addEventListener('sloty-sync-updated', handleSyncUpdated)
   window.addEventListener('sloty-connection-status', handleConnectionStatus)
 
+  const handleSyncDownloaded = () => {
+    state = getParkingState()
+    render()
+  }
+
+  const handleResidentComing = (e) => {
+    if (e.detail && e.detail.resident_name) {
+      showToast(`🚗 ${e.detail.resident_name} viene en camino`, 'info')
+    }
+    state = getParkingState()
+    render()
+  }
+
+  window.addEventListener('sloty-sync-downloaded', handleSyncDownloaded)
+  window.addEventListener('sloty-resident-coming', handleResidentComing)
+
   window.handleAction = (type, payload) => {
     if (actions[type]) actions[type](payload)
   }
 
   const showNativePush = (title, msg, icon = '🛡️') => {
-    push.innerHTML = `
+    push.innerHTML = html`
       <div style="flex:1; display:flex; gap:12px; align-items:center;" onclick="this.parentElement.remove()">
         <div style="width:45px; height:45px; background:var(--primary); border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:1.4rem;">${icon}</div>
         <div>
@@ -109,7 +127,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
     if (!container.contains(elModal)) {
       container.appendChild(elModal)
     }
-    elModal.innerHTML = `
+    elModal.innerHTML = html`
       <div style="background:white;border-radius:24px;padding:24px;width:100%;max-width:320px;text-align:center;">
         <div style="font-weight:900;font-size:1.2rem;margin-bottom:10px;color:#1a1a2e;">${title}</div>
         <div style="font-size:0.85rem;color:#666;margin-bottom:24px;">${msg}</div>
@@ -127,7 +145,7 @@ export const initGuard = (container, guardName = 'Guardia') => {
     if (!container.contains(elModal)) {
       container.appendChild(elModal)
     }
-    elModal.innerHTML = `
+    elModal.innerHTML = html`
       <div style="background:white;border-radius:24px;padding:24px;width:100%;max-width:320px;text-align:center;box-shadow:0 20px 40px rgba(0,0,0,0.2);">
         <div style="font-size:2.5rem;margin-bottom:10px;">🔒</div>
         <div style="font-weight:900;font-size:1.1rem;margin-bottom:8px;color:#1a1a2e;">${title}</div>
@@ -326,7 +344,13 @@ export const initGuard = (container, guardName = 'Guardia') => {
        currentView = 'EXIT'
        render()
     },
-    LOGOUT: () => { showModal('¿Cerrar sesión?', 'Tu progreso se guardará automáticamente.', () => location.reload()) },
+    LOGOUT: () => { showModal('¿Cerrar sesión?', 'Tu progreso se guardará automáticamente.', () => {
+      if (window.slotyLogout) window.slotyLogout()
+      else {
+        localStorage.clear()
+        location.reload()
+      }
+    }) },
     SHOW_SCANNER: () => {
       stopScanner(); scannerActive = true; render()
     },
@@ -779,7 +803,7 @@ getExchangeRate().then(bcv => {
           ${t}
         </button>`).join('');
 
-      elModal.innerHTML = `
+      elModal.innerHTML = html`
         <div style="position:fixed; inset:0; background:rgba(0,0,0,0.6);
                     z-index:9999; display:flex; align-items:flex-end;">
           <div style="background:white; border-radius:24px 24px 0 0;
@@ -903,7 +927,7 @@ getExchangeRate().then(bcv => {
       if (!container.contains(elModal)) {
         container.appendChild(elModal);
       }
-      elModal.innerHTML = `<div style="padding:40px;text-align:center;color:white;font-weight:900;">Cargando tus reportes...</div>`;
+      elModal.innerHTML = html`<div style="padding:40px;text-align:center;color:white;font-weight:900;">Cargando tus reportes...</div>`;
       elModal.style.display = 'block';
 
       const { data, error } = await supabase.from('incidents')
@@ -934,7 +958,7 @@ getExchangeRate().then(bcv => {
          `).join('');
       }
       
-      elModal.innerHTML = `
+      elModal.innerHTML = html`
           <div style="position:fixed; top:0; left:0; width:100%; height:100vh;
                       background:rgba(0,0,0,0.8); z-index:99999; display:flex;
                       align-items:center; justify-content:center; padding:20px;">
@@ -1702,7 +1726,7 @@ getExchangeRate().then(bcv => {
 
   // ── CORE LOGIC ───────────────────────────────────────────────
   const renderShell = (state) => {
-    container.innerHTML = `
+    container.innerHTML = html`
       <div id="guard-shell" style="background:#f0f2f5;min-height:100vh;font-family:'Montserrat',sans-serif;color:#1a1a2e;">
         <div id="guard-header-area"></div>
         <div id="guard-content-area"></div>
@@ -1949,7 +1973,7 @@ getExchangeRate().then(bcv => {
     if (['MAP', 'SUB_PAYMENT', 'CLOSURE', 'SUB_PAYMENT_LOADING'].includes(currentView)) {
        footer.innerHTML = renderBottomNav();
     } else {
-       footer.innerHTML = `
+       footer.innerHTML = html`
          <div style="position:fixed;bottom:0;left:0;width:100%;padding:16px;background:white;border-top:1px solid #eee;z-index:200;">
            <button data-action="BACK_MAP" style="width:100%;padding:16px;background:#f8f9fa;border:none;border-radius:16px;font-weight:700;color:#999;">← VOLVER</button>
          </div>`
@@ -2053,7 +2077,7 @@ getExchangeRate().then(bcv => {
            const banner = document.createElement('div');
            banner.id = 'visitor-freq-banner';
            banner.style.cssText = 'background:linear-gradient(135deg, #1a1a2e, #16213e); color:white; padding:12px; border-radius:12px; margin-top:8px; display:flex; justify-content:space-between; align-items:center; border:1px solid #F5C518;';
-           banner.innerHTML = `
+           banner.innerHTML = html`
              <div>
                <div style="color:#F5C518;font-size:0.6rem;font-weight:900;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">⭐ VISITANTE FRECUENTE</div>
                <div style="font-size:1rem;font-weight:900;">${found.name || found.company}</div>
@@ -2157,34 +2181,13 @@ getExchangeRate().then(bcv => {
 
   if (state.levels.length) activeLevel = state.levels[0].name
 
-  // Realtime: detectar cuando un residente avisa que va en camino
-  let guardRealtimeChannel = null;
-  if (state && state.buildingId) {
-    try {
-      guardRealtimeChannel = supabase
-        .channel('guard-is-coming-live')
-        .on('postgres_changes', {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'subscriptions',
-          filter: `building_id=eq.${state.buildingId}`
-        }, (payload) => {
-          if (payload.new.is_coming === true && payload.old.is_coming === false) {
-            showToast(`🚗 ${payload.new.resident_name} viene en camino`, 'info');
-          }
-        })
-        .subscribe();
-    } catch (e) {
-      console.warn("Realtime subscription failed:", e);
-    }
-  }
-
   startModule()
 
   container._cleanup = () => {
     clearInterval(syncInt)
-    if (guardRealtimeChannel) guardRealtimeChannel.unsubscribe()
     window.removeEventListener('sloty-sync-updated', handleSyncUpdated)
     window.removeEventListener('sloty-connection-status', handleConnectionStatus)
+    window.removeEventListener('sloty-sync-downloaded', handleSyncDownloaded)
+    window.removeEventListener('sloty-resident-coming', handleResidentComing)
   }
 }
