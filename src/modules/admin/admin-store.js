@@ -31,6 +31,12 @@ export const store = {
   // UI state variables shared across modules
   editingResident: null,
   pendingAction: null,
+  editingGuard: null,
+  editingLevel: null,
+  openPaletteLevel: null,
+  activeTab: 'HOME',
+  activeSettingsMenu: 'MAIN',
+  reportFilter: 'HOY',
 }
 
 // ─── SUBSCRIPTIONS CACHE ──────────────────────────────────────
