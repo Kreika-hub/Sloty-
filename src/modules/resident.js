@@ -1,4 +1,5 @@
 import { supabase, getExchangeRate } from '../db.js'
+import { html } from '../utils/sanitize.js'
 
 const uploadPaymentProof = async (file, paymentId, buildingId, residentName) => {
   if (!file) return null;
@@ -438,7 +439,7 @@ export async function initResident(container, subscription) {
         </div>`
     }
 
-    container.innerHTML = `
+    container.innerHTML = html`
       <div style="min-height:100vh;background:#f8f9fa;font-family:'Montserrat',sans-serif;padding-bottom:120px;">
         <div style="background:#1a1a2e;padding:40px 24px 80px;text-align:center;position:relative;overflow:hidden;">
           <button id="res-logout" style="position:absolute;top:20px;right:20px;background:none;border:none;color:white;opacity:0.5;font-weight:700;cursor:pointer;font-size:0.75rem;">SALIR</button>
@@ -526,10 +527,10 @@ export async function initResident(container, subscription) {
           if (helper) {
             if (method === 'PAGO_MOVIL' || method === 'TRANSFERENCIA') {
               const equivUsd = amountVal / rate
-              helper.innerHTML = `Equivale a <strong>$${equivUsd.toFixed(2)} USD</strong> (Tasa BCV: Bs. ${Number(rate).toFixed(2)})`
+              helper.innerHTML = html`Equivale a <strong>$${equivUsd.toFixed(2)} USD</strong> (Tasa BCV: Bs. ${Number(rate).toFixed(2)})`
             } else {
               const equivBs = amountVal * rate
-              helper.innerHTML = `Equivale a <strong>Bs. ${Math.round(equivBs).toLocaleString('es-VE')}</strong> (Tasa BCV: Bs. ${Number(rate).toFixed(2)})`
+              helper.innerHTML = html`Equivale a <strong>Bs. ${Math.round(equivBs).toLocaleString('es-VE')}</strong> (Tasa BCV: Bs. ${Number(rate).toFixed(2)})`
             }
           }
         }
@@ -697,7 +698,13 @@ export async function initResident(container, subscription) {
       }, 150)
     }
 
-    document.getElementById('res-logout').onclick = () => location.reload()
+    document.getElementById('res-logout').onclick = () => {
+      if (window.slotyLogout) window.slotyLogout()
+      else {
+        localStorage.clear()
+        location.reload()
+      }
+    }
     container.querySelectorAll('.res-nav-btn').forEach(btn => {
       btn.onclick = () => { reportMode = false; activeTab = btn.dataset.tab; render() }
     })
@@ -710,7 +717,7 @@ export async function initResident(container, subscription) {
     .single()
   
   if (bldCheck?.membership_status === 'SUSPENDED') {
-    container.innerHTML = `
+    container.innerHTML = html`
       <div style="min-height:100vh;background:#1a1a2e;display:flex;
         flex-direction:column;align-items:center;justify-content:center;
         padding:40px;text-align:center;">
