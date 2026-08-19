@@ -28,6 +28,10 @@ export const renderSettings = (state) => {
            <span>🗂️ CATEGORÍAS DE VEHÍCULOS</span>
            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px; color:#bbb;"><polyline points="9 18 15 12 9 6"/></svg>
         </button>
+        <button data-action="SUBMENU" data-menu="AUDIT_LOG" style="padding:22px; background:white; color:var(--primary); border:1.5px solid #eee; border-radius:24px; font-weight:900; font-size:0.85rem; cursor:pointer; text-align:left; display:flex; justify-content:space-between; align-items:center; box-shadow:0 5px 15px rgba(0,0,0,0.01);">
+           <span>🛡️ BITÁCORA DE AUDITORÍA INALTERABLE</span>
+           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px; color:#bbb;"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
       </div>
     `;
   } else if (activeMenu === 'TARIFFS') {
@@ -190,6 +194,49 @@ export const renderSettings = (state) => {
          </div>
 
          <button data-action="SAVE_SETTINGS" style="width:100%; padding:20px; background:#1a1a2e; color:var(--accent); border:none; border-radius:20px; font-weight:900; cursor:pointer; font-size:0.85rem; letter-spacing:1px; text-transform:uppercase; box-shadow:0 10px 20px rgba(26,26,46,0.15); margin-top:25px;">GUARDAR CATEGORÍAS DE VEHÍCULOS</button>
+      </div>
+    `;
+  } else if (activeMenu === 'AUDIT_LOG') {
+    const logs = (state.audit_logs || []).slice(0, 50);
+    subSectionHtml = `
+      <div style="margin-top:20px; background:white; padding:25px; border-radius:32px; border:1.5px solid #f0f0f0;">
+         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+           <button data-action="SUBMENU" data-menu="MAIN" style="background:#1a1a2e; color:#F5C518; border:none; border-radius:50px; padding:6px 12px; font-size:0.6rem; font-weight:900; cursor:pointer;">← VOLVER</button>
+           <div style="font-size:0.65rem; font-weight:900; color:#999; text-transform:uppercase;">🛡️ BITÁCORA INALTERABLE</div>
+         </div>
+
+         <div style="background:#f8f9fa; border-radius:18px; padding:15px; margin-bottom:20px; border:1px solid #eee;">
+            <div style="font-size:0.75rem; font-weight:900; color:var(--primary); margin-bottom:4px;">Registro de Seguridad Criptográfico</div>
+            <div style="font-size:0.65rem; color:#666; font-weight:600; line-height:1.4;">
+               Todas las acciones sensibles (cobros, egresos, modificaciones y anulaciones) quedan registradas permanentemente con fecha, usuario y parámetros exactos.
+            </div>
+         </div>
+
+         <div style="display:grid; gap:10px;">
+            ${logs.map(log => {
+               const detailsStr = typeof log.details === 'object' ? JSON.stringify(log.details) : String(log.details || '');
+               return `
+               <div style="background:#fafafa; border-radius:18px; padding:16px; border:1px solid #eee;">
+                  <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;">
+                     <span style="background:#1a1a2e; color:#F5C518; padding:3px 8px; border-radius:6px; font-size:0.55rem; font-weight:900; text-transform:uppercase;">
+                        ${escapeHTML(log.action)}
+                     </span>
+                     <span style="font-size:0.55rem; color:#999; font-weight:700;">
+                        ${new Date(log.performed_at).toLocaleString()}
+                     </span>
+                  </div>
+                  <div style="font-size:0.75rem; font-weight:800; color:var(--primary); margin-bottom:4px;">
+                     Por: <strong style="color:#2563eb;">${escapeHTML(log.performed_by || 'Sistema')}</strong>
+                  </div>
+                  ${detailsStr && detailsStr !== '{}' ? `
+                     <div style="font-size:0.6rem; color:#666; font-family:monospace; background:white; padding:8px 10px; border-radius:10px; border:1px solid #eee; word-break:break-all;">
+                        ${escapeHTML(detailsStr)}
+                     </div>
+                  ` : ''}
+               </div>
+               `;
+            }).join('') || '<div style="text-align:center; padding:30px; color:#ccc; font-weight:700; font-size:0.7rem;">Sin registros en la bitácora</div>'}
+         </div>
       </div>
     `;
   }
@@ -441,10 +488,13 @@ export const initSettingsActions = (actions, container, refresh) => {
       showToast('Tope actualizado', 'success')
       refresh()
     },
-    SAVE_PROFILE: async () => {
+    SAVE_PROFILE: async (btn) => {
       const name = document.getElementById('settings-bld-name').value.trim()
       if (!name) return showToast('Nombre inválido', 'error')
       
+      const origText = btn ? btn.textContent : '';
+      if (btn) { btn.disabled = true; btn.textContent = 'GUARDANDO...'; }
+
       const state = getParkingState()
       state.buildingName = name
       saveParkingState(state)
@@ -457,6 +507,7 @@ export const initSettingsActions = (actions, container, refresh) => {
         refresh()
       } else {
         showToast('Error al guardar en la nube', 'error')
+        if (btn) { btn.disabled = false; btn.textContent = origText; }
       }
     },
     FILTER_REPORTS: (btn) => {

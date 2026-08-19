@@ -1,4 +1,5 @@
-import { getParkingState, saveParkingState, logAudit, supabase } from '../db.js'
+import { getParkingState, saveParkingState, logAudit, supabase, getExchangeRate } from '../db.js'
+import { notifyMasterPayment } from '../utils/notifier.js'
 
 export const initMaster = (container) => {
   let activeTab = 'SYSTEM'
@@ -212,6 +213,22 @@ export const initMaster = (container) => {
         }
 
         await Promise.all(updates);
+
+        if (paid && amount > 0) {
+          const bcv = await getExchangeRate();
+          const rateVal = bcv?.rate || 40.0;
+          notifyMasterPayment({
+            buildingName: bld.name,
+            adminName: 'Administración',
+            plan: selectedPlan,
+            amountUsd: amount,
+            amountBs: amount * rateVal,
+            bcvRate: rateVal,
+            method: method,
+            reference: 'Registro Directo Máster'
+          }).catch(e => console.warn('[Sloty] notifyMasterPayment notice:', e));
+        }
+
         overlay.remove();
         delete window._selectMasterPlan;
         delete window._currentPlanId;

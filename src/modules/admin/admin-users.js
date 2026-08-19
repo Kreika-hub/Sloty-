@@ -337,9 +337,30 @@ export const initPlateAdder = () => {
 export const initUserActions = (actions, container, refresh) => {
   Object.assign(actions, {
     SEND_DEBT_WS: (btn) => {
-      const { name, debt, phone } = btn.dataset;
+      const { name, debt, phone, days } = btn.dataset;
       if (!phone) return showToast('No hay teléfono registrado', 'error');
-      const msg = `Hola ${name}, te saludamos de la Administración. Te recordamos que presentas un saldo pendiente de $${debt} en tu mensualidad. Por favor, realiza tu pago para mantener tu acceso activo. ¡Gracias!`;
+      const state = getParkingState();
+      const debtVal = parseFloat(debt) || 0;
+      const rateVal = store.currentBcv?.rate || 40.0;
+      const debtBs = (debtVal * rateVal).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const d = parseInt(days) || 0;
+
+      let timeText = '';
+      if (d < 0) {
+        timeText = `presenta un *retraso de ${Math.abs(d)} días*`;
+      } else if (d === 0) {
+        timeText = `*vence el día de hoy*`;
+      } else {
+        timeText = `vence en *${d} días*`;
+      }
+
+      const msg = `Hola *${name}*, te saludamos de la Administración de *${state.buildingName || 'tu Condominio'}*.\n\n` +
+        `Te recordamos cordialmente que tu mensualidad de estacionamiento ${timeText}.\n\n` +
+        `💵 *Saldo Pendiente:* $${debtVal.toFixed(2)}\n` +
+        `🇻🇪 *Equivalente en Bs (Tasa BCV ${rateVal.toFixed(2)}):* Bs. ${debtBs}\n\n` +
+        `📌 *Formas de Pago:* Puedes realizar tu pago en Efectivo en Garita, Pago Móvil o Transferencia y reportarlo para mantener tu acceso vehicular activo.\n\n` +
+        `¡Agradecemos tu puntual colaboración! 🚗`;
+
       window.open(`https://wa.me/${phone.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`, '_blank');
     },
     SEND_EXPIRY_ALERT: (btn) => {

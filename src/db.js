@@ -528,18 +528,38 @@ export const saveClosure = async (closure) => {
 export const logAudit = async (action, details = {}) => {
   const state = getParkingState();
   if (!state.buildingId) return;
-  if (!hasFeature('audit_log')) return; // solo planes que lo incluyen
 
+  const auditEntry = {
+    id: `aud-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    building_id: state.buildingId,
+    action: String(action || 'AUDIT_EVENT'),
+    details: details || {},
+    performed_by: state.currentUser?.name || state.adminInfo?.name || 'Administrador',
+    performed_at: new Date().toISOString()
+  };
+
+  // 1. Guardar localmente en state.audit_logs (inalterable en cliente, limitado a 200)
+  state.audit_logs = state.audit_logs || [];
+  state.audit_logs.unshift(auditEntry);
+  if (state.audit_logs.length > 200) {
+    state.audit_logs = state.audit_logs.slice(0, 200);
+  }
+  saveParkingState(state);
+
+  // 2. Encolar en sincronización para garantizar resiliencia
+  enqueueSync({
+    table: 'audit_log',
+    action: 'INSERT',
+    data: auditEntry
+  });
+
+  // 3. Intento directo en Supabase si hay conexión
   try {
-    await supabase.from('audit_log').insert({
-      building_id: state.buildingId,
-      action,
-      details,
-      performed_by: state.currentUser?.name || 'Sistema',
-      performed_at: new Date().toISOString()
-    });
+    if (navigator.onLine) {
+      await supabase.from('audit_log').insert(auditEntry);
+    }
   } catch(e) {
-    console.warn('[Sloty] audit_log error:', e);
+    console.warn('[Sloty] audit_log direct insert error (queued via sync):', e);
   }
 };
 

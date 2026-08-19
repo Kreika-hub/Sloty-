@@ -276,6 +276,17 @@ export const initAdmin = (container) => {
               </div>
               <div style="display:flex; align-items:center; gap:8px;">
                 ${(() => {
+                  const syncCount = getSyncQueueCount();
+                  const isOnline = navigator.onLine;
+                  let connBadge = '';
+                  if (!isOnline) {
+                    connBadge = `<span style="font-size:0.55rem; font-weight:900; color:#ef4444; background:rgba(239,68,68,0.18); padding:3px 8px; border-radius:20px; display:inline-flex; align-items:center; gap:4px;">🔴 Offline</span>`;
+                  } else if (syncCount > 0) {
+                    connBadge = `<span style="font-size:0.55rem; font-weight:900; color:#f59e0b; background:rgba(245,158,11,0.18); padding:3px 8px; border-radius:20px; display:inline-flex; align-items:center; gap:4px;">🟠 Sincronizando (${syncCount})</span>`;
+                  } else {
+                    connBadge = `<span style="font-size:0.55rem; font-weight:900; color:#22c55e; background:rgba(34,197,94,0.18); padding:3px 8px; border-radius:20px; display:inline-flex; align-items:center; gap:4px;">🟢 Online</span>`;
+                  }
+
                   const plan = state.plan || 'TRIAL'
                   const planColors = { TRIAL:'#888', BRONCE:'#cd7f32', PLATA:'#aaa', ORO:'#F5C518' }
                   let upgradeBtn = ''
@@ -283,6 +294,7 @@ export const initAdmin = (container) => {
                     upgradeBtn = `<button data-action="SHOW_PLANS" class="gold-btn" style="padding:4px 10px; flex-shrink:0;"><span>🚀 UPGRADE</span></button>`
                   }
                   return `
+                    ${connBadge}
                     <div style="font-size:0.55rem; font-weight:900; color:${planColors[plan] || '#888'}; letter-spacing:0.5px; background:rgba(255,255,255,0.1); padding:4px 10px; border-radius:8px; flex-shrink:0;">PLAN ${plan}</div>
                     ${upgradeBtn}
                   `

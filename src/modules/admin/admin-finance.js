@@ -611,14 +611,45 @@ export const initFinanceActions = (actions, container, refresh) => {
           link.remove();
         } else if (type === 'PDF') {
           // 🛡️ Data Minimization: select explicit columns
-          const { data: shifts } = await supabase.from('guard_shifts')
-            .select('ended_at, started_at, guard_name, movements, total_cash, total_bs, total_mobile')
-            .eq('building_id', state.buildingId)
-            .order('ended_at', { ascending: false })
-            .limit(50);
+          const [ { data: shifts }, { data: expenses }, { data: pays } ] = await Promise.all([
+            supabase.from('guard_shifts')
+              .select('ended_at, started_at, guard_name, movements, total_cash, total_bs, total_mobile')
+              .eq('building_id', state.buildingId)
+              .order('ended_at', { ascending: false })
+              .limit(30),
+            supabase.from('building_expenses')
+              .select('category, description, amount_usd, amount_bs, bcv_rate_used, payment_method, expense_date')
+              .eq('building_id', state.buildingId)
+              .order('expense_date', { ascending: false })
+              .limit(30),
+            supabase.from('payments')
+              .select('amount, method, payment_date, status')
+              .eq('building_id', state.buildingId)
+              .eq('status', 'CONFIRMED')
+              .order('payment_date', { ascending: false })
+              .limit(30)
+          ]);
           
-          let shiftHtml = '<table style="width:100%; border-collapse:collapse; margin-top:20px; font-size:12px;">' +
-             '<tr style="background:#1a1a2e; color:white;"><th style="padding:10px; text-align:left;">FECHA DE CIERRE</th><th style="padding:10px; text-align:left;">GUARDIA</th><th style="padding:10px; text-align:left;">DETALLE COBROS (Movimientos)</th><th style="padding:10px; text-align:right;">TOTAL CIERRE</th></tr>';
+          const totalSubsIncome = (pays || []).reduce((a, p) => a + (Number(p.amount) || 0), 0);
+          const totalGuardIncome = (shifts || []).reduce((a, s) => a + (Number(s.total_cash)||0) + (Number(s.total_mobile)||0) + (Number(s.total_bs)||0), 0);
+          const totalIncome = totalSubsIncome + totalGuardIncome;
+          const totalExp = (expenses || []).reduce((a, e) => a + (Number(e.amount_usd) || 0), 0);
+          const netBalance = totalIncome - totalExp;
+          const rateVal = store.currentBcv?.rate || 40.0;
+          const netBalanceBs = netBalance * rateVal;
+
+          let expensesRows = (expenses || []).map(e => `
+            <tr style="border-bottom:1px solid #eee;">
+              <td style="padding:8px 10px;">${new Date(e.expense_date).toLocaleDateString()}</td>
+              <td style="padding:8px 10px; font-weight:bold; color:#e63946;">${escapeHTML(e.category)}</td>
+              <td style="padding:8px 10px;">${escapeHTML(e.description)}</td>
+              <td style="padding:8px 10px;">${escapeHTML(e.payment_method || 'EFECTIVO')}</td>
+              <td style="padding:8px 10px; text-align:right; font-weight:bold; color:#e63946;">-$${Number(e.amount_usd || 0).toFixed(2)}</td>
+            </tr>
+          `).join('') || '<tr><td colspan="5" style="padding:15px; text-align:center; color:#999;">Sin egresos registrados</td></tr>';
+
+          let shiftHtml = '<table style="width:100%; border-collapse:collapse; margin-top:15px; font-size:12px;">' +
+             '<tr style="background:#1a1a2e; color:white;"><th style="padding:10px; text-align:left;">FECHA DE CIERRE</th><th style="padding:10px; text-align:left;">GUARDIA</th><th style="padding:10px; text-align:left;">DETALLE COBROS</th><th style="padding:10px; text-align:right;">TOTAL CIERRE</th></tr>';
              
           (shifts || []).forEach(s => {
              const m = s.movements || [];
@@ -629,13 +660,11 @@ export const initFinanceActions = (actions, container, refresh) => {
                <td style="padding:10px;">${s.ended_at ? new Date(s.ended_at).toLocaleString() : new Date(s.started_at).toLocaleString()}</td>
                <td style="padding:10px; font-weight:bold;">${escapeHTML(s.guard_name)}</td>
                <td style="padding:10px;">
-                 <div style="font-weight:bold; margin-bottom:4px;">${e} Entradas / ${x} Salidas</div>
-                 <div style="font-size:10px; color:#555;">
-                   USD Efec: $${(s.total_cash||0).toFixed(2)} | BS Efec: $${(s.total_bs||0).toFixed(2)} | PagoMóvil: $${(s.total_mobile||0).toFixed(2)}
-                 </div>
+                 <div style="font-weight:bold; margin-bottom:2px;">${e} Entradas / ${x} Salidas</div>
+                 <div style="font-size:10px; color:#666;">USD: $${(s.total_cash||0).toFixed(2)} | Bs Efec: $${(s.total_bs||0).toFixed(2)} | PagoMóvil: $${(s.total_mobile||0).toFixed(2)}</div>
                </td>
                <td style="padding:10px; text-align:right;">
-                 <div style="font-weight:bold; font-size:16px; color:#22c55e;">$${sum.toFixed(2)}</div>
+                 <div style="font-weight:bold; font-size:14px; color:#22c55e;">$${sum.toFixed(2)}</div>
                </td>
              </tr>`;
           });
@@ -643,19 +672,66 @@ export const initFinanceActions = (actions, container, refresh) => {
           
           const win = window.open('', '_blank');
           win.document.write(`
-            <html><head><title>Reporte Contable - Sloty</title>
-            <style>body{font-family:'Montserrat', sans-serif; color:#333; padding:40px; margin:0;} @media print{ @page {margin: 1cm;} }</style>
+            <html><head><title>Estado de Cuenta y Reporte Financiero - Sloty</title>
+            <style>
+              body{font-family:'Montserrat', sans-serif; color:#333; padding:40px; margin:0;}
+              .card{background:#f8f9fa; border-radius:12px; padding:15px; margin-bottom:20px; border:1px solid #eee;}
+              .badge{padding:4px 8px; border-radius:6px; font-weight:bold; font-size:11px;}
+              @media print{ @page {margin: 1.2cm;} body{padding:0;} }
+            </style>
             </head><body>
-               <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:3px solid #F5C518; padding-bottom:15px; margin-bottom:30px;">
+               <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:3px solid #F5C518; padding-bottom:15px; margin-bottom:25px;">
                   <div>
-                     <h1 style="color:#1a1a2e; margin:0; font-size:24px;">REPORTE CONTABLE</h1>
-                     <div style="color:#666; font-size:14px; margin-top:5px;">Generado el ${new Date().toLocaleString()}</div>
+                     <h1 style="color:#1a1a2e; margin:0; font-size:24px; letter-spacing:0.5px;">ESTADO DE CUENTA Y BALANCE FINANCIERO</h1>
+                     <div style="color:#666; font-size:13px; margin-top:4px;">Generado el ${new Date().toLocaleString()} · Tasa BCV: Bs. ${rateVal.toFixed(2)}</div>
                   </div>
-                  <h2 style="color:#1a1a2e; text-transform:uppercase; margin:0;">${escapeHTML(state.buildingName)}</h2>
+                  <div style="text-align:right;">
+                    <h2 style="color:#1a1a2e; text-transform:uppercase; margin:0; font-size:20px;">${escapeHTML(state.buildingName)}</h2>
+                    <div style="color:#888; font-size:11px; font-weight:bold; margin-top:2px;">CÓDIGO: ${escapeHTML(state.buildingCode)}</div>
+                  </div>
                </div>
                
-               <h3 style="color:#1a1a2e; border-bottom:1px solid #ccc; padding-bottom:5px;">Auditoría de Cierres de Turno (Últimos 50)</h3>
+               <!-- RESUMEN EJECUTIVO -->
+               <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:15px; margin-bottom:30px;">
+                  <div class="card" style="border-left:4px solid #22c55e;">
+                     <div style="font-size:11px; font-weight:bold; color:#666; text-transform:uppercase;">TOTAL INGRESOS</div>
+                     <div style="font-size:22px; font-weight:900; color:#22c55e; margin-top:4px;">+$${totalIncome.toFixed(2)}</div>
+                     <div style="font-size:10px; color:#888; margin-top:2px;">Garita + Mensualidades</div>
+                  </div>
+                  <div class="card" style="border-left:4px solid #e63946;">
+                     <div style="font-size:11px; font-weight:bold; color:#666; text-transform:uppercase;">TOTAL EGRESOS / GASTOS</div>
+                     <div style="font-size:22px; font-weight:900; color:#e63946; margin-top:4px;">-$${totalExp.toFixed(2)}</div>
+                     <div style="font-size:10px; color:#888; margin-top:2px;">Operatividad y Nómina</div>
+                  </div>
+                  <div class="card" style="border-left:4px solid #1a1a2e; background:#1a1a2e; color:white;">
+                     <div style="font-size:11px; font-weight:bold; color:#F5C518; text-transform:uppercase;">BALANCE NETO REAL</div>
+                     <div style="font-size:22px; font-weight:900; color:${netBalance >= 0 ? '#22c55e' : '#e63946'}; margin-top:4px;">
+                        ${netBalance >= 0 ? '+' : ''}$${netBalance.toFixed(2)}
+                     </div>
+                     <div style="font-size:10px; color:rgba(255,255,255,0.7); margin-top:2px;">≈ Bs. ${netBalanceBs.toLocaleString('es-VE', {minimumFractionDigits:2})}</div>
+                  </div>
+               </div>
+
+               <!-- TABLA DE EGRESOS -->
+               <h3 style="color:#1a1a2e; border-bottom:1.5px solid #ddd; padding-bottom:6px; margin-bottom:10px; font-size:15px;">1. Egresos y Gastos Operativos Recientes</h3>
+               <table style="width:100%; border-collapse:collapse; margin-bottom:30px; font-size:12px;">
+                  <tr style="background:#f4f4f5; font-size:11px; text-transform:uppercase;">
+                     <th style="padding:8px 10px; text-align:left;">Fecha</th>
+                     <th style="padding:8px 10px; text-align:left;">Categoría</th>
+                     <th style="padding:8px 10px; text-align:left;">Descripción</th>
+                     <th style="padding:8px 10px; text-align:left;">Método</th>
+                     <th style="padding:8px 10px; text-align:right;">Monto USD</th>
+                  </tr>
+                  ${expensesRows}
+               </table>
+
+               <!-- TABLA DE CIERRES -->
+               <h3 style="color:#1a1a2e; border-bottom:1.5px solid #ddd; padding-bottom:6px; margin-bottom:10px; font-size:15px;">2. Cierres de Turno en Garita (Últimos 30)</h3>
                ${shiftHtml}
+
+               <div style="margin-top:40px; padding-top:20px; border-top:1px solid #ddd; text-align:center; font-size:11px; color:#888;">
+                  Documento emitido por el Sistema de Gestión Sloty. Válido como reporte administrativo interno.
+               </div>
             </body></html>
           `);
           win.document.close();
