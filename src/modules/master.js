@@ -541,7 +541,7 @@ export const initMaster = (container) => {
                         text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Membres&iacute;a Sloty</div>
             <div style="display:flex; justify-content:space-between; align-items:center;">
               <div>
-                <div style="font-size:0.9rem; font-weight:900; color:white;">Plan ${bld?.plan || 'TRIAL'}</div>
+                <div style="font-size:0.9rem; font-weight:900; color:white;">Plan ${escapeHTML(bld?.plan || 'TRIAL')}</div>
                 <div style="font-size:0.65rem; color:${expiryColor}; font-weight:700; margin-top:2px;">
                   ${daysLeft === null ? 'Sin fecha de vencimiento' :
                     daysLeft < 0 ? `Vencido hace ${Math.abs(daysLeft)} d&iacute;as` :
@@ -637,19 +637,19 @@ export const initMaster = (container) => {
               <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
                 <div>
                   <div style="font-size:0.8rem; font-weight:900; color:white;">
-                    Plan ${p.plan_key || '—'} · $${Number(p.amount || 0).toFixed(2)}
+                    Plan ${escapeHTML(p.plan_key || '—')} · $${Number(p.amount || 0).toFixed(2)}
                   </div>
                   <div style="font-size:0.65rem; color:#999; margin-top:2px;">
-                    ${p.reference || 'Sin referencia'} ·
+                    ${escapeHTML(p.reference || 'Sin referencia')} ·
                     ${new Date(p.created_at || p.submitted_at).toLocaleString('es-VE', { dateStyle:'short', timeStyle:'short' })}
                   </div>
                 </div>
               </div>
               ${p.proof_image ? `
-                <img src="${p.proof_image}" alt="Comprobante"
+                <img src="${escapeHTML(p.proof_image)}" alt="Comprobante"
                      style="width:100%; border-radius:10px; margin-bottom:10px;
                             max-height:200px; object-fit:cover; cursor:pointer;"
-                     onclick="window.open('${p.proof_image}','_blank')" />` : ''}
+                     onclick="window.open('${escapeHTML(p.proof_image)}','_blank')" />` : ''}
               <div style="display:flex; gap:8px;">
                 <button onclick="window.handleMasterAction('APPROVE_PROOF','${p.id}|${buildingId}|${p.plan_key}')"
                   style="flex:1; background:#22c55e; color:white; border:none;
@@ -664,7 +664,7 @@ export const initMaster = (container) => {
                   ✗ RECHAZAR
                 </button>
                 ${bld?.phone ? `
-                  <a href="https://wa.me/${bld.phone.replace(/\D/g,'')}?text=Hola, revisamos tu comprobante de pago para el plan ${p.plan_key}."
+                  <a href="https://wa.me/${bld.phone.replace(/\D/g,'')}?text=${encodeURIComponent('Hola, revisamos tu comprobante de pago para el plan ' + (p.plan_key || '') + '.')}"
                      target="_blank"
                      style="background:rgba(255,255,255,0.08); color:white; border:none;
                             border-radius:10px; padding:10px 12px; font-size:0.75rem;
@@ -699,7 +699,7 @@ export const initMaster = (container) => {
           </div>
           ${incidents.map(i => `
             <div style="font-size:0.75rem; color:rgba(255,255,255,0.6); margin-bottom:4px;">
-              ⚠️ ${i.type} — ${i.description?.slice(0,60)}${i.description?.length > 60 ? '...' : ''}
+              ⚠️ ${escapeHTML(i.type || '')} — ${escapeHTML(i.description?.slice(0,60) || '')}${i.description?.length > 60 ? '...' : ''}
             </div>`).join('')}
         </div>` : ''}
 
@@ -715,10 +715,10 @@ export const initMaster = (container) => {
           (personnel || []).map(p => `
             <div style="display:flex; justify-content:space-between; align-items:center;
                         padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
-              <div style="color:white; font-size:0.8rem; font-weight:700;">${p.name}</div>
+              <div style="color:white; font-size:0.8rem; font-weight:700;">${escapeHTML(p.name || '')}</div>
               <span style="background:rgba(245,197,24,0.1); color:#F5C518; font-size:0.6rem;
                            font-weight:900; padding:2px 8px; border-radius:6px;">
-                ${p.role || 'GUARDIA'}
+                ${escapeHTML(p.role || 'GUARDIA')}
               </span>
             </div>`).join('')}
       </div>
@@ -739,7 +739,7 @@ export const initMaster = (container) => {
               <div style="display:flex; justify-content:space-between; align-items:center;
                           padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
                 <div>
-                  <div style="color:white; font-size:0.8rem; font-weight:700;">${s.guard_name}</div>
+                  <div style="color:white; font-size:0.8rem; font-weight:700;">${escapeHTML(s.guard_name || '')}</div>
                   <div style="color:#999; font-size:0.6rem; font-weight:700; margin-top:2px;">
                     ${new Date(s.ended_at).toLocaleString('es-VE',{dateStyle:'short',timeStyle:'short'})}
                     · ${s.entries||0} entradas
@@ -767,14 +767,14 @@ export const initMaster = (container) => {
                style="display:flex; align-items:center; gap:10px; color:white;
                       text-decoration:none; padding:8px 0;">
               <span style="font-size:1.2rem;">💬</span>
-              <span style="font-size:0.8rem; font-weight:700;">${bld.phone}</span>
+              <span style="font-size:0.8rem; font-weight:700;">${escapeHTML(bld.phone)}</span>
             </a>` : ''}
           ${bld.admin_email ? `
             <a href="mailto:${bld.admin_email}"
                style="display:flex; align-items:center; gap:10px; color:white;
                       text-decoration:none; padding:8px 0;">
               <span style="font-size:1.2rem;">✉️</span>
-              <span style="font-size:0.8rem; font-weight:700;">${bld.admin_email}</span>
+              <span style="font-size:0.8rem; font-weight:700;">${escapeHTML(bld.admin_email)}</span>
             </a>` : ''}
         </div>` : ''}
 
@@ -792,7 +792,7 @@ export const initMaster = (container) => {
       const totalIncome = (mems||[]).reduce((a,b)=>a+(Number(b.amount)||0), 0)
       
       const expiredList = (blds||[]).filter(b => b.membership_status === 'ACTIVE' && b.plan !== 'TRIAL')
-        .map(b => `<tr><td style="padding:8px; border-bottom:1px solid #eee;">${b.name}</td><td style="padding:8px; border-bottom:1px solid #eee;">${b.phone||'N/A'}</td><td style="padding:8px; border-bottom:1px solid #eee; color:red;">Sujeto a Cobro</td></tr>`).join('')
+        .map(b => `<tr><td style="padding:8px; border-bottom:1px solid #eee;">${escapeHTML(b.name || '')}</td><td style="padding:8px; border-bottom:1px solid #eee;">${escapeHTML(b.phone||'N/A')}</td><td style="padding:8px; border-bottom:1px solid #eee; color:red;">Sujeto a Cobro</td></tr>`).join('')
       
       const toExport = `
       <html><head><title>Reporte de Recaudación - Sloty</title>
@@ -1170,7 +1170,7 @@ export const initMaster = (container) => {
             : 'Fecha desconocida'
           const planColor = planColors[p.plan_key] || '#888'
           const planPrice = planPrices[p.plan_key] || ''
-          const raw = `${p.id}|${p.building_id}|${p.plan_key}`
+          const raw = `${escapeHTML(p.id)}|${escapeHTML(p.building_id)}|${escapeHTML(p.plan_key)}`
           const phone = (bld.phone || '').replace(/\D/g, '')
           const loginUrl = window.location.origin + window.location.pathname
           const welcomeMsg = encodeURIComponent(
@@ -1298,13 +1298,13 @@ export const initMaster = (container) => {
                   </div>
                   <div style="background:rgba(255,255,255,0.04); border-radius:10px; padding:10px;">
                     <div style="font-size:0.75rem; font-weight:900; color:white; word-break:break-all;">
-                      ${p.reference || 'Sin referencia'}
+                      ${escapeHTML(p.reference || 'Sin referencia')}
                     </div>
                     <div style="font-size:0.6rem; color:#999; font-weight:700; margin-top:2px;">REFERENCIA</div>
                   </div>
                 </div>
                 <div style="font-size:0.65rem; color:rgba(255,255,255,0.3); font-weight:700; margin-top:8px;">
-                  \ud83d\udcc5 Enviado: ${submitted}
+                  📅 Enviado: ${submitted}
                 </div>
               </div>
 
@@ -1315,10 +1315,10 @@ export const initMaster = (container) => {
                               text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">
                     Comprobante
                   </div>
-                  <img src="${p.proof_image}" alt="Comprobante de pago"
+                  <img src="${escapeHTML(p.proof_image)}" alt="Comprobante de pago"
                        style="width:100%; border-radius:12px; max-height:280px;
                               object-fit:contain; background:rgba(255,255,255,0.03); cursor:pointer;"
-                       onclick="window.open('${p.proof_image}','_blank')" />
+                       onclick="window.open('${escapeHTML(p.proof_image)}','_blank')" />
                   <div style="font-size:0.6rem; color:rgba(255,255,255,0.3); font-weight:700;
                               margin-top:6px; text-align:center;">
                     Toca la imagen para verla completa
@@ -1351,12 +1351,12 @@ export const initMaster = (container) => {
       ${buildings.map(b => `
         <div style="background:rgba(255,255,255,0.06);padding:20px;border-radius:16px;border:1px solid rgba(255,255,255,0.1);margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
           <div data-action="SELECT_BUILDING" data-id="${b.id}" style="flex:1; cursor:pointer;">
-            <div style="font-size:1rem;font-weight:900;color:white;">${b.name}</div>
-            <div style="font-size:0.6rem;color:#999;margin-top:4px;">${b.code}</div>
+            <div style="font-size:1rem;font-weight:900;color:white;">${escapeHTML(b.name || '')}</div>
+            <div style="font-size:0.6rem;color:#999;margin-top:4px;">${escapeHTML(b.code || '')}</div>
           </div>
           <div style="display:flex; align-items:center; gap:10px;">
             <span>${getBadge(b.plan || 'TRIAL', b.membership_status || 'ACTIVE')}</span>
-            <button data-action="DELETE_BUILDING" data-id="${b.id}" data-name="${b.name}"
+            <button data-action="DELETE_BUILDING" data-id="${b.id}" data-name="${escapeHTML(b.name || '')}"
               style="background:rgba(230,57,70,0.1); border:1px solid rgba(230,57,70,0.3); color:#e63946;
                      width:34px; height:34px; border-radius:10px; cursor:pointer; font-size:0.9rem;
                      display:flex; align-items:center; justify-content:center;">
@@ -1393,7 +1393,7 @@ export const initMaster = (container) => {
                     <button class="close-p" style="background:none; border:none; color:white; font-size:1.5rem; cursor:pointer;">×</button>
                 </div>
                 <div style="padding:10px; max-height:60vh; overflow-y:auto;">
-                    <img src="${proof.proof_image}" style="width:100%; border-radius:12px;">
+                    <img src="${escapeHTML(proof.proof_image)}" style="width:100%; border-radius:12px;">
                 </div>
                 <div style="padding:20px; background:rgba(0,0,0,0.2); display:grid; grid-template-columns:1fr 1fr; gap:12px;">
                     <button class="approve-p" style="padding:16px; background:#22c55e; color:white; border:none; border-radius:14px; font-weight:900; cursor:pointer; font-size:0.75rem;">Aprobar</button>
@@ -1426,11 +1426,11 @@ export const initMaster = (container) => {
                     <div style="background:rgba(34,197,94,0.05); border:1px solid rgba(34,197,94,0.2); border-radius:16px; padding:15px; display:flex; justify-content:space-between; align-items:center;">
                         <div style="display:flex; gap:12px; align-items:center;">
                            <div onclick="window.viewProof(${i})" style="width:45px; height:45px; border-radius:10px; background:rgba(255,255,255,0.05); cursor:pointer; overflow:hidden; border:1px solid rgba(255,255,255,0.1); flex-shrink:0;">
-                               <img src="${p.proof_image}" style="width:100%; height:100%; object-fit:cover;">
+                               <img src="${escapeHTML(p.proof_image)}" style="width:100%; height:100%; object-fit:cover;">
                            </div>
                            <div>
-                               <div style="font-size:0.85rem; font-weight:900; color:white;">${p.buildings?.name || 'Cargando...'}</div>
-                               <div style="font-size:0.65rem; color:rgba(255,255,255,0.5); font-weight:700;">Ref: ${p.reference} · $${p.amount}</div>
+                               <div style="font-size:0.85rem; font-weight:900; color:white;">${escapeHTML(p.buildings?.name || 'Cargando...')}</div>
+                               <div style="font-size:0.65rem; color:rgba(255,255,255,0.5); font-weight:700;">Ref: ${escapeHTML(p.reference || '—')} · $${p.amount}</div>
                            </div>
                         </div>
                         <button onclick="window.viewProof(${i})" style="background:#F5C518; color:#1a1a2e; border:none; border-radius:10px; padding:8px 12px; font-size:0.65rem; font-weight:900; cursor:pointer;">REVISAR</button>
@@ -1452,9 +1452,9 @@ export const initMaster = (container) => {
                           border-radius:14px; padding:14px 16px; margin-bottom:10px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                   <div>
-                    <div style="font-size:0.9rem; font-weight:900; color:white;">${b.name}</div>
+                    <div style="font-size:0.9rem; font-weight:900; color:white;">${escapeHTML(b.name || '')}</div>
                     <div style="font-size:0.65rem; color:#999; font-weight:700;">
-                      ${b.code || '—'} · Plan ${b.plan || 'TRIAL'} · Espera confirmación de pago en efectivo
+                      ${escapeHTML(b.code || '—')} · Plan ${escapeHTML(b.plan || 'TRIAL')} · Espera confirmación de pago en efectivo
                     </div>
                   </div>
                 </div>
@@ -1520,7 +1520,7 @@ export const initMaster = (container) => {
                           display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
                 <div>
                   <div style="font-weight:900; color:white; font-size:0.9rem;">
-                    ${b.name}
+                    ${escapeHTML(b.name || '')}
                   </div>
                   <div style="display:flex; gap:6px; margin-top:4px; align-items:center; flex-wrap:wrap;">
                     ${getBadge(b.plan || 'TRIAL', b.membership_status || 'ACTIVE')}
@@ -1531,7 +1531,7 @@ export const initMaster = (container) => {
                   </div>
                 </div>
                 <button data-action="REGISTER_PAYMENT"
-                        data-id="${b.id}" data-name="${b.name}" data-plan="${b.plan||'TRIAL'}"
+                        data-id="${b.id}" data-name="${escapeHTML(b.name || '')}" data-plan="${escapeHTML(b.plan||'TRIAL')}"
                         style="background:${status === 'expired' ? '#e63946' : '#1a1a2e'};
                                color:${status === 'expired' ? 'white' : '#F5C518'};
                                border:1px solid ${status === 'expired' ? '#e63946' : '#F5C518'};
@@ -1750,7 +1750,7 @@ export const initMaster = (container) => {
            <label style="color:#999;font-size:0.55rem;font-weight:900;display:block;margin-bottom:6px;text-transform:uppercase;">Segmentación (Destino)</label>
            <select id="ad-target-bld" style="width:100%; padding:12px; border-radius:10px; border:none; background:rgba(255,255,255,0.1); color:white; font-family:'Montserrat',sans-serif; font-size:0.8rem; font-weight:700;">
               <option value="GLOBAL">🌎 Global (Todos los edificios)</option>
-              ${buildings.map(b => `<option value="${b.id}">🏢 ${b.name}</option>`).join('')}
+              ${buildings.map(b => `<option value="${b.id}">🏢 ${escapeHTML(b.name || '')}</option>`).join('')}
            </select>
         </div>
 
