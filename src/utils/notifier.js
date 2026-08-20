@@ -1,6 +1,6 @@
 /**
  * Notifier Utility — Dispatch free alerts to Sloty Master (Telegram Bot API / WhatsApp)
- * Formats clean payment and upgrade notifications.
+ * Formats clean payment and upgrade notifications without hardcoded secrets.
  */
 
 export const notifyMasterPayment = async ({
@@ -34,10 +34,10 @@ export const notifyMasterPayment = async ({
 
   console.log('[Sloty Notifier] Alert payload:\n', messageText);
 
-  // 1. Enviar a Telegram si existe configuración en localStorage o variables de sistema
+  // 1. Enviar a Telegram si existe configuración en variables de entorno o localStorage (sin valores hardcodeados)
   try {
-    const botToken = localStorage.getItem('sloty_telegram_bot_token') || '8143219419:AAH7aJk6Xz714h820gq7Y5y2c3K1w8';
-    const chatId = localStorage.getItem('sloty_telegram_chat_id') || '-1002345678901';
+    const botToken = import.meta.env?.VITE_TELEGRAM_BOT_TOKEN || localStorage.getItem('sloty_telegram_bot_token');
+    const chatId = import.meta.env?.VITE_TELEGRAM_CHAT_ID || localStorage.getItem('sloty_telegram_chat_id');
 
     if (botToken && chatId) {
       await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
