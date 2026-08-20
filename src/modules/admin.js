@@ -3,7 +3,7 @@
  * Refactored to act as a lightweight facade linking specialized modules.
  */
 import { getParkingState, saveParkingState, logAudit, supabase, syncDown, getExchangeRate, getSyncQueueCount } from '../db.js'
-import { escapeHTML } from '../utils/sanitize.js'
+import { escapeHTML, html } from '../utils/sanitize.js'
 import { store, getSubsCached, unsubscribeFinanceRealtime, hasFeature } from './admin/admin-store.js'
 import { ICONS, SKELETONS } from './admin/admin-ui-components.js'
 
@@ -67,7 +67,7 @@ export const initAdmin = (container) => {
       el.style.background = e.detail.online ? 'rgba(34,197,94,0.15)' : 'rgba(245,197,24,0.15)'
       el.style.color = e.detail.online ? '#22c55e' : '#ce8a05'
       el.style.borderColor = e.detail.online ? 'rgba(34,197,94,0.3)' : 'rgba(245,197,24,0.3)'
-      el.innerHTML = `● ${e.detail.online ? 'En Línea' : 'Offline'}`
+      el.innerHTML = html`● ${e.detail.online ? 'En Línea' : 'Offline'}`
     }
   }
 
@@ -175,7 +175,7 @@ export const initAdmin = (container) => {
 
   // ─── RENDERING LAYOUTS ─────────────────────────────────────
   const renderShell = (state) => {
-    container.innerHTML = `
+    container.innerHTML = html`
       <div id="admin-shell" style="background:#f8f9fa; min-height:100vh; font-family:var(--font); color:var(--primary); padding-bottom:120px;">
         <div id="admin-header"></div>
         <main id="admin-main" style="padding-top:10px;"></main>
@@ -228,14 +228,14 @@ export const initAdmin = (container) => {
       supabase.from('subscriptions').select('id', { count: 'exact', head: true }).eq('building_id', state.buildingId)
         .then(({count}) => {
           const badge = container.querySelector('#sub-count-badge')
-          if(badge) badge.innerHTML = `<span>${count || 0} RESIDENTES</span>`
+          if(badge) badge.innerHTML = html`<span>${count || 0} RESIDENTES</span>`
         })
     }
 
     const titles = { STRUCTURE:'Pisos', SUBS:'Mensuales', FINANCE:'Caja', PERSONAL:'Personal', REPORTES:'Reportes', SETTINGS:'Auditoría', NOTIFICATIONS:'Notificaciones', PROFILE:'Perfil', ABONOS:'Abonos' }
     const isHome = store.activeTab === 'HOME'
 
-    header.innerHTML = `
+    header.innerHTML = html`
       <div style="background:#1a1a2e; padding:calc(env(safe-area-inset-top, 0px) + 15px) 20px 20px; color:white; position:sticky; top:0; z-index:1100; box-shadow:0 10px 30px rgba(0,0,0,0.2); box-sizing:border-box; width:100%;">
         <div style="display:flex; flex-direction:column; gap:12px;">
           <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
@@ -339,7 +339,7 @@ export const initAdmin = (container) => {
     l.style.pointerEvents = 'auto'
     
     if (store.pendingAction.type === 'LEVEL' || store.pendingAction.type === 'SLOT') {
-      l.innerHTML = `
+      l.innerHTML = html`
         <div style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); backdrop-filter:blur(8px); display:flex; align-items:center; justify-content:center; z-index:9999; padding:20px; box-sizing:border-box;">
           <div style="background:white; border-radius:30px; width:100%; max-width:400px; padding:30px; box-shadow:0 25px 50px rgba(0,0,0,0.2); text-align:center;">
             <div style="font-size:3rem; margin-bottom:15px;">⚠️</div>
@@ -356,7 +356,7 @@ export const initAdmin = (container) => {
           </div>
         </div>`
     } else if (store.pendingAction.type === 'CUSTOM_MODAL') {
-      l.innerHTML = `
+      l.innerHTML = html`
         <div style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); backdrop-filter:blur(8px); display:flex; align-items:center; justify-content:center; z-index:9999; padding:20px; box-sizing:border-box;">
           <div style="background:white; border-radius:30px; width:100%; max-width:400px; padding:30px; box-shadow:0 25px 50px rgba(0,0,0,0.2); text-align:center;">
             <h3 style="font-weight:900; font-size:1.2rem; color:var(--primary); margin-bottom:15px; text-transform:uppercase;">${store.pendingAction.title}</h3>
@@ -365,7 +365,7 @@ export const initAdmin = (container) => {
           </div>
         </div>`
     } else if (store.pendingAction.type === 'CONFIRM_MODAL') {
-      l.innerHTML = `
+      l.innerHTML = html`
         <div style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); backdrop-filter:blur(8px); display:flex; align-items:center; justify-content:center; z-index:9999; padding:20px; box-sizing:border-box;">
           <div style="background:white; border-radius:30px; width:100%; max-width:400px; padding:30px; box-shadow:0 25px 50px rgba(0,0,0,0.2); text-align:center;">
             <h3 style="font-weight:900; font-size:1.2rem; color:var(--primary); margin-bottom:15px; text-transform:uppercase;">${store.pendingAction.title}</h3>
@@ -384,12 +384,12 @@ export const initAdmin = (container) => {
 
   const renderTabContent = async (state) => {
     if (!elMain) return; 
-    let html = ''
+    let tabHtml = ''
     const renderingTab = store.activeTab;
 
     if (elMain.dataset.lastTab !== renderingTab) {
        const skeleton = SKELETONS[renderingTab] || SKELETONS.DEFAULT;
-       elMain.innerHTML = `<div class="responsive-container" style="padding-bottom:100px;">${SKELETONS.pulse}${skeleton}</div>`;
+       elMain.innerHTML = html`<div class="responsive-container" style="padding-bottom:100px;">${SKELETONS.pulse}${skeleton}</div>`;
     }
     elMain.dataset.lastTab = renderingTab;
 
@@ -406,10 +406,10 @@ export const initAdmin = (container) => {
             });
           }
           const skeleton = SKELETONS.HOME;
-          elMain.innerHTML = `<div class="responsive-container" style="padding-bottom:100px;">${SKELETONS.pulse}${skeleton}</div>`;
+          elMain.innerHTML = html`<div class="responsive-container" style="padding-bottom:100px;">${SKELETONS.pulse}${skeleton}</div>`;
           return;
         }
-        html = await renderHome(state, window._cachedAds); 
+        tabHtml = await renderHome(state, window._cachedAds); 
         break;
       }
       case 'SUBS': {
@@ -418,10 +418,10 @@ export const initAdmin = (container) => {
             if (store.activeTab === 'SUBS' || store.activeTab === 'ABONOS') render();
           });
           const skeleton = SKELETONS.SUBS;
-          elMain.innerHTML = `<div class="responsive-container" style="padding-bottom:100px;">${SKELETONS.pulse}${skeleton}</div>`;
+          elMain.innerHTML = html`<div class="responsive-container" style="padding-bottom:100px;">${SKELETONS.pulse}${skeleton}</div>`;
           return;
         }
-        html = await renderMonthlySystem(state); 
+        tabHtml = await renderMonthlySystem(state); 
         break;
       }
       case 'ABONOS': {
@@ -430,15 +430,15 @@ export const initAdmin = (container) => {
             if (store.activeTab === 'SUBS' || store.activeTab === 'ABONOS') render();
           });
           const skeleton = SKELETONS.DEFAULT;
-          elMain.innerHTML = `<div class="responsive-container" style="padding-bottom:100px;">${SKELETONS.pulse}${skeleton}</div>`;
+          elMain.innerHTML = html`<div class="responsive-container" style="padding-bottom:100px;">${SKELETONS.pulse}${skeleton}</div>`;
           return;
         }
-        html = await renderAbonos(state); 
+        tabHtml = await renderAbonos(state); 
         break;
       }
       case 'FINANCE': {
         if (!hasFeature('finance_module')) {
-          html = renderLockedFeature('Módulo de Finanzas y Caja');
+          tabHtml = renderLockedFeature('Módulo de Finanzas y Caja');
           break;
         }
         if (!store.cachedFinance || (Date.now() - store.cachedFinanceAt >= store.FINANCE_TTL)) {
@@ -462,31 +462,31 @@ export const initAdmin = (container) => {
 
           if (!store.cachedFinance) {
             const skeleton = SKELETONS.FINANCE;
-            elMain.innerHTML = `<div class="responsive-container" style="padding-bottom:100px;">${SKELETONS.pulse}${skeleton}</div>`;
+            elMain.innerHTML = html`<div class="responsive-container" style="padding-bottom:100px;">${SKELETONS.pulse}${skeleton}</div>`;
             return;
           }
         }
-        html = await renderFinanceSummary(state); 
+        tabHtml = await renderFinanceSummary(state); 
         break;
       }
-      case 'PERSONAL': html = renderPersonnel(state); break;
-      case 'STRUCTURE': html = renderLevels(state); break;
+      case 'PERSONAL': tabHtml = renderPersonnel(state); break;
+      case 'STRUCTURE': tabHtml = renderLevels(state); break;
       case 'REPORTES': {
         if (!hasFeature('reports_module')) {
-          html = renderLockedFeature('Módulo de Reportes y Estadísticas');
+          tabHtml = renderLockedFeature('Módulo de Reportes y Estadísticas');
           break;
         }
-        html = await renderReports(state);
+        tabHtml = await renderReports(state);
         break;
       }
-      case 'SETTINGS': html = renderSettings(state); break;
-      case 'NOTIFICATIONS': html = renderNotifications(); break;
-      case 'PROFILE': html = renderProfile(state); break;
+      case 'SETTINGS': tabHtml = renderSettings(state); break;
+      case 'NOTIFICATIONS': tabHtml = renderNotifications(); break;
+      case 'PROFILE': tabHtml = renderProfile(state); break;
     }
     
     if (store.activeTab !== renderingTab) return;
 
-    elMain.innerHTML = `<div class="responsive-container" style="padding-bottom:100px;">${html}</div>`; 
+    elMain.innerHTML = html`<div class="responsive-container" style="padding-bottom:100px;">${tabHtml}</div>`; 
     if(renderingTab==='PERSONAL') setupGuardHooks(elMain)
     if(renderingTab==='ABONOS') setupAbonosHooks(elMain)
     if(renderingTab==='SUBS') setupMonthlySystemHooks(elMain)

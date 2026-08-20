@@ -1,5 +1,6 @@
 import { getParkingState, saveParkingState, logAudit, supabase, getExchangeRate } from '../db.js'
 import { notifyMasterPayment } from '../utils/notifier.js'
+import { escapeHTML } from '../utils/sanitize.js'
 
 export const initMaster = (container) => {
   let activeTab = 'SYSTEM'
@@ -121,7 +122,7 @@ export const initMaster = (container) => {
         + ' width:100%; max-width:500px; border:1px solid rgba(255,255,255,0.1);'
         + ' font-family:\'Montserrat\',sans-serif;">'
         + '<div style="font-size:0.65rem; font-weight:900; color:#999; text-transform:uppercase; letter-spacing:2px; margin-bottom:4px;">Cambiar Plan</div>'
-        + '<div style="font-size:1rem; font-weight:900; color:white; margin-bottom:20px;">' + bld.name + '</div>'
+        + '<div style="font-size:1rem; font-weight:900; color:white; margin-bottom:20px;">' + escapeHTML(bld.name || '') + '</div>'
         + '<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:20px;">'
         + PLAN_OPTIONS.map(p =>
             '<button onclick="window._selectMasterPlan(\'' + p.key + '\')"'
@@ -254,7 +255,7 @@ export const initMaster = (container) => {
           width:100%;max-width:500px;border:1px solid rgba(255,255,255,0.1);">
           <div style="font-size:1rem;font-weight:900;color:white;
             margin-bottom:6px;">Registrar Pago</div>
-          <div style="font-size:0.7rem;color:#999;margin-bottom:20px;">${bName} · Plan ${plan}</div>
+          <div style="font-size:0.7rem;color:#999;margin-bottom:20px;">${escapeHTML(bName)} · Plan ${escapeHTML(plan)}</div>
           <input id="master-pay-amount" type="number" placeholder="Monto" min="0" step="0.01"
             style="width:100%;padding:14px;border-radius:12px;border:none;
             background:rgba(255,255,255,0.08);color:white;font-size:1rem;
@@ -493,8 +494,8 @@ export const initMaster = (container) => {
                      border-radius:50px; padding:8px 16px; font-size:0.7rem;
                      font-weight:900; cursor:pointer;">&#8592; VOLVER</button>
             <div>
-              <div style="font-size:1.1rem; font-weight:900; color:white;">${bld?.name || 'Edificio'}</div>
-              <div style="font-size:0.65rem; color:#999; font-weight:700;">${bld?.code || ''} &middot; ${bld?.city || ''}</div>
+              <div style="font-size:1.1rem; font-weight:900; color:white;">${escapeHTML(bld?.name || 'Edificio')}</div>
+              <div style="font-size:0.65rem; color:#999; font-weight:700;">${escapeHTML(bld?.code || '')} &middot; ${escapeHTML(bld?.city || '')}</div>
             </div>
           </div>
 
@@ -1254,15 +1255,15 @@ export const initMaster = (container) => {
                 <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                   <div>
                     <div style="font-size:1rem; font-weight:900; color:white; margin-bottom:2px;">
-                      ${bld.name || 'Edificio sin nombre'}
+                      ${escapeHTML(bld.name || 'Edificio sin nombre')}
                     </div>
                     <div style="font-size:0.65rem; color:#999; font-weight:700;">
-                      ${bld.code || '\u2014'} \u00b7 ${bld.city || 'Ciudad no registrada'}
+                      ${escapeHTML(bld.code || '—')} · ${escapeHTML(bld.city || 'Ciudad no registrada')}
                     </div>
                   </div>
                   <span style="background:${planColor}; color:${p.plan_key === 'ORO' ? '#1a1a2e' : 'white'};
                                padding:4px 10px; border-radius:8px; font-size:0.65rem; font-weight:900;">
-                    ${p.plan_key || 'TRIAL'}
+                    ${escapeHTML(p.plan_key || 'TRIAL')}
                   </span>
                 </div>
               </div>
@@ -1272,13 +1273,13 @@ export const initMaster = (container) => {
                           display:flex; gap:16px; flex-wrap:wrap;">
                 ${bld.admin_email ? `
                   <div style="display:flex; align-items:center; gap:6px;">
-                    <span>\u2709\ufe0f</span>
-                    <span style="font-size:0.7rem; color:rgba(255,255,255,0.6); font-weight:700;">${bld.admin_email}</span>
+                    <span>✉️</span>
+                    <span style="font-size:0.7rem; color:rgba(255,255,255,0.6); font-weight:700;">${escapeHTML(bld.admin_email)}</span>
                   </div>` : ''}
                 ${bld.phone ? `
                   <div style="display:flex; align-items:center; gap:6px;">
-                    <span>\ud83d\udcf1</span>
-                    <span style="font-size:0.7rem; color:rgba(255,255,255,0.6); font-weight:700;">${bld.phone}</span>
+                    <span>📱</span>
+                    <span style="font-size:0.7rem; color:rgba(255,255,255,0.6); font-weight:700;">${escapeHTML(bld.phone)}</span>
                   </div>` : ''}
               </div>
 
