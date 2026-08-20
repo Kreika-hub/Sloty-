@@ -830,19 +830,19 @@ export const initMaster = (container) => {
         z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;`
       overlay.innerHTML = `
         <div style="background:#1a1a2e; border-radius:32px; width:100%; max-width:440px; border:1px solid rgba(255,255,255,0.1); padding:28px;">
-          <div style="font-size:1.1rem; font-weight:900; color:white; margin-bottom:20px;">Editar Datos: ${bld.name}</div>
+          <div style="font-size:1.1rem; font-weight:900; color:white; margin-bottom:20px;">Editar Datos: ${escapeHTML(bld.name)}</div>
           
           <label style="color:#999;font-size:0.6rem;font-weight:900;display:block;margin-bottom:8px;">NOMBRE EDIFICIO</label>
-          <input id="edit-b-name" value="${bld.name}" style="width:100%; padding:14px; border-radius:12px; border:none; background:rgba(255,255,255,0.08); color:white; margin-bottom:16px; box-sizing:border-box;" />
+          <input id="edit-b-name" value="${escapeHTML(bld.name)}" style="width:100%; padding:14px; border-radius:12px; border:none; background:rgba(255,255,255,0.08); color:white; margin-bottom:16px; box-sizing:border-box;" />
 
           <label style="color:#999;font-size:0.6rem;font-weight:900;display:block;margin-bottom:8px;">EMAIL ADMINISTRADOR</label>
-          <input id="edit-b-email" value="${bld.admin_email || ''}" style="width:100%; padding:14px; border-radius:12px; border:none; background:rgba(255,255,255,0.08); color:white; margin-bottom:16px; box-sizing:border-box;" />
+          <input id="edit-b-email" value="${escapeHTML(bld.admin_email || '')}" style="width:100%; padding:14px; border-radius:12px; border:none; background:rgba(255,255,255,0.08); color:white; margin-bottom:16px; box-sizing:border-box;" />
 
           <label style="color:#999;font-size:0.6rem;font-weight:900;display:block;margin-bottom:8px;">TELÉFONO CONTACTO</label>
-          <input id="edit-b-phone" value="${bld.phone || ''}" style="width:100%; padding:14px; border-radius:12px; border:none; background:rgba(255,255,255,0.08); color:white; margin-bottom:16px; box-sizing:border-box;" />
+          <input id="edit-b-phone" value="${escapeHTML(bld.phone || '')}" style="width:100%; padding:14px; border-radius:12px; border:none; background:rgba(255,255,255,0.08); color:white; margin-bottom:16px; box-sizing:border-box;" />
 
           <label style="color:#999;font-size:0.6rem;font-weight:900;display:block;margin-bottom:8px;">CIUDAD</label>
-          <input id="edit-b-city" value="${bld.city || ''}" style="width:100%; padding:14px; border-radius:12px; border:none; background:rgba(255,255,255,0.08); color:white; margin-bottom:24px; box-sizing:border-box;" />
+          <input id="edit-b-city" value="${escapeHTML(bld.city || '')}" style="width:100%; padding:14px; border-radius:12px; border:none; background:rgba(255,255,255,0.08); color:white; margin-bottom:24px; box-sizing:border-box;" />
 
           <div style="display:grid; grid-template-columns:1fr 2fr; gap:12px;">
              <button id="edit-b-cancel" style="padding:16px; background:rgba(255,255,255,0.05); color:white; border:none; border-radius:14px; font-weight:900; cursor:pointer;">CANCELAR</button>
