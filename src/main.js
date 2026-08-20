@@ -1,10 +1,10 @@
 import { login, getSession, getUserRole, setDevRole } from './auth.js'
-import { supabase } from './db.js'
+import { supabase, getParkingState, saveParkingState, getCleanPrefix, syncDown, getExchangeRate } from './db.js'
 import { initGuard } from './modules/guard.js'
 import { initAdmin } from './modules/admin.js'
 import { initMaster } from './modules/master.js'
-import { getParkingState, saveParkingState, getCleanPrefix, syncDown } from './db.js'
 import { initUpdateBanner } from './pwa-update.js'
+import { formatProofWhatsAppMessage, showTermsModal } from './utils/notifier.js'
 
 const $ = id => document.getElementById(id)
 
@@ -66,7 +66,10 @@ const renderWelcome = () => {
       <div style="position: absolute; bottom: -10%; right: -10%; width: 60vw; height: 60vw; background: radial-gradient(circle, rgba(15,52,96,0.5) 0%, rgba(0,0,0,0) 70%); border-radius: 50%; pointer-events: none;"></div>
 
       <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;gap:15px; z-index: 1;">
-        <img src="/sloty-logo-v2.png" alt="Sloty" style="width:75%;max-width:300px;height:auto;display:block;margin:0 auto; filter: drop-shadow(0px 10px 20px rgba(0,0,0,0.5));" />
+        <!-- Logo container con fixed aspect-ratio y placeholder para evitar CLS -->
+        <div style="width:min(280px, 75vw); aspect-ratio:280/85; min-height:85px; display:flex; align-items:center; justify-content:center; margin:0 auto;">
+          <img src="/sloty-logo-v2.png" alt="Sloty" width="280" height="85" style="width:100%; height:auto; aspect-ratio:280/85; display:block; filter: drop-shadow(0px 10px 20px rgba(0,0,0,0.5));" />
+        </div>
         <p aria-label="Gestión inteligente de estacionamientos" style="color:rgba(255,255,255,0.85);font-size:0.85rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin:10px 0 0;text-align:center;">GESTIÓN INTELIGENTE DE<br>ESTACIONAMIENTOS</p>
       </div>
       <div style="width:100%;max-width:420px;display:flex;flex-direction:column;gap:14px;padding-bottom:20px;">
@@ -522,7 +525,7 @@ const renderRegister = () => {
         <div style="display:flex;align-items:start;gap:12px;text-align:left;background:rgba(255,255,255,0.05);padding:16px;border-radius:12px;border:1px solid rgba(255,255,255,0.1);">
           <input id="reg-terms" type="checkbox" style="width:24px;height:24px;accent-color:#F5C518;cursor:pointer;flex-shrink:0;margin-top:2px;" />
           <label for="reg-terms" style="color:white;font-size:0.85rem;line-height:1.4;cursor:pointer;">
-            He leído y acepto los <a href="#" style="color:#F5C518;text-decoration:none;font-weight:700;">Términos de Servicio</a> y la Política de Privacidad de Sloty.
+            He leído y acepto los <a href="#" id="link-terms-step" style="color:#F5C518;text-decoration:underline;font-weight:700;">Términos y Condiciones</a> y la Política de Privacidad de Sloty.
           </label>
         </div>
       `,
@@ -579,6 +582,17 @@ const renderRegister = () => {
           data.levels = parseInt(btn.dataset.val)
         }
       })
+    }
+
+    const linkTerms = $('link-terms-step')
+    if (linkTerms) {
+      linkTerms.onclick = (e) => {
+        e.preventDefault()
+        showTermsModal(() => {
+          const c = $('reg-terms')
+          if (c) c.checked = true
+        })
+      }
     }
 
     $('btn-reg-next').onclick = async () => {
@@ -724,12 +738,15 @@ const renderRegister = () => {
   }
 
   // ─── PLAN SELECTION ──────────────────────────────────────────
-  const renderPlanSelection = (building) => {
+  const renderPlanSelection = async (building) => {
+    const bcvData = await getExchangeRate().catch(() => ({ rate: 40.0 }))
+    const bcvRate = Number(bcvData?.rate || 40.0)
+
     const PLANS = [
-      { key: 'TRIAL',  label: 'Prueba Gratis',  price: 'GRATIS', days: '3 días', desc: 'Hasta 10 puestos', color: '#888',    highlight: false, benefits: ['Gestión Básica de Visitantes', 'Hasta 10 puestos', 'Panel básico de Guardia'] },
-      { key: 'BRONCE', label: 'Bronce',          price: '$15/mes',  days: null,    desc: 'Hasta 50 puestos', color: '#cd7f32', highlight: false, benefits: ['Hasta 50 puestos asignables', 'Control de Caja Chica', 'Registro Ilimitado'] },
-      { key: 'PLATA',  label: 'Plata',           price: '$30/mes',  days: null,    desc: 'Hasta 150 puestos + Caja', color: '#aaa', highlight: false, benefits: ['Hasta 150 puestos', 'Panel Multi-Turnos', 'Control de Deudores'] },
-      { key: 'ORO',    label: 'Oro',             price: '$55/mes',  days: null,    desc: 'Ilimitado + todos los módulos', color: '#F5C518', highlight: true, benefits: ['Puestos Ilimitados', 'Todos los módulos financieros', 'Soporte VIP Prioritario'] },
+      { key: 'TRIAL',  label: 'Prueba Gratis',  usdPrice: 0,  price: 'GRATIS', days: '3 días', desc: 'Hasta 10 puestos', color: '#888',    highlight: false, benefits: ['Gestión Básica de Visitantes', 'Hasta 10 puestos', 'Panel básico de Guardia'] },
+      { key: 'BRONCE', label: 'Bronce',          usdPrice: 15, price: '$15/mes',  days: null,    desc: 'Hasta 50 puestos', color: '#cd7f32', highlight: false, benefits: ['Hasta 50 puestos asignables', 'Control de Caja Chica', 'Registro Ilimitado'] },
+      { key: 'PLATA',  label: 'Plata',           usdPrice: 30, price: '$30/mes',  days: null,    desc: 'Hasta 150 puestos + Caja', color: '#aaa', highlight: false, benefits: ['Hasta 150 puestos', 'Panel Multi-Turnos', 'Control de Deudores'] },
+      { key: 'ORO',    label: 'Oro',             usdPrice: 55, price: '$55/mes',  days: null,    desc: 'Ilimitado + todos los módulos', color: '#F5C518', highlight: true, benefits: ['Puestos Ilimitados', 'Todos los módulos financieros', 'Soporte VIP Prioritario'] },
     ]
 
     window.viewPlanBenefits = (key) => {
@@ -741,7 +758,8 @@ const renderRegister = () => {
         <div style="background:#1a1a2e; border-radius:24px; padding:30px; width:100%; max-width:350px; border:1px solid ${plan.color}; text-align:center;">
            <div style="font-size:2.5rem; margin-bottom:10px;">✨</div>
            <div style="color:${plan.color}; font-weight:900; font-size:1.2rem; margin-bottom:6px;">Plan ${plan.label}</div>
-           <div style="color:white; font-size:1.5rem; font-weight:900; margin-bottom:20px;">${plan.price}</div>
+           <div style="color:white; font-size:1.5rem; font-weight:900; margin-bottom:4px;">${plan.price}</div>
+           ${plan.usdPrice > 0 ? `<div style="font-size:0.8rem; font-weight:700; color:#F5C518; margin-bottom:20px;">≈ Bs. ${(plan.usdPrice * bcvRate).toLocaleString('es-VE', {minimumFractionDigits:2})}</div>` : '<div style="margin-bottom:20px;"></div>'}
            <div style="text-align:left; margin-bottom:30px; font-size:0.85rem; color:rgba(255,255,255,0.8); line-height:1.6;">
               ${plan.benefits.map(b => `<div style="margin-bottom:8px;">✅ ${b}</div>`).join('')}
            </div>
@@ -758,9 +776,9 @@ const renderRegister = () => {
         <div style="text-align:center;margin-bottom:28px;">
           <div style="font-size:2.5rem;margin-bottom:10px;">✨</div>
           <h1 style="color:white;font-size:1.6rem;font-weight:900;margin-bottom:6px;">Elige tu Plan</h1>
-          <p style="color:rgba(255,255,255,0.5);font-size:0.85rem;">Puedes cambiar de plan en cualquier momento</p>
+          <p style="color:rgba(255,255,255,0.5);font-size:0.85rem;">Precios en USD y su equivalente en Bs. a tasa BCV oficial</p>
         </div>
-        <div style="display:grid;gap:12px;max-width:400px;width:100%;margin:0 auto 28px;">
+        <div style="display:grid;gap:12px;max-width:400px;width:100%;margin:0 auto 24px;">
           ${PLANS.map(p => `
             <div class="plan-card" data-key="${p.key}" style="
               background:${p.highlight ? 'rgba(245,197,24,0.1)' : 'rgba(255,255,255,0.05)'};
@@ -774,19 +792,31 @@ const renderRegister = () => {
                 ${p.days ? '<div style="font-size:0.65rem;color:#22c55e;font-weight:700;margin-top:2px;">' + p.days + ' gratis</div>' : ''}
               </div>
               <div style="text-align:right;">
-                <div style="font-size:1rem;font-weight:900;color:white;margin-bottom:6px;">${p.price}</div>
+                <div style="font-size:1.05rem;font-weight:900;color:white;margin-bottom:2px;">${p.price}</div>
+                ${p.usdPrice > 0 ? `<div style="font-size:0.75rem;font-weight:800;color:#F5C518;margin-bottom:6px;">≈ Bs. ${(p.usdPrice * bcvRate).toLocaleString('es-VE', {minimumFractionDigits:2})}</div>` : '<div style="margin-bottom:6px;"></div>'}
                 <button onclick="event.stopPropagation(); window.viewPlanBenefits('${p.key}')" style="background:rgba(255,255,255,0.1); color:white; border:none; padding:6px 10px; border-radius:6px; font-size:0.6rem; font-weight:900; cursor:pointer;">VER BENEFICIOS</button>
               </div>
             </div>
           `).join('')}
         </div>
-        <div style="max-width:400px;width:100%;margin:0 auto;">
+        <div style="max-width:400px;width:100%;margin:0 auto;text-align:center;">
           <button id="btn-select-plan" style="width:100%;padding:18px;background:#F5C518;color:#1a1a2e;border:none;border-radius:14px;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:900;cursor:pointer;opacity:0.4;pointer-events:none;">
             CONTINUAR CON ESTE PLAN
           </button>
+          <div style="font-size:0.75rem;color:rgba(255,255,255,0.4);margin-top:14px;">
+            Al contratar aceptas los <a href="#" id="link-terms-plans" style="color:#F5C518;text-decoration:underline;font-weight:700;">Términos y Condiciones</a>
+          </div>
         </div>
       </div>
     `
+
+    const linkTerms = document.getElementById('link-terms-plans')
+    if (linkTerms) {
+      linkTerms.onclick = (e) => {
+        e.preventDefault()
+        showTermsModal()
+      }
+    }
 
     screens.register.querySelectorAll('.plan-card').forEach(card => {
       card.onclick = () => {
@@ -882,19 +912,10 @@ const renderRegister = () => {
         <!-- Sloty logo + datos edificio + datos de pago copiables -->
         <div style="max-width:400px;width:100%;margin:0 auto 24px;">
 
-          <!-- LOGO SLOTY -->
-          <div style="background:#0f1127;border:1px solid rgba(245,197,24,0.2);border-radius:20px;padding:28px 20px 24px;text-align:center;margin-bottom:16px;">
-            <div style="display:inline-flex;align-items:center;justify-content:center;background:#F5C518;width:64px;height:64px;border-radius:18px;margin-bottom:14px;">
-              <svg width="36" height="36" viewBox="0 0 32 32" fill="none">
-                <rect x="4" y="4" width="24" height="24" rx="6" fill="#1a1a2e"/>
-                <rect x="9" y="9" width="6" height="6" rx="1.5" fill="#F5C518"/>
-                <rect x="17" y="9" width="6" height="6" rx="1.5" fill="#F5C518"/>
-                <rect x="9" y="17" width="6" height="6" rx="1.5" fill="#F5C518"/>
-                <rect x="17" y="17" width="6" height="6" rx="1.5" fill="rgba(245,197,24,0.4)"/>
-              </svg>
-            </div>
-            <div style="font-size:1.3rem;font-weight:900;color:white;letter-spacing:-0.5px;">SLOTY</div>
-            <div style="font-size:0.65rem;font-weight:700;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:2px;margin-top:2px;">Gestión de Estacionamiento</div>
+          <!-- LOGO OFICIAL SLOTY -->
+          <div style="background:#0f1127;border:1px solid rgba(245,197,24,0.25);border-radius:20px;padding:24px 20px 20px;text-align:center;margin-bottom:16px;">
+            <img src="/sloty-logo-v2.png" alt="Sloty" width="180" height="55" style="width:180px;height:auto;aspect-ratio:180/55;display:block;margin:0 auto 8px;filter:drop-shadow(0 4px 10px rgba(0,0,0,0.5));" />
+            <div style="font-size:0.65rem;font-weight:700;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:2px;">Gestión de Estacionamiento</div>
           </div>
 
           <!-- DATOS DEL EDIFICIO (verificación) -->
@@ -1015,10 +1036,21 @@ const renderRegister = () => {
           <button id="btn-proof-send" style="width:100%;padding:18px;background:#F5C518;color:#1a1a2e;border:none;border-radius:14px;font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:900;cursor:pointer;margin-top:8px;">
             ENVIAR COMPROBANTE
           </button>
+          <div style="text-align:center;font-size:0.75rem;color:rgba(255,255,255,0.4);margin-top:10px;">
+            Al enviar tu comprobante aceptas los <a href="#" id="link-terms-checkout" style="color:#F5C518;text-decoration:underline;font-weight:700;">Términos y Condiciones</a>
+          </div>
           <p id="proof-error" style="color:#e63946;font-size:0.8rem;font-weight:700;text-align:center;min-height:18px;"></p>
         </div>
       </div>
     `
+
+    const linkTermsCheckout = document.getElementById('link-terms-checkout')
+    if (linkTermsCheckout) {
+      linkTermsCheckout.onclick = (e) => {
+        e.preventDefault()
+        showTermsModal()
+      }
+    }
 
     document.getElementById('btn-proof-upload').onclick = () => document.getElementById('proof-file').click()
 
@@ -1051,7 +1083,7 @@ const renderRegister = () => {
       const bank   = document.getElementById('proof-bank').value
       const amount = parseFloat(document.getElementById('proof-amount').value) || 0
       const ref    = document.getElementById('proof-ref').value.trim()
-      const date   = document.getElementById('proof-date').value
+      const date   = document.getElementById('proof-date').value || new Date().toISOString().slice(0, 10)
       const errEl  = document.getElementById('proof-error')
 
       if (!bank)           { errEl.textContent = 'Selecciona el banco de origen'; return }
@@ -1064,39 +1096,92 @@ const renderRegister = () => {
       btn.disabled = true
 
       try {
-        // Subir imagen a Storage
-        const ext      = proofFile.name.split('.').pop()
-        const filePath = `${building.id}/${Date.now()}.${ext}`
+        const ext = proofFile.name.split('.').pop() || 'jpg'
+        const cleanName = (proofFile.name || `comprobante.${ext}`).replace(/[^a-zA-Z0-9._-]/g, '_')
+        const buildingCode = building.code || building.id || 'SLO'
+        const filePath = `${buildingCode}/${Date.now()}_${cleanName}`
 
-        const { error: uploadErr } = await supabase.storage
-          .from('payment-proofs')
-          .upload(filePath, proofFile, { upsert: true })
+        let finalImageUrl = proofBase64 || ''
+        let uploadSuccess = false
 
-        if (uploadErr) throw uploadErr
+        // 1. Subida a Supabase Storage (intento en bucket 'proofs' con fallback a 'payment-proofs')
+        try {
+          const { error: uploadErr } = await supabase.storage
+            .from('proofs')
+            .upload(filePath, proofFile, { upsert: true })
 
-        const { data: urlData } = await supabase.storage
-          .from('payment-proofs')
-          .createSignedUrl(filePath, 60 * 60 * 24 * 365) // 1 año
+          if (!uploadErr) {
+            const { data: urlData } = await supabase.storage
+              .from('proofs')
+              .createSignedUrl(filePath, 60 * 60 * 24 * 365) // 1 año
+            finalImageUrl = urlData?.signedUrl || filePath
+            uploadSuccess = true
+          } else {
+            // Fallback bucket
+            const { error: fallbackErr } = await supabase.storage
+              .from('payment-proofs')
+              .upload(filePath, proofFile, { upsert: true })
+            if (!fallbackErr) {
+              const { data: fallbackUrl } = await supabase.storage
+                .from('payment-proofs')
+                .createSignedUrl(filePath, 60 * 60 * 24 * 365)
+              finalImageUrl = fallbackUrl?.signedUrl || filePath
+              uploadSuccess = true
+            }
+          }
+        } catch(storageErr) {
+          console.warn('[Sloty Storage] Fallback a imagen local por error de red:', storageErr)
+        }
 
         const finalRef = `${bank} - Ref: ${ref}`
 
-        await supabase.from('building_payment_proofs').insert({
+        // 2. Registro en base de datos Supabase
+        const proofPayload = {
           building_id:  building.id,
           plan_key:     plan.key,
           amount,
           reference:    finalRef,
           payment_date: date,
-          proof_image:  urlData?.signedUrl || filePath,
+          proof_image:  finalImageUrl,
           status:       'PENDING'
+        }
+
+        try {
+          await supabase.from('building_payment_proofs').insert(proofPayload)
+          await supabase.from('buildings').update({
+            membership_status: 'PENDING_PROOF',
+            plan: plan.key
+          }).eq('id', building.id)
+        } catch(dbErr) {
+          console.warn('[Sloty DB] Error guardando comprobante en la nube, archivando localmente:', dbErr)
+          try {
+            const localProofs = JSON.parse(localStorage.getItem('sloty_pending_proofs') || '[]')
+            localProofs.push({ ...proofPayload, savedAt: new Date().toISOString() })
+            localStorage.setItem('sloty_pending_proofs', JSON.stringify(localProofs))
+          } catch(e) {}
+        }
+
+        // 3. Tasa BCV y Generador de Mensaje / Notificación de WhatsApp
+        const bcvRateData = await getExchangeRate().catch(() => ({ rate: 40.0 }))
+        const currentRate = Number(bcvRateData?.rate || 40.0)
+        const amountBs = Number((amount * currentRate).toFixed(2))
+
+        const waData = formatProofWhatsAppMessage({
+          buildingName: building.name,
+          buildingCode: building.code,
+          adminName: building.admin_name || building.admin_email || 'Administrador',
+          planLabel: plan.label,
+          amountUsd: amount,
+          amountBs: amountBs,
+          bcvRate: currentRate,
+          bank: bank,
+          reference: finalRef,
+          proofUrl: uploadSuccess ? finalImageUrl : 'Foto adjunta en app',
+          masterPhone: '584120770776'
         })
 
-        await supabase.from('buildings').update({
-          membership_status: 'PENDING_PROOF',
-          plan: plan.key
-        }).eq('id', building.id)
-
-        // Invocar Edge Function para notificar el pago
-        await supabase.functions.invoke('notify-new-payment', {
+        // 4. Invocar Edge Function para notificación push / bot si está disponible
+        supabase.functions.invoke('notify-new-payment', {
           body: {
             building_name: building.name || 'Desconocido',
             admin_name: building.admin_name || 'Buscando..',
@@ -1106,16 +1191,12 @@ const renderRegister = () => {
             reference: finalRef,
             payment_date: date
           }
-        })
+        }).catch(() => {})
 
-        const waMsg = encodeURIComponent(`Hola, acabo de subir el comprobante de pago de mi edificio en Sloty.\n\n` + 
-          `🏢 Edificio: ${building.name}\n` +
-          `👤 Admin: ${building.admin_name || building.admin_email || 'No registrado'}\n` +
-          `💳 Plan: ${plan.label}\n` +
-          `💵 Monto: ${amount}\n` +
-          `🏦 Banco: ${bank}\n` +
-          `📝 Ref: ${finalRef}`)
-        window.open(`https://wa.me/584120770776?text=${waMsg}`, '_blank')
+        // 5. Abrir WhatsApp con el mensaje automatizado y transicionar a pantalla de confirmación
+        if (waData.whatsappUrl) {
+          window.open(waData.whatsappUrl, '_blank')
+        }
 
         renderPendingScreen('PROOF', plan)
 

@@ -1,5 +1,5 @@
 import { getParkingState, saveParkingState, logAudit, supabase, getExchangeRate } from '../db.js'
-import { notifyMasterPayment } from '../utils/notifier.js'
+import { notifyMasterPayment, generateActivationCode, formatActivationWhatsAppMessage, sanitizePhoneNumber } from '../utils/notifier.js'
 import { escapeHTML } from '../utils/sanitize.js'
 
 export const initMaster = (container) => {
@@ -34,6 +34,53 @@ export const initMaster = (container) => {
   ]
 
   const getState = () => getParkingState()
+
+  const showActivationModal = ({ buildingName, planLabel, activationCode, expiryDate, whatsappUrl, messageText, phone }) => {
+    const existing = document.getElementById('activation-modal-overlay');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'activation-modal-overlay';
+    modal.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.85); backdrop-filter:blur(8px); display:flex; align-items:center; justify-content:center; z-index:10001; padding:20px; font-family:Montserrat,sans-serif;';
+    modal.innerHTML = `
+      <div style="background:#1a1a2e; border:1.5px solid rgba(245,197,24,0.3); border-radius:28px; width:100%; max-width:440px; padding:30px; box-sizing:border-box; color:white; text-align:center; box-shadow:0 25px 60px rgba(0,0,0,0.5);">
+        <div style="font-size:3rem; margin-bottom:12px;">🎉</div>
+        <div style="font-size:1.3rem; font-weight:900; color:#22c55e; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">¡Membresía Aprobada!</div>
+        <div style="font-size:0.8rem; color:#bbb; margin-bottom:20px;">Edificio: <strong style="color:white;">${escapeHTML(buildingName)}</strong> · Plan <strong style="color:#F5C518;">${escapeHTML(planLabel)}</strong></div>
+        
+        <div style="background:rgba(255,255,255,0.05); border:2px dashed #F5C518; border-radius:18px; padding:16px; margin-bottom:20px;">
+          <div style="font-size:0.65rem; color:#999; text-transform:uppercase; font-weight:800; letter-spacing:1px; margin-bottom:4px;">Código de Activación Generado</div>
+          <div style="font-size:2rem; font-weight:900; color:#F5C518; letter-spacing:4px; font-family:monospace;">${activationCode}</div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <button id="btn-copy-activation-msg" style="width:100%; padding:15px; background:rgba(255,255,255,0.1); color:white; border:1px solid rgba(255,255,255,0.2); border-radius:14px; font-weight:800; font-size:0.8rem; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
+            📋 Copiar mensaje para WhatsApp
+          </button>
+          ${whatsappUrl ? `
+            <a href="${whatsappUrl}" target="_blank" style="width:100%; padding:15px; background:#22c55e; color:white; border-radius:14px; font-weight:900; font-size:0.85rem; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:8px; box-sizing:border-box;">
+              💬 Enviar WhatsApp al Administrador (${phone || ''})
+            </a>
+          ` : ''}
+          <button id="btn-close-activation-modal" style="width:100%; padding:12px; background:none; color:#888; border:none; font-weight:700; font-size:0.75rem; cursor:pointer; margin-top:5px;">
+            Cerrar
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    modal.querySelector('#btn-copy-activation-msg').onclick = () => {
+      navigator.clipboard.writeText(messageText).then(() => {
+        const btn = modal.querySelector('#btn-copy-activation-msg');
+        btn.innerHTML = '✅ ¡Mensaje copiado al portapapeles!';
+        setTimeout(() => { btn.innerHTML = '📋 Copiar mensaje para WhatsApp'; }, 2000);
+      });
+    };
+
+    modal.querySelector('#btn-close-activation-modal').onclick = () => modal.remove();
+  };
 
   const actions = {
     TAB: (btn) => { activeTab = btn.dataset.tab; selectedBuilding = null; render() },
@@ -320,15 +367,20 @@ export const initMaster = (container) => {
       const planKey    = isRaw ? raw.split('|')[2] : raw?.plan_key
       if (!proofId || !buildingId) return
 
-      const durations = { TRIAL: 15, BRONCE: 30, PLATA: 30, ORO: 30 }
+      const durations = { TRIAL: 15, BRONCE: 30, PLATA: 30, ORO: 30, ANUAL: 365 }
       const days = durations[planKey] || 30
       const expiry = new Date()
       expiry.setDate(expiry.getDate() + days)
 
+      const activationCode = generateActivationCode(6)
+
+      const { data: bld } = await supabase.from('buildings').select('*').eq('id', buildingId).single()
+
       await Promise.all([
         supabase.from('building_payment_proofs').update({
           status: 'CONFIRMED',
-          reviewed_at: new Date().toISOString()
+          reviewed_at: new Date().toISOString(),
+          activation_code: activationCode
         }).eq('id', proofId),
         supabase.from('buildings').update({
           membership_status: 'ACTIVE',
@@ -336,20 +388,43 @@ export const initMaster = (container) => {
           membership_expiry: expiry.toISOString()
         }).eq('id', buildingId),
         supabase.from('sloty_memberships').insert({
-          building_id: buildingId, plan_key: planKey, status: 'CONFIRMED',
-          paid_at: new Date().toISOString(), expiry_date: expiry.toISOString()
+          building_id: buildingId, plan_key: planKey || 'BRONCE', status: 'CONFIRMED',
+          paid_at: new Date().toISOString(), expiry_date: expiry.toISOString(),
+          activation_code: activationCode
         })
       ])
 
-      // Notificar al administrador del edificio sobre la activación
+      logAudit(`Master aprobó comprobante de pago para edificio: ${bld?.name || buildingId} (Plan: ${planKey || 'BRONCE'}, Código: ${activationCode})`)
+
+      // Notificar al administrador del edificio sobre la activación (Push)
       supabase.functions.invoke('send-push', {
         body: {
           building_id: buildingId,
           role: 'ADMIN',
           title: '✅ ¡Plan Activado!',
-          body: `El pago de tu edificio ha sido aprobado. El plan ${planKey || 'BRONCE'} ya se encuentra activo.`
+          body: `El pago de tu edificio ha sido aprobado. El plan ${planKey || 'BRONCE'} ya se encuentra activo (Código: ${activationCode}).`
         }
       }).catch(e => console.warn('[Sloty] push notification error:', e));
+
+      // Generar mensaje de WhatsApp para el cliente y mostrar modal interactivo de confirmación
+      const waData = formatActivationWhatsAppMessage({
+        buildingName: bld?.name,
+        buildingCode: bld?.code,
+        planLabel: planKey || 'BRONCE',
+        expiryDate: expiry.toISOString(),
+        activationCode: activationCode,
+        adminPhone: bld?.phone
+      })
+
+      showActivationModal({
+        buildingName: bld?.name || 'Edificio',
+        planLabel: planKey || 'BRONCE',
+        activationCode,
+        expiryDate: expiry,
+        whatsappUrl: waData.whatsappUrl,
+        messageText: waData.messageText,
+        phone: waData.cleanPhone
+      })
 
       document.getElementById('dossier-overlay')?.remove()
       render()
@@ -366,12 +441,15 @@ export const initMaster = (container) => {
         supabase.from('building_payment_proofs').update({
           status: 'REJECTED',
           reviewed_at: new Date().toISOString(),
+          rejection_reason: reason || null,
           reference: reason ? `RECHAZADO: ${reason}` : 'RECHAZADO'
         }).eq('id', proofId),
         supabase.from('buildings').update({
           membership_status: 'SUSPENDED'
         }).eq('id', buildingId)
       ])
+
+      logAudit(`Master rechazó comprobante de pago para edificio: ${buildingId} (${reason || 'Sin motivo'})`)
 
       // Notificar al administrador del edificio sobre el rechazo
       supabase.functions.invoke('send-push', {

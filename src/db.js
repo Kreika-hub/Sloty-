@@ -1,9 +1,26 @@
 import { createClient } from '@supabase/supabase-js'
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY
+const SUPABASE_URL = import.meta?.env?.VITE_SUPABASE_URL || (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_URL) || ''
+const SUPABASE_KEY = import.meta?.env?.VITE_SUPABASE_KEY || import.meta?.env?.VITE_SUPABASE_ANON_KEY || (typeof process !== 'undefined' && (process.env?.VITE_SUPABASE_KEY || process.env?.VITE_SUPABASE_ANON_KEY)) || ''
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+export const isUUID = (str) => {
+  if (!str || typeof str !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str.trim());
+};
+
+export const isSupabaseConfigured = () => {
+  return Boolean(
+    SUPABASE_URL && 
+    SUPABASE_KEY && 
+    !SUPABASE_URL.includes('your_supabase_project_url') &&
+    !SUPABASE_URL.includes('placeholder.supabase.co') &&
+    SUPABASE_KEY !== 'placeholder-anon-key'
+  );
+};
+
+export const supabase = isSupabaseConfigured()
+  ? createClient(SUPABASE_URL, SUPABASE_KEY)
+  : createClient('https://placeholder.supabase.co', 'placeholder-anon-key');
 
 const STORAGE_KEY = 'sloty_state'
 const SYNC_QUEUE_KEY = 'sloty_sync_queue'
@@ -19,6 +36,7 @@ let idbDatabase = null
 const initIDB = () => {
     return new Promise((resolve) => {
         try {
+            if (typeof indexedDB === 'undefined') return resolve(null);
             const request = indexedDB.open(DB_NAME, 1)
             request.onerror = (e) => {
                 console.warn('[Sloty IDB] Failed to open IndexedDB, falling back to localStorage:', e)
@@ -42,10 +60,13 @@ const initIDB = () => {
 
 const fallbackToLocalStorage = () => {
     try {
+        if (typeof localStorage === 'undefined') return;
         const raw = localStorage.getItem(SYNC_QUEUE_KEY)
         inMemoryQueue = raw ? JSON.parse(raw) : []
         console.log(`[Sloty IDB] Loaded ${inMemoryQueue.length} tasks from localStorage fallback`)
-        window.dispatchEvent(new CustomEvent('sloty-sync-updated', { detail: { count: inMemoryQueue.length } }))
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('sloty-sync-updated', { detail: { count: inMemoryQueue.length } }))
+        }
     } catch(e) {
         inMemoryQueue = []
     }
@@ -62,7 +83,9 @@ const loadQueueFromStorage = async () => {
                 request.onsuccess = () => {
                     inMemoryQueue = request.result || []
                     console.log(`[Sloty IDB] Loaded ${inMemoryQueue.length} tasks from IndexedDB`)
-                    window.dispatchEvent(new CustomEvent('sloty-sync-updated', { detail: { count: inMemoryQueue.length } }))
+                    if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new CustomEvent('sloty-sync-updated', { detail: { count: inMemoryQueue.length } }))
+                    }
                     resolve(inMemoryQueue)
                 }
                 request.onerror = () => {
@@ -82,6 +105,7 @@ const loadQueueFromStorage = async () => {
 
 const persistToLocalStorage = () => {
     try {
+        if (typeof localStorage === 'undefined') return;
         localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(inMemoryQueue))
     } catch(e) {
         console.error('[Sloty IDB] localStorage write failed:', e)
@@ -109,13 +133,37 @@ const persistQueue = async () => {
 }
 
 export const enqueueSync = async (task) => {
+    if (!task) return;
+
+    // Si la tarea involucra un building_id o ID que NO es UUID válido (ej. mock o test local),
+    // no se encola remotamente para evitar error Postgres 22P02 y bucles de reintentos.
+    if (task.data) {
+        const isValidPayload = (item) => {
+            if (!item || typeof item !== 'object') return true;
+            if (item.building_id && !isUUID(item.building_id)) return false;
+            if (['buildings', 'personnel', 'subscriptions', 'vehicles'].includes(task.table)) {
+                if (item.id && !isUUID(item.id)) return false;
+            }
+            return true;
+        };
+        if (Array.isArray(task.data)) {
+            const validItems = task.data.filter(isValidPayload);
+            if (validItems.length === 0) return;
+            task.data = validItems;
+        } else if (!isValidPayload(task.data)) {
+            return;
+        }
+    }
+
     const item = { _internalId: Date.now() + Math.random(), _retries: 0, ...task }
     inMemoryQueue.push(item)
     if (inMemoryQueue.length > MAX_QUEUE_SIZE) {
         inMemoryQueue = inMemoryQueue.slice(inMemoryQueue.length - MAX_QUEUE_SIZE)
     }
     await persistQueue()
-    window.dispatchEvent(new CustomEvent('sloty-sync-updated', { detail: { count: inMemoryQueue.length } }))
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('sloty-sync-updated', { detail: { count: inMemoryQueue.length } }))
+    }
     triggerSyncUp()
 }
 
@@ -130,14 +178,18 @@ export const isTaskPending = (taskId) => {
 const cleanQueue = async (idsToRemove) => {
     inMemoryQueue = inMemoryQueue.filter(t => !idsToRemove.includes(t._internalId))
     await persistQueue()
-    window.dispatchEvent(new CustomEvent('sloty-sync-updated', { detail: { count: inMemoryQueue.length } }))
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('sloty-sync-updated', { detail: { count: inMemoryQueue.length } }))
+    }
 }
 
 let isSyncing = false
 const triggerSyncUp = async () => {
-    if (!navigator.onLine || isSyncing) return
+    if ((typeof navigator !== 'undefined' && !navigator.onLine) || isSyncing || !isSupabaseConfigured()) return
     isSyncing = true
-    window.dispatchEvent(new CustomEvent('sloty-sync-updated', { detail: { count: inMemoryQueue.length } }))
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('sloty-sync-updated', { detail: { count: inMemoryQueue.length } }))
+    }
     if (inMemoryQueue.length === 0) { isSyncing = false; return }
 
     const removeIds = []
@@ -147,9 +199,30 @@ const triggerSyncUp = async () => {
         try {
             if (task.table === 'personnel' && Array.isArray(task.data)) {
                 task.data.forEach(item => delete item.active);
-                const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-                task.data = task.data.filter(item => uuidRegex.test(item.id));
+                task.data = task.data.filter(item => isUUID(item.id) || !item.id);
                 if (task.data.length === 0) {
+                    removeIds.push(task._internalId);
+                    continue;
+                }
+            }
+
+            // Validar si el payload contiene building_id o id que no sea UUID
+            if (task.data) {
+                const isInvalid = (d) => {
+                    if (!d || typeof d !== 'object') return false;
+                    if (d.building_id && !isUUID(d.building_id)) return true;
+                    if (['buildings', 'personnel', 'subscriptions', 'vehicles'].includes(task.table)) {
+                        if (d.id && !isUUID(d.id)) return true;
+                    }
+                    return false;
+                };
+
+                const hasInvalidData = Array.isArray(task.data)
+                    ? task.data.some(isInvalid)
+                    : isInvalid(task.data);
+
+                if (hasInvalidData) {
+                    console.warn('[Sloty Sync] Tarea aislada localmente por UUID no válido (evitando 22P02):', task);
                     removeIds.push(task._internalId);
                     continue;
                 }
@@ -168,8 +241,8 @@ const triggerSyncUp = async () => {
         } catch (e) {
             console.error('[Sloty Sync Error]:', e, 'Task:', task)
             task._retries = (task._retries || 0) + 1
-            if (task._retries >= 3) {
-                console.warn('[Sloty] Discarding task after 3 failures:', task)
+            if (e?.code === '22P02' || task._retries >= 3) {
+                console.warn('[Sloty] Descartando tarea tras fallo o error 22P02:', task)
                 removeIds.push(task._internalId)
             }
         }
@@ -177,20 +250,24 @@ const triggerSyncUp = async () => {
     
     if (removeIds.length > 0) await cleanQueue(removeIds)
     isSyncing = false
-    window.dispatchEvent(new CustomEvent('sloty-sync-updated', { detail: { count: inMemoryQueue.length } }))
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('sloty-sync-updated', { detail: { count: inMemoryQueue.length } }))
+    }
 }
 
-window.addEventListener('online', () => {
-    window.dispatchEvent(new CustomEvent('sloty-connection-status', { detail: { online: true } }))
-    triggerSyncUp()
-})
-window.addEventListener('offline', () => {
-    window.dispatchEvent(new CustomEvent('sloty-connection-status', { detail: { online: false } }))
-})
+if (typeof window !== 'undefined') {
+    window.addEventListener('online', () => {
+        window.dispatchEvent(new CustomEvent('sloty-connection-status', { detail: { online: true } }))
+        triggerSyncUp()
+    })
+    window.addEventListener('offline', () => {
+        window.dispatchEvent(new CustomEvent('sloty-connection-status', { detail: { online: false } }))
+    })
+}
 
 // Initialize the queue asynchronously on script load
 loadQueueFromStorage().then(() => {
-    if (navigator.onLine) {
+    if (typeof navigator !== 'undefined' && navigator.onLine) {
         triggerSyncUp()
     }
 })
@@ -261,7 +338,7 @@ export const getCleanPrefix = (name) => {
 
 let hasBootedDown = false
 export const syncDown = async (buildingCode) => {
-    if (!navigator.onLine) return
+    if (!navigator.onLine || !isSupabaseConfigured() || !buildingCode || buildingCode.startsWith('DEV-')) return
     console.log('[Sloty] Inicia descarga de sincronización para:', buildingCode)
     
     try {
@@ -373,7 +450,7 @@ export const saveParkingState = (state) => {
   state.stats = recalcStatsData(state)
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
   
-  if (state.buildingId) {
+  if (state.buildingId && isUUID(state.buildingId)) {
       const payload = []
       state.levels.forEach(l => {
           l.slots.forEach(s => {
@@ -440,6 +517,7 @@ export const logMovement = (movement) => {
     amount_bs: amountBs,
     bcv_rate_used: rate
   }
+  state.movements = state.movements || []
   state.movements.unshift(entry)
   
   if (movement.type === 'SALIDA') {
@@ -448,7 +526,7 @@ export const logMovement = (movement) => {
   
   saveParkingState(state)
   
-  if (!state.buildingId) { console.warn('[Sloty] logMovement: buildingId missing, skip sync'); return; }
+  if (!state.buildingId || !isUUID(state.buildingId)) { return; }
   
   enqueueSync({
       table: 'access_logs',
@@ -501,13 +579,13 @@ export const saveClosure = async (closure) => {
   state.closures.unshift(closureObj)
   saveParkingState(state)
 
-  // Subir a Supabase
-  if (state.buildingId) {
+  // Subir a Supabase solo si buildingId es UUID válido y Supabase está configurado
+  if (state.buildingId && isUUID(state.buildingId) && isSupabaseConfigured()) {
     try {
       await supabase.from('guard_shifts').insert({
         building_id:  state.buildingId,
         guard_name:   closure.guardName || closure.guard || 'Guardia',
-        guard_id:     closure.guardId    || null,
+        guard_id:     (closure.guardId && isUUID(closure.guardId)) ? closure.guardId : null,
         started_at:   closure.startedAt  || new Date().toISOString(),
         ended_at:     new Date().toISOString(),
         total_cash:   closure.methods?.EFECTIVO_USD || closure.totals?.cash || 0,
@@ -546,20 +624,22 @@ export const logAudit = async (action, details = {}) => {
   }
   saveParkingState(state);
 
-  // 2. Encolar en sincronización para garantizar resiliencia
-  enqueueSync({
-    table: 'audit_log',
-    action: 'INSERT',
-    data: auditEntry
-  });
+  // 2. Encolar en sincronización y enviar solo si building_id es UUID válido
+  if (isUUID(state.buildingId)) {
+    enqueueSync({
+      table: 'audit_log',
+      action: 'INSERT',
+      data: auditEntry
+    });
 
-  // 3. Intento directo en Supabase si hay conexión
-  try {
-    if (navigator.onLine) {
-      await supabase.from('audit_log').insert(auditEntry);
+    // 3. Intento directo en Supabase si hay conexión y credenciales válidas
+    try {
+      if (typeof navigator !== 'undefined' && navigator.onLine && isSupabaseConfigured()) {
+        await supabase.from('audit_log').insert(auditEntry);
+      }
+    } catch(e) {
+      console.warn('[Sloty] audit_log direct insert error (queued via sync):', e);
     }
-  } catch(e) {
-    console.warn('[Sloty] audit_log direct insert error (queued via sync):', e);
   }
 };
 
@@ -740,8 +820,8 @@ export const initGlobalRealtime = (buildingId, buildingCode) => {
     console.log('[Sloty Realtime] Canal Realtime global ya existe, omitiendo.');
     return;
   }
-  if (!buildingId) {
-    console.warn('[Sloty Realtime] No se puede inicializar realtime sin buildingId');
+  if (!buildingId || !isUUID(buildingId) || !isSupabaseConfigured()) {
+    console.warn('[Sloty Realtime] No se puede inicializar realtime sin buildingId UUID válido o Supabase configurado');
     return;
   }
   console.log('[Sloty Realtime] Iniciando canal global para edificio:', buildingId);

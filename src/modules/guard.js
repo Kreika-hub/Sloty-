@@ -575,8 +575,10 @@ export const initGuard = (container, guardName = 'Guardia') => {
            const bs = Math.round(amount * bcv.rate);
            const elBs  = document.getElementById('bs-equivalent');
            const elRate = document.getElementById('bcv-rate-guard');
+           const formattedDate = bcv.fecha || new Date().toISOString().slice(0, 10);
+           const sourceText = bcv.source === 'auto' ? '✓ BCV' : '⚠️ Manual';
            if (elBs)  elBs.textContent  = `Bs. ${bs.toLocaleString('es-VE')}`;
-           if (elRate) elRate.textContent = `Tasa BCV: ${Number(bcv.rate).toLocaleString('es-VE', {minimumFractionDigits:2})} · ${bcv.source === 'auto' ? '✓ Oficial' : '⚠️ Manual'}`;
+           if (elRate) elRate.textContent = `Bs. ${Number(bcv.rate).toLocaleString('es-VE', {minimumFractionDigits:2})} / USD · ${sourceText} · ${formattedDate}`;
          });
       } else {
          logMovement({
@@ -636,10 +638,10 @@ getExchangeRate().then(bcv => {
   if (!bcv?.rate) return;
   const amount = pendingPayment?.amount || 0;
   const bs = Math.round(amount * bcv.rate);
-  const elBs  = document.getElementById('bs-equivalent');
-  const elRate = document.getElementById('bcv-rate-guard');
+  const formattedDate = bcv.fecha || new Date().toISOString().slice(0, 10);
+  const sourceText = bcv.source === 'auto' ? '✓ BCV' : '⚠️ Manual';
   if (elBs)  elBs.textContent  = `Bs. ${bs.toLocaleString('es-VE')}`;
-  if (elRate) elRate.textContent = `Tasa BCV: ${Number(bcv.rate).toLocaleString('es-VE', {minimumFractionDigits:2})} · ${bcv.source === 'auto' ? '✓ Oficial' : '⚠️ Manual'}`;
+  if (elRate) elRate.textContent = `Bs. ${Number(bcv.rate).toLocaleString('es-VE', {minimumFractionDigits:2})} / USD · ${sourceText} · ${formattedDate}`;
 });
       } else {
         processExit('FREE')
@@ -748,7 +750,7 @@ getExchangeRate().then(bcv => {
       
       updateParkingState(state);
       render();
-      showToast(`Puesto ${lvl.slots[freeIdx].label} reservado para ${plate}`, "success");
+      showToast("Puesto apartado exitosamente", "success");
     },
     PAUSE_SHIFT: () => {
       showPinModal('Pausar Turno', 'Ingresa tu PIN de guardia para pausar el turno:', (pin) => {
@@ -1104,8 +1106,8 @@ getExchangeRate().then(bcv => {
             <span id="header-conn-status" style="font-size:0.65rem; font-weight:900; padding:2px 8px; border-radius:6px; background:${navigator.onLine ? 'rgba(34,197,94,0.15)' : 'rgba(245,197,24,0.15)'}; color:${navigator.onLine ? '#22c55e' : '#ce8a05'}; border:1px solid ${navigator.onLine ? 'rgba(34,197,94,0.3)' : 'rgba(245,197,24,0.3)'};">
                ● ${navigator.onLine ? 'En Línea' : 'Offline'}
             </span>
-            <span id="header-sync-queue" style="font-size:0.65rem; font-weight:900; padding:2px 8px; border-radius:6px; background:rgba(255,255,255,0.06); color:#ce8a05; border:1px solid rgba(255,255,255,0.15); display:${getSyncQueueCount() > 0 ? 'inline-block' : 'none'};">
-               ⏳ Carga: <b id="header-sync-count">${getSyncQueueCount()}</b>
+            <span id="header-sync-queue" title="Tareas pendientes de sincronización con la nube" style="font-size:0.65rem; font-weight:900; padding:2px 8px; border-radius:6px; background:rgba(255,255,255,0.06); color:#ce8a05; border:1px solid rgba(255,255,255,0.15); display:${getSyncQueueCount() > 0 ? 'inline-block' : 'none'}; cursor:help;">
+               ⏳ Pendientes: <b id="header-sync-count">${getSyncQueueCount()}</b>
             </span>
           </div>
           <div style="font-size:1.1rem; font-weight:900; color:white; margin-top:2px;">${(state.buildingName || '').toUpperCase()}</div>
@@ -1501,14 +1503,14 @@ getExchangeRate().then(bcv => {
             ` : ''}
             
             <div style="background:rgba(255,255,255,0.06); border:1.5px solid rgba(255,255,255,0.15);
-                        border-radius:14px; padding:12px; margin-top:12px; text-align:left;">
-              <div style="font-size:0.65rem; font-weight:900; color:#D97706; margin-bottom:6px;">
-                ⚠️ Equivalente en Bolívares
+                        border-radius:14px; padding:14px; margin-top:12px; text-align:left;">
+              <div style="font-size:0.7rem; font-weight:900; color:#D97706; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;">
+                🇻🇪 Equivalente en Bolívares
               </div>
-              <div id="bs-equivalent" style="font-size:1.25rem; font-weight:900; color:#1a1a2e;">
+              <div id="bs-equivalent" style="font-size:1.4rem; font-weight:900; color:#1a1a2e; letter-spacing:-0.5px;">
                 Calculando...
               </div>
-              <div id="bcv-rate-guard" style="font-size:0.6rem; color:#999; font-weight:700; margin-top:2px;">
+              <div id="bcv-rate-guard" style="font-size:0.875rem; color:#1a1a2e; font-weight:700; margin-top:4px; opacity:0.95;">
                 Cargando tasa BCV...
               </div>
             </div>

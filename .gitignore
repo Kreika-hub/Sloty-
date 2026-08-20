@@ -36,3 +36,5 @@ package-lock.json
 # Scratch and debug files
 *.bat
 src/modules/fix_guard.js
+scratch/
+run_build.js

@@ -64,8 +64,8 @@ export const renderFinanceSummary = async (state) => {
       const f1 = document.getElementById('finance-bcv-rate');
       if (f1) {
         f1.innerHTML = `
-          <div style="font-size:0.95rem; font-weight:900; color:#F5C518;">Bs. ${Number(bcv.rate).toLocaleString('es-VE', {minimumFractionDigits:2})}</div>
-          <div style="font-size:0.5rem; color:rgba(255,255,255,0.4); font-weight:700;">${bcv.source === 'manual' ? '⚠️ Manual' : '✓ BCV'} · ${bcv.fecha}</div>
+          <div style="font-size:1.05rem; font-weight:900; color:#F5C518;">Bs. ${Number(bcv.rate).toLocaleString('es-VE', {minimumFractionDigits:2})}</div>
+          <div style="font-size:0.75rem; color:rgba(255,255,255,0.7); font-weight:700;">${bcv.source === 'manual' ? '⚠️ Manual' : '✓ BCV'} · ${bcv.fecha}</div>
         `;
       }
     });
@@ -82,9 +82,9 @@ export const renderFinanceSummary = async (state) => {
          <h2 style="font-weight:900; color:var(--primary); font-size:1.4rem; text-transform:uppercase; letter-spacing:1px; margin:0;">FINANZAS & REPORTES</h2>
          <div style="font-size:0.6rem; color:#999; font-weight:800; text-transform:uppercase; margin-top:2px;">Centro contable administrativo</div>
        </div>
-       <div id="finance-bcv-rate" style="background:#1a1a2e; color:white; border-radius:16px; padding:8px 15px; text-align:right; border:1px solid rgba(255,255,255,0.1);">
-          <div style="font-size:0.95rem; font-weight:900; color:#F5C518;">Bs. ${rateVal.toLocaleString('es-VE', {minimumFractionDigits:2})}</div>
-          <div style="font-size:0.5rem; color:rgba(255,255,255,0.4); font-weight:700;">Tasa Activa</div>
+       <div id="finance-bcv-rate" style="background:#1a1a2e; color:white; border-radius:16px; padding:10px 18px; text-align:right; border:1px solid rgba(255,255,255,0.15);">
+          <div style="font-size:1.05rem; font-weight:900; color:#F5C518;">Bs. ${rateVal.toLocaleString('es-VE', {minimumFractionDigits:2})}</div>
+          <div style="font-size:0.75rem; color:rgba(255,255,255,0.7); font-weight:700;">Tasa Activa</div>
        </div>
     </div>
 

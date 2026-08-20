@@ -253,8 +253,8 @@ export const initAdmin = (container) => {
               <span id="admin-conn-status" style="font-size:0.65rem; font-weight:900; padding:2px 8px; border-radius:6px; background:${navigator.onLine ? 'rgba(34,197,94,0.15)' : 'rgba(245,197,24,0.15)'}; color:${navigator.onLine ? '#22c55e' : '#ce8a05'}; border:1px solid ${navigator.onLine ? 'rgba(34,197,94,0.3)' : 'rgba(245,197,24,0.3)'};">
                  ● ${navigator.onLine ? 'En Línea' : 'Offline'}
               </span>
-              <span id="admin-sync-queue" style="font-size:0.65rem; font-weight:900; padding:2px 8px; border-radius:6px; background:rgba(255,255,255,0.06); color:#ce8a05; border:1px solid rgba(255,255,255,0.15); display:${getSyncQueueCount() > 0 ? 'inline-block' : 'none'};">
-                 ⏳ Carga: <b id="admin-sync-count">${getSyncQueueCount()}</b>
+              <span id="admin-sync-queue" title="Tareas pendientes de sincronización con la nube" style="font-size:0.65rem; font-weight:900; padding:2px 8px; border-radius:6px; background:rgba(255,255,255,0.06); color:#ce8a05; border:1px solid rgba(255,255,255,0.15); display:${getSyncQueueCount() > 0 ? 'inline-block' : 'none'}; cursor:help;">
+                 ⏳ Pendientes: <b id="admin-sync-count">${getSyncQueueCount()}</b>
               </span>
               <button data-action="SYNC" style="background:none; border:none; cursor:pointer; color:rgba(255,255,255,0.6); padding:0; display:flex; align-items:center; justify-content:center; transition:transform 0.5s;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:20px; height:20px;"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
