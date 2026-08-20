@@ -8,16 +8,25 @@ export default defineConfig({
   plugins: [
     VitePWA({
       registerType: 'prompt',
-      includeAssets: ['icons/pwa-512x512.png', 'sloty-logo-v2.png'],
+      includeAssets: [
+        'favicon.ico', 'favicon.png', 'apple-touch-icon.png',
+        'icons/pwa-192x192.png', 'icons/pwa-512x512.png',
+        'icons/maskable-icon-512x512.png', 'icons/apple-touch-icon-180x180.png',
+        'sloty-logo-v2.png'
+      ],
       manifest: {
-        name: 'Sloty - Estacionamientos',
+        id: '/',
+        name: 'Sloty',
         short_name: 'Sloty',
         description: 'Gestión inteligente de estacionamientos',
         start_url: '/',
+        scope: '/',
         display: 'standalone',
+        display_override: ['standalone', 'minimal-ui'],
         orientation: 'portrait',
         background_color: '#1a1a2e',
         theme_color: '#1a1a2e',
+        categories: ['business', 'productivity', 'utilities'],
         icons: [
           {
             src: '/icons/pwa-192x192.png',

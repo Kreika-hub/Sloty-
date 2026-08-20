@@ -96,6 +96,7 @@ const showInstallBanner = () => {
     deferredPrompt = null
     banner.remove()
     if (outcome === 'accepted') {
+      localStorage.setItem('pwa_installed', 'true')
       console.log('Sloty instalada correctamente')
     }
   }
@@ -114,6 +115,13 @@ window.addEventListener('load', () => {
     const daysSince = (Date.now() - parseInt(dismissedAt)) / (1000 * 60 * 60 * 24)
     if (daysSince < PWA_DISMISS_DAYS) return // Esperar días configurados antes de volver a mostrar
   }
+})
+
+// Cuando el usuario acepta instalar la app, ocultamos el banner y marcamos como instalada
+window.addEventListener('appinstalled', () => {
+  localStorage.setItem('pwa_installed', 'true')
+  const b = document.getElementById('pwa-install-banner')
+  if (b) b.remove()
 })
 
 // ── UPDATE BANNER ─────────────────────────────────────────────

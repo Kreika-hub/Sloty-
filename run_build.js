@@ -1,4 +1,17 @@
 import { execSync } from 'child_process';
+import { copyFileSync, mkdirSync, existsSync } from 'fs';
+
+// ── Step 0: Copy favicon/apple-touch-icon from PWA 192x192 icon ───
+const srcIcon = 'public/icons/pwa-192x192.png';
+if (existsSync(srcIcon)) {
+  mkdirSync('public/icons', { recursive: true });
+  copyFileSync(srcIcon, 'public/favicon.ico');
+  copyFileSync(srcIcon, 'public/favicon.png');
+  copyFileSync(srcIcon, 'public/apple-touch-icon.png');
+  copyFileSync(srcIcon, 'public/icons/apple-touch-icon-180x180.png');
+  copyFileSync(srcIcon, 'public/icons/favicon.ico');
+  console.log('✓ Favicons copied from pwa-192x192.png');
+}
 
 const run = (cmd) => {
   console.log(`\n$ ${cmd}`);
