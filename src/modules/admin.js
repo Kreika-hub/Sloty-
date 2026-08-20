@@ -3,7 +3,7 @@
  * Refactored to act as a lightweight facade linking specialized modules.
  */
 import { getParkingState, saveParkingState, logAudit, supabase, syncDown, getExchangeRate, getSyncQueueCount } from '../db.js'
-import { escapeHTML, html } from '../utils/sanitize.js'
+import { escapeHTML, html, raw } from '../utils/sanitize.js'
 import { store, getSubsCached, unsubscribeFinanceRealtime, hasFeature } from './admin/admin-store.js'
 import { ICONS, SKELETONS } from './admin/admin-ui-components.js'
 
@@ -191,7 +191,7 @@ export const initAdmin = (container) => {
             <span style="font-size:0.55rem; font-weight:800; letter-spacing:0.5px;">PISOS</span>
           </div>
           <div class="admin-tab-btn" data-action="TAB" data-tab="SUBS" style="display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; color:rgba(255,255,255,0.4); transition:color 0.3s; flex:1;">
-            <div style="width:22px; height:22px;">${ICONS.SUBS}</div>
+            <div style="width:22px; height:22px;">${raw(ICONS.SUBS)}</div>
             <span style="font-size:0.55rem; font-weight:800; letter-spacing:0.5px;">MENSUAL</span>
           </div>
           <div class="admin-tab-btn" data-action="TAB" data-tab="FINANCE" style="display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; color:rgba(255,255,255,0.4); transition:color 0.3s; flex:1;">
@@ -203,7 +203,7 @@ export const initAdmin = (container) => {
             <span style="font-size:0.55rem; font-weight:800; letter-spacing:0.5px;">PERSONAL</span>
           </div>
           <div class="admin-tab-btn" data-action="TAB" data-tab="SETTINGS" style="display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; color:rgba(255,255,255,0.4); transition:color 0.3s; flex:1;">
-            <div style="width:22px; height:22px;">${ICONS.SETTINGS}</div>
+            <div style="width:22px; height:22px;">${raw(ICONS.SETTINGS)}</div>
             <span style="font-size:0.55rem; font-weight:800; letter-spacing:0.5px;">CONFIG</span>
           </div>
         </nav>
@@ -240,12 +240,12 @@ export const initAdmin = (container) => {
         <div style="display:flex; flex-direction:column; gap:12px;">
           <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
             <div data-action="TAB" data-tab="HOME" style="display:flex; align-items:center; gap:10px; cursor:pointer;">
-              ${!isHome ? `<div style="color:white; width:28px; height:28px; display:flex; align-items:center; justify-content:center;">
+              ${raw(!isHome ? `<div style="color:white; width:28px; height:28px; display:flex; align-items:center; justify-content:center;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" style="width:22px; height:22px; transform:translateX(-4px);"><path d="m15 18-6-6 6-6"/></svg>
-              </div>` : ''}
+              </div>` : '')}
               <div style="display:flex; align-items:center; gap:8px;">
                 <img src="/icons/Sloty logo negro.png" style="height:53px; filter:brightness(0) invert(1); object-fit:contain;" onerror="this.style.display='none'">
-                ${state.logo_url ? `<img src="${state.logo_url}" style="height:35px; width:auto; max-width:60px; border-radius:6px; object-fit:contain;">` : ''}
+                ${raw(state.logo_url ? `<img src="${escapeHTML(state.logo_url)}" style="height:35px; width:auto; max-width:60px; border-radius:6px; object-fit:contain;">` : '')}
               </div>
             </div>
 
@@ -260,11 +260,11 @@ export const initAdmin = (container) => {
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:20px; height:20px;"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
               </button>
               <button data-action="TAB" data-tab="NOTIFICATIONS" style="position:relative; cursor:pointer; color:${unread ? '#F5C518' : 'white'}; background:none; border:none; padding:0; display:flex; align-items:center; justify-content:center; width:24px; height:24px;">
-                ${ICONS.BELL}
-                ${unread ? `<div style="position:absolute; top:-2px; right:-2px; width:8px; height:8px; background:#e63946; border-radius:50%; border:2px solid #1a1a2e;"></div>` : ''}
+                ${raw(ICONS.BELL)}
+                ${raw(unread ? `<div style="position:absolute; top:-2px; right:-2px; width:8px; height:8px; background:#e63946; border-radius:50%; border:2px solid #1a1a2e;"></div>` : '')}
               </button>
               <button data-action="LOGOUT" style="background:none; border:none; cursor:pointer; color:rgba(255,255,255,0.6); padding:0; display:flex; align-items:center; justify-content:center; width:24px; height:24px;">
-                ${ICONS.LOGOUT}
+                ${raw(ICONS.LOGOUT)}
               </button>
             </div>
           </div>
@@ -275,7 +275,7 @@ export const initAdmin = (container) => {
                 ${isHome ? 'PANEL PRINCIPAL' : titles[store.activeTab].toUpperCase()}
               </div>
               <div style="display:flex; align-items:center; gap:8px;">
-                ${(() => {
+                ${raw((() => {
                   const syncCount = getSyncQueueCount();
                   const isOnline = navigator.onLine;
                   let connBadge = '';
@@ -298,14 +298,14 @@ export const initAdmin = (container) => {
                     <div style="font-size:0.55rem; font-weight:900; color:${planColors[plan] || '#888'}; letter-spacing:0.5px; background:rgba(255,255,255,0.1); padding:4px 10px; border-radius:8px; flex-shrink:0;">PLAN ${plan}</div>
                     ${upgradeBtn}
                   `
-                })()}
+                })())}
               </div>
             </div>
-            ${metricHtml ? `<div style="align-self:flex-end;">${metricHtml}</div>` : ''}
+            ${raw(metricHtml ? `<div style="align-self:flex-end;">${metricHtml}</div>` : '')}
           </div>
         </div>
 
-        ${isHome ? `
+        ${raw(isHome ? `
           <div style="display:flex; align-items:center; justify-content:space-between; margin-top:20px; margin-bottom:4px;">
             <div style="font-size:1.8rem; font-weight:900; line-height:1.1;">${escapeHTML(state.buildingName)}</div>
             <div data-action="TAB" data-tab="PROFILE" style="cursor:pointer; color:var(--accent); width:24px; height:24px;">
@@ -324,7 +324,7 @@ export const initAdmin = (container) => {
               COPIAR
             </button>
           </div>
-        ` : ''}
+        ` : '')}
       </div>`
   }
 
@@ -360,7 +360,7 @@ export const initAdmin = (container) => {
         <div style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); backdrop-filter:blur(8px); display:flex; align-items:center; justify-content:center; z-index:9999; padding:20px; box-sizing:border-box;">
           <div style="background:white; border-radius:30px; width:100%; max-width:400px; padding:30px; box-shadow:0 25px 50px rgba(0,0,0,0.2); text-align:center;">
             <h3 style="font-weight:900; font-size:1.2rem; color:var(--primary); margin-bottom:15px; text-transform:uppercase;">${store.pendingAction.title}</h3>
-            <div style="margin-bottom:25px;">${store.pendingAction.content}</div>
+            <div style="margin-bottom:25px;">${raw(store.pendingAction.content)}</div>
             <button data-action="CANCEL_MODAL" style="width:100%; padding:18px; background:#1a1a2e; color:var(--accent); border:none; border-radius:16px; font-weight:900; font-size:0.8rem; cursor:pointer;">ENTENDIDO</button>
           </div>
         </div>`
@@ -369,7 +369,7 @@ export const initAdmin = (container) => {
         <div style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); backdrop-filter:blur(8px); display:flex; align-items:center; justify-content:center; z-index:9999; padding:20px; box-sizing:border-box;">
           <div style="background:white; border-radius:30px; width:100%; max-width:400px; padding:30px; box-shadow:0 25px 50px rgba(0,0,0,0.2); text-align:center;">
             <h3 style="font-weight:900; font-size:1.2rem; color:var(--primary); margin-bottom:15px; text-transform:uppercase;">${store.pendingAction.title}</h3>
-            <div style="margin-bottom:25px;">${store.pendingAction.content}</div>
+            <div style="margin-bottom:25px;">${raw(store.pendingAction.content)}</div>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
               <button id="modal-confirm-action-btn" style="padding:16px; background:#1a1a2e; color:var(--accent); border:none; border-radius:16px; font-weight:900; font-size:0.8rem; cursor:pointer;">CONFIRMAR</button>
               <button data-action="CANCEL_MODAL" style="padding:16px; background:#f4f4f4; color:#666; border:none; border-radius:16px; font-weight:900; font-size:0.8rem; cursor:pointer;">CANCELAR</button>
@@ -389,7 +389,7 @@ export const initAdmin = (container) => {
 
     if (elMain.dataset.lastTab !== renderingTab) {
        const skeleton = SKELETONS[renderingTab] || SKELETONS.DEFAULT;
-       elMain.innerHTML = html`<div class="responsive-container" style="padding-bottom:100px;">${SKELETONS.pulse}${skeleton}</div>`;
+       elMain.innerHTML = html`<div class="responsive-container" style="padding-bottom:100px;">${raw(SKELETONS.pulse)}${raw(skeleton)}</div>`;
     }
     elMain.dataset.lastTab = renderingTab;
 
@@ -406,7 +406,7 @@ export const initAdmin = (container) => {
             });
           }
           const skeleton = SKELETONS.HOME;
-          elMain.innerHTML = html`<div class="responsive-container" style="padding-bottom:100px;">${SKELETONS.pulse}${skeleton}</div>`;
+          elMain.innerHTML = html`<div class="responsive-container" style="padding-bottom:100px;">${raw(SKELETONS.pulse)}${raw(skeleton)}</div>`;
           return;
         }
         tabHtml = await renderHome(state, window._cachedAds); 
@@ -418,7 +418,7 @@ export const initAdmin = (container) => {
             if (store.activeTab === 'SUBS' || store.activeTab === 'ABONOS') render();
           });
           const skeleton = SKELETONS.SUBS;
-          elMain.innerHTML = html`<div class="responsive-container" style="padding-bottom:100px;">${SKELETONS.pulse}${skeleton}</div>`;
+          elMain.innerHTML = html`<div class="responsive-container" style="padding-bottom:100px;">${raw(SKELETONS.pulse)}${raw(skeleton)}</div>`;
           return;
         }
         tabHtml = await renderMonthlySystem(state); 
@@ -430,7 +430,7 @@ export const initAdmin = (container) => {
             if (store.activeTab === 'SUBS' || store.activeTab === 'ABONOS') render();
           });
           const skeleton = SKELETONS.DEFAULT;
-          elMain.innerHTML = html`<div class="responsive-container" style="padding-bottom:100px;">${SKELETONS.pulse}${skeleton}</div>`;
+          elMain.innerHTML = html`<div class="responsive-container" style="padding-bottom:100px;">${raw(SKELETONS.pulse)}${raw(skeleton)}</div>`;
           return;
         }
         tabHtml = await renderAbonos(state); 
@@ -462,7 +462,7 @@ export const initAdmin = (container) => {
 
           if (!store.cachedFinance) {
             const skeleton = SKELETONS.FINANCE;
-            elMain.innerHTML = html`<div class="responsive-container" style="padding-bottom:100px;">${SKELETONS.pulse}${skeleton}</div>`;
+            elMain.innerHTML = html`<div class="responsive-container" style="padding-bottom:100px;">${raw(SKELETONS.pulse)}${raw(skeleton)}</div>`;
             return;
           }
         }
@@ -486,7 +486,7 @@ export const initAdmin = (container) => {
     
     if (store.activeTab !== renderingTab) return;
 
-    elMain.innerHTML = html`<div class="responsive-container" style="padding-bottom:100px;">${tabHtml}</div>`; 
+    elMain.innerHTML = html`<div class="responsive-container" style="padding-bottom:100px;">${raw(tabHtml)}</div>`; 
     if(renderingTab==='PERSONAL') setupGuardHooks(elMain)
     if(renderingTab==='ABONOS') setupAbonosHooks(elMain)
     if(renderingTab==='SUBS') setupMonthlySystemHooks(elMain)
