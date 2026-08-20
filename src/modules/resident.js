@@ -1,5 +1,5 @@
 import { supabase, getExchangeRate } from '../db.js'
-import { html } from '../utils/sanitize.js'
+import { html, raw } from '../utils/sanitize.js'
 
 const uploadPaymentProof = async (file, paymentId, buildingId, residentName) => {
   if (!file) return null;
@@ -447,18 +447,18 @@ export async function initResident(container, subscription) {
           <h1 style="color:white;font-size:1.2rem;font-weight:900;margin:0;">PANEL RESIDENTE</h1>
         </div>
 
-        ${contentHtml}
+        ${raw(contentHtml)}
 
         <!-- BOTTOM NAV -->
         <div style="position:fixed;bottom:0;left:0;right:0;background:#1a1a2e;padding:10px 20px calc(env(safe-area-inset-bottom,8px) + 8px);display:flex;justify-content:space-around;align-items:center;box-shadow:0 -5px 30px rgba(0,0,0,0.2);z-index:1000;">
           <button class="res-nav-btn" data-tab="PAGOS" style="background:none;border:none;color:${activeTab==='PAGOS'?'#F5C518':'rgba(255,255,255,0.4)'};display:flex;flex-direction:column;align-items:center;gap:4px;font-weight:800;font-size:0.55rem;cursor:pointer;letter-spacing:0.5px;">
-            ${SVG.MONEY}<span>PAGOS</span>
+            ${raw(SVG.MONEY)}<span>PAGOS</span>
           </button>
           <button class="res-nav-btn" data-tab="PANEL" style="background:none;border:none;color:${activeTab==='PANEL'?'#F5C518':'rgba(255,255,255,0.4)'};display:flex;flex-direction:column;align-items:center;gap:4px;font-weight:800;font-size:0.55rem;cursor:pointer;letter-spacing:0.5px;">
-            ${SVG.HOME}<span>PANEL</span>
+            ${raw(SVG.HOME)}<span>PANEL</span>
           </button>
           <button class="res-nav-btn" data-tab="PERFIL" style="background:none;border:none;color:${activeTab==='PERFIL'?'#F5C518':'rgba(255,255,255,0.4)'};display:flex;flex-direction:column;align-items:center;gap:4px;font-weight:800;font-size:0.55rem;cursor:pointer;letter-spacing:0.5px;">
-            ${SVG.USER}<span>PERFIL</span>
+            ${raw(SVG.USER)}<span>PERFIL</span>
           </button>
           <button class="res-nav-btn" data-tab="VISITAS" style="background:none;border:none;color:${activeTab==='VISITAS'?'#F5C518':'rgba(255,255,255,0.4)'};display:flex;flex-direction:column;align-items:center;gap:4px;font-weight:800;font-size:0.55rem;cursor:pointer;letter-spacing:0.5px;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg><span>VISITAS</span>

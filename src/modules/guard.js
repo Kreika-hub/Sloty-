@@ -1,5 +1,5 @@
 import { getParkingState, updateParkingState, logMovement, logNotification, saveClosure, supabase, hasFeature, showToast, logAudit, getExchangeRate, getSyncQueueCount, isTaskPending } from '../db.js'
-import { html, escapeHTML } from '../utils/sanitize.js';
+import { html, escapeHTML, raw } from '../utils/sanitize.js';
 
 import { searchVisitorByPlate, saveVisitor, logAccess } from '../visitors.js'
 import { subscribeToPushNotifications, renderPushBanner } from './push.js'
@@ -820,7 +820,7 @@ getExchangeRate().then(bcv => {
               Reportar Incidente
             </div>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:16px;">
-              ${typeButtons}
+              ${raw(typeButtons)}
             </div>
             <div style="font-size:0.7rem; font-weight:900; color:#999;
                         text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">
@@ -973,7 +973,7 @@ getExchangeRate().then(bcv => {
                         border-radius:24px; padding:24px; text-align:center;
                         animation: popIn 0.3s forwards;">
                <h3 style="font-weight:900; color:var(--primary); margin:0 0 15px;">MIS REPORTES (Últimos 10)</h3>
-               <div style="max-height:60vh; overflow-y:auto; margin-bottom:20px;">${listHtml}</div>
+               <div style="max-height:60vh; overflow-y:auto; margin-bottom:20px;">${raw(listHtml)}</div>
                <button onclick="handleAction('CLOSE_MODAL')" style="width:100%; background:#f8f9fa; color:#1a1a2e; border:none; border-radius:50px; padding:14px; font-size:0.8rem; font-weight:900; cursor:pointer;">CERRAR</button>
             </div>
           </div>
