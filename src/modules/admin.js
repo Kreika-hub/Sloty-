@@ -76,6 +76,29 @@ export const initAdmin = (container) => {
     }
   }
 
+  function handleSyncUpdated(e) {
+    const el = document.getElementById('admin-sync-queue')
+    if (el) {
+      el.style.display = e.detail.count > 0 ? 'inline-block' : 'none'
+      const countEl = document.getElementById('admin-sync-count')
+      if (countEl) countEl.textContent = e.detail.count
+    }
+  }
+
+  function handleConnectionStatus(e) {
+    const el = document.getElementById('admin-conn-status')
+    if (el) {
+      el.style.background = e.detail.online ? 'rgba(34,197,94,0.15)' : 'rgba(245,197,24,0.15)'
+      el.style.color = e.detail.online ? '#22c55e' : '#ce8a05'
+      el.style.borderColor = e.detail.online ? 'rgba(34,197,94,0.3)' : 'rgba(245,197,24,0.3)'
+      el.innerHTML = html`● ${e.detail.online ? 'En Línea' : 'Offline'}`
+    }
+  }
+
+  function handleSyncDownloaded() {
+    debouncedRender()
+  }
+
   function debouncedRender() {
     if (renderTimeout) clearTimeout(renderTimeout)
     renderTimeout = setTimeout(() => {
