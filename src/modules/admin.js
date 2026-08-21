@@ -2,7 +2,7 @@
  * Admin.js — Main Router and Shell Orchestrator
  * Refactored to act as a lightweight facade linking specialized modules.
  */
-import { getParkingState, saveParkingState, logAudit, supabase, syncDown, getExchangeRate, getSyncQueueCount } from '../db.js'
+import { getParkingState, saveParkingState, logAudit, supabase, syncDown, getExchangeRate, getSyncQueueCount, isUUID } from '../db.js'
 import { escapeHTML, html, raw } from '../utils/sanitize.js'
 import { store, getSubsCached, unsubscribeFinanceRealtime, hasFeature } from './admin/admin-store.js'
 import { ICONS, SKELETONS } from './admin/admin-ui-components.js'
@@ -397,11 +397,21 @@ export const initAdmin = (container) => {
       case 'HOME': {
         if (!store.cachedMetrics || !window._cachedAds) {
           if (!store.metricsLoading) {
+            const isValidBld = isUUID(state.buildingId);
+            const adsPromise = isValidBld
+              ? supabase.from('ads').select('id, title, content, type, timestamp, image_url').or(`building_id.is.null,building_id.eq.${state.buildingId}`).order('timestamp', { ascending: false })
+              : supabase.from('ads').select('id, title, content, type, timestamp, image_url').is('building_id', null).order('timestamp', { ascending: false });
+
             Promise.all([
               loadHomeMetrics(),
-              supabase.from('ads').select('id, title, content, type, timestamp, image_url').or(`building_id.is.null,building_id.eq.${state.buildingId}`).order('timestamp', { ascending: false })
+              adsPromise.catch(() => ({ data: [] }))
             ]).then(([_, adsRes]) => {
               window._cachedAds = adsRes?.data || [];
+              if (store.activeTab === 'HOME') render();
+            }).catch(err => {
+              console.warn('[Sloty] Error loading home dashboard:', err);
+              window._cachedAds = window._cachedAds || [];
+              store.cachedMetrics = store.cachedMetrics || { subs: [], pays: [], pends: [] };
               if (store.activeTab === 'HOME') render();
             });
           }
@@ -446,19 +456,30 @@ export const initAdmin = (container) => {
           const monthStart = new Date(nowObj.getFullYear(), nowObj.getMonth(), 1).toISOString();
           const todayStr = new Date().toISOString().split('T')[0];
           
-          Promise.all([
-            supabase.from('payments').select('amount, method, payment_date, status').eq('building_id', state.buildingId).eq('status', 'CONFIRMED').gte('payment_date', monthStart),
-            supabase.from('payments').select('amount, method').eq('building_id', state.buildingId).eq('status', 'CONFIRMED').gte('payment_date', todayStr),
-            supabase.from('guard_shifts').select('id, guard_name, started_at, ended_at, total_cash, total_mobile, total_bs, entries, exits, absences').eq('building_id', state.buildingId).order('ended_at', { ascending: false }).limit(200)
-          ]).then(([subsPayRes, todayPayRes, shiftsRes]) => {
-            store.cachedFinance = {
-              subsPays: subsPayRes?.data || [],
-              todayPays: todayPayRes?.data || [],
-              guardShifts: shiftsRes?.data || []
-            };
+          if (!isUUID(state.buildingId)) {
+            store.cachedFinance = { subsPays: [], todayPays: [], guardShifts: [] };
             store.cachedFinanceAt = Date.now();
             if (store.activeTab === 'FINANCE') render();
-          });
+          } else {
+            Promise.all([
+              supabase.from('payments').select('amount, method, payment_date, status').eq('building_id', state.buildingId).eq('status', 'CONFIRMED').gte('payment_date', monthStart),
+              supabase.from('payments').select('amount, method').eq('building_id', state.buildingId).eq('status', 'CONFIRMED').gte('payment_date', todayStr),
+              supabase.from('guard_shifts').select('id, guard_name, started_at, ended_at, total_cash, total_mobile, total_bs, entries, exits, absences').eq('building_id', state.buildingId).order('ended_at', { ascending: false }).limit(200)
+            ]).then(([subsPayRes, todayPayRes, shiftsRes]) => {
+              store.cachedFinance = {
+                subsPays: subsPayRes?.data || [],
+                todayPays: todayPayRes?.data || [],
+                guardShifts: shiftsRes?.data || []
+              };
+              store.cachedFinanceAt = Date.now();
+              if (store.activeTab === 'FINANCE') render();
+            }).catch(err => {
+              console.warn('[Sloty] Error loading finance data:', err);
+              store.cachedFinance = { subsPays: [], todayPays: [], guardShifts: [] };
+              store.cachedFinanceAt = Date.now();
+              if (store.activeTab === 'FINANCE') render();
+            });
+          }
 
           if (!store.cachedFinance) {
             const skeleton = SKELETONS.FINANCE;

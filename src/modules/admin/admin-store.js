@@ -6,7 +6,7 @@
  * shared between all functions inside initAdmin(). Any module that needs
  * to read or write cache/state data imports `store` from here.
  */
-import { supabase } from '../../db.js'
+import { supabase, isUUID } from '../../db.js'
 
 // ─── SHARED MUTABLE STATE ─────────────────────────────────────
 export const store = {
@@ -67,6 +67,11 @@ export const getSubsCached = async (buildingId) => {
   if (store.cachedSubs && Date.now() - store.cachedSubsAt < store.SUBS_TTL) return store.cachedSubs;
   let subsResData = [];
   let bldResData = null;
+  if (!buildingId || !isUUID(buildingId)) {
+    store.cachedSubs = { subs: [], bld: null };
+    store.cachedSubsAt = Date.now();
+    return store.cachedSubs;
+  }
   try {
     const [subsRes, bldRes] = await Promise.all([
       supabase.from('subscriptions')
@@ -94,7 +99,7 @@ export const getSubsCached = async (buildingId) => {
 
 // ─── FINANCE REALTIME CHANNEL ─────────────────────────────────
 export const subscribeFinanceRealtime = (buildingId) => {
-  if (store.financeChannel) return; // ya suscrito
+  if (store.financeChannel || !buildingId || !isUUID(buildingId)) return; // ya suscrito o ID inválido
   store.financeChannel = supabase
     .channel('finance-payments')
     .on('postgres_changes', {

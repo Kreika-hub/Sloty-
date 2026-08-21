@@ -302,12 +302,13 @@ const defaultState = {
   }
 }
 
-const recalcStatsData = (state) => {
+const recalcStatsData = (state = {}) => {
   let total = 0, occupied = 0, debt = 0
-  if (state.levels) {
+  if (state && Array.isArray(state.levels)) {
     state.levels.forEach(lvl => {
-        if (lvl.slots) {
+        if (lvl && Array.isArray(lvl.slots)) {
             lvl.slots.forEach(s => {
+                if (!s) return
                 total++
                 if (s.status === 'OCCUPIED') occupied++
                 if (s.status === 'DEBT') debt++
@@ -316,7 +317,8 @@ const recalcStatsData = (state) => {
         }
     })
   }
-  return { ...state.stats, totalSpots: total, occupied, debt: debt }
+  const currentStats = (state && typeof state.stats === 'object' && state.stats) ? state.stats : {}
+  return { ...currentStats, totalSpots: total, occupied, debt: debt }
 }
 
 const IGNORE_WORDS = [

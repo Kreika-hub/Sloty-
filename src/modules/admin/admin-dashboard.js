@@ -2,7 +2,7 @@
  * Admin Dashboard — HOME tab renderer and metrics loader
  * Extracted from admin.js (Phase C refactor)
  */
-import { supabase, getParkingState } from '../../db.js'
+import { supabase, getParkingState, isUUID } from '../../db.js'
 import { store } from './admin-store.js'
 
 // ─── EXPIRING SUBSCRIPTIONS BANNER ────────────────────────────
@@ -58,22 +58,35 @@ export const loadHomeMetrics = async () => {
   if (store.metricsLoading) return
   store.metricsLoading = true
   const s = getParkingState()
+
+  if (!s.buildingId || !isUUID(s.buildingId)) {
+    store.cachedMetrics = { subs: [], pays: [], pends: [], loadedAt: Date.now() }
+    store.metricsLoading = false
+    return
+  }
+
   const now = new Date()
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
   
-  const [subsRes, paysRes, pendRes] = await Promise.all([
-    supabase.from('subscriptions').select('id,custom_price,expiry_date,status').eq('building_id', s.buildingId),
-    supabase.from('payments').select('amount').eq('building_id', s.buildingId).eq('status', 'CONFIRMED').gte('payment_date', monthStart),
-    supabase.from('payments').select('id').eq('building_id', s.buildingId).eq('status', 'PENDING')
-  ])
-  
-  store.cachedMetrics = {
-    subs: subsRes.data || [],
-    pays: paysRes.data || [],
-    pends: pendRes.data || [],
-    loadedAt: Date.now()
+  try {
+    const [subsRes, paysRes, pendRes] = await Promise.all([
+      supabase.from('subscriptions').select('id,custom_price,expiry_date,status').eq('building_id', s.buildingId),
+      supabase.from('payments').select('amount').eq('building_id', s.buildingId).eq('status', 'CONFIRMED').gte('payment_date', monthStart),
+      supabase.from('payments').select('id').eq('building_id', s.buildingId).eq('status', 'PENDING')
+    ])
+    
+    store.cachedMetrics = {
+      subs: subsRes.data || [],
+      pays: paysRes.data || [],
+      pends: pendRes.data || [],
+      loadedAt: Date.now()
+    }
+  } catch (err) {
+    console.warn('[Sloty] Error loading home metrics:', err);
+    store.cachedMetrics = { subs: [], pays: [], pends: [], loadedAt: Date.now() }
+  } finally {
+    store.metricsLoading = false
   }
-  store.metricsLoading = false
 }
 
 // ─── HOME TAB RENDERER ───────────────────────────────────────
