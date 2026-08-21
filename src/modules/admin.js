@@ -329,9 +329,13 @@ export const initAdmin = (container) => {
 
     switch(renderingTab) {
       case 'HOME': {
+        const isValidBld = isUUID(state.buildingId);
+        if (!isValidBld || state.isBypass) {
+          store.cachedMetrics = store.cachedMetrics || { subs: [], pays: [], pends: [] };
+          window._cachedAds = window._cachedAds || [];
+        }
         if (!store.cachedMetrics || !window._cachedAds) {
           if (!store.metricsLoading) {
-            const isValidBld = isUUID(state.buildingId);
             const adsPromise = isValidBld
               ? supabase.from('ads').select('id, title, content, type, timestamp, image_url').or(`building_id.is.null,building_id.eq.${state.buildingId}`).order('timestamp', { ascending: false })
               : supabase.from('ads').select('id, title, content, type, timestamp, image_url').is('building_id', null).order('timestamp', { ascending: false });
@@ -357,6 +361,9 @@ export const initAdmin = (container) => {
         break;
       }
       case 'SUBS': {
+        if (!isUUID(state.buildingId) || state.isBypass) {
+          store.cachedSubs = store.cachedSubs || { subs: [], bld: null };
+        }
         if (!store.cachedSubs) {
           getSubsCached(state.buildingId).then(() => {
             if (store.activeTab === 'SUBS' || store.activeTab === 'ABONOS') render();
@@ -369,6 +376,9 @@ export const initAdmin = (container) => {
         break;
       }
       case 'ABONOS': {
+        if (!isUUID(state.buildingId) || state.isBypass) {
+          store.cachedSubs = store.cachedSubs || { subs: [], bld: null };
+        }
         if (!store.cachedSubs) {
           getSubsCached(state.buildingId).then(() => {
             if (store.activeTab === 'SUBS' || store.activeTab === 'ABONOS') render();
