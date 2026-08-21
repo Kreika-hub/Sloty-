@@ -364,6 +364,8 @@ const renderLogin = () => {
            buildingCode: 'DEV-123',
            plan: 'ORO',
            membership_status: 'ACTIVE',
+           onboarding_completed: true,
+           isBypass: true,
            adminInfo: { name: 'Administrador Demo', email: email || 'admin@test.com', registered: true },
            levels: [
              {
