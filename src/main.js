@@ -309,7 +309,7 @@ const renderLogin = () => {
     $('btn-login').disabled = true;
 
     try {
-      // ─── BYPASS PROVISIONAL ──────────────────────────────────────
+      // ─── BYPASS PROVISIONAL / MOCK DEV ──────────────────────────
       const pwd = $('login-password')?.value?.trim() || ''
       if ((email === 'nucita' || email === 'master') && isMaster) {
         clearInterval(interval)
@@ -338,6 +338,26 @@ const renderLogin = () => {
         return
       }
       // ─────────────────────────────────────────────────────────────
+
+      // AUTENTICACIÓN REAL CON SUPABASE AUTH
+      if (email !== 'admin@test.com') {
+        const authRes = await login(email, pwd)
+        if (authRes.error) {
+          clearInterval(interval)
+          errorEl.style.color = '#e63946'
+          errorEl.textContent = authRes.error
+          $('btn-login').disabled = false
+          return
+        }
+
+        if (authRes.role === 'MASTER') {
+          clearInterval(interval)
+          errorEl.textContent = ''
+          showOnly('main')
+          initMaster($('main-screen'))
+          return
+        }
+      }
 
       let building;
       // Fast path for mocks
