@@ -67,8 +67,8 @@ const renderWelcome = () => {
 
       <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;gap:15px; z-index: 1;">
         <!-- Logo container con fixed aspect-ratio y placeholder para evitar CLS -->
-        <div style="width:min(280px, 75vw); aspect-ratio:280/85; min-height:85px; display:flex; align-items:center; justify-content:center; margin:0 auto;">
-          <img src="/sloty-logo-v2.png" alt="Sloty" width="280" height="85" style="width:100%; height:auto; aspect-ratio:280/85; display:block; filter: drop-shadow(0px 10px 20px rgba(0,0,0,0.5));" />
+        <div style="width:min(280px, 70vw); aspect-ratio:280/85; display:flex; align-items:center; justify-content:center; margin:0 auto;">
+          <img src="/sloty-logo-v2.png" alt="Sloty" width="280" style="width:100%; height:auto; display:block; object-fit:contain; filter: drop-shadow(0px 10px 20px rgba(0,0,0,0.5));" />
         </div>
         <p aria-label="Gestión inteligente de estacionamientos" style="color:rgba(255,255,255,0.85);font-size:0.85rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin:10px 0 0;text-align:center;">GESTIÓN INTELIGENTE DE<br>ESTACIONAMIENTOS</p>
       </div>
