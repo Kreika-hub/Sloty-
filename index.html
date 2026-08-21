@@ -21,8 +21,22 @@
   <link rel="stylesheet" href="/src/style.css" />
   <style>
     html, body { margin: 0; padding: 0; overflow-x: hidden; }
-    * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
   </style>
+  <script>
+    window.addEventListener('error', function(e) {
+      if (e && e.message && (e.message.includes('Cannot access') || e.message.includes('Loading chunk') || e.message.includes('Script error'))) {
+        console.warn('[Sloty PWA] Evicting old PWA cache due to bundle mismatch...');
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function(regs) {
+            regs.forEach(function(r) { r.unregister(); });
+            location.reload();
+          });
+        } else {
+          location.reload();
+        }
+      }
+    });
+  </script>
 </head>
 <body>
   <div id="app">
