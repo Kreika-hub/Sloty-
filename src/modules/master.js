@@ -82,6 +82,329 @@ export const initMaster = (container) => {
     modal.querySelector('#btn-close-activation-modal').onclick = () => modal.remove();
   };
 
+  // ─── SISTEMA DE MODALES NATIVOS ESTILIZADOS PARA MASTER ───────
+  const showMasterAlert = (title, message, icon = 'ℹ️') => {
+    const existing = document.getElementById('master-alert-modal');
+    if (existing) existing.remove();
+    const modal = document.createElement('div');
+    modal.id = 'master-alert-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);z-index:999999;display:flex;align-items:center;justify-content:center;padding:20px;font-family:Montserrat,sans-serif;';
+    modal.innerHTML = `
+      <div style="background:#1a1a2e; border-radius:24px; padding:28px 24px; width:100%; max-width:380px; text-align:center; border:1px solid rgba(255,255,255,0.1); box-shadow:0 25px 60px rgba(0,0,0,0.6);">
+        <div style="font-size:3rem; margin-bottom:12px;">${icon}</div>
+        <div style="font-size:1.15rem; font-weight:900; color:white; margin-bottom:8px;">${escapeHTML(title)}</div>
+        <div style="font-size:0.8rem; color:rgba(255,255,255,0.7); line-height:1.5; margin-bottom:24px;">${escapeHTML(message)}</div>
+        <button id="master-alert-btn" style="width:100%; padding:15px; background:#F5C518; color:#1a1a2e; border:none; border-radius:14px; font-weight:900; font-size:0.85rem; cursor:pointer; text-transform:uppercase; letter-spacing:0.5px;">ENTENDIDO</button>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    modal.querySelector('#master-alert-btn').onclick = () => modal.remove();
+  };
+
+  const showMasterConfirm = ({ title, message, icon = '⚠️', confirmText = 'CONFIRMAR', cancelText = 'CANCELAR', isDestructive = false, onConfirm }) => {
+    const existing = document.getElementById('master-confirm-modal');
+    if (existing) existing.remove();
+    const modal = document.createElement('div');
+    modal.id = 'master-confirm-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);z-index:999999;display:flex;align-items:center;justify-content:center;padding:20px;font-family:Montserrat,sans-serif;';
+    modal.innerHTML = `
+      <div style="background:#1a1a2e; border-radius:24px; padding:28px 24px; width:100%; max-width:380px; text-align:center; border:1px solid rgba(255,255,255,0.1); box-shadow:0 25px 60px rgba(0,0,0,0.6);">
+        <div style="font-size:3rem; margin-bottom:12px;">${icon}</div>
+        <div style="font-size:1.15rem; font-weight:900; color:white; margin-bottom:8px;">${escapeHTML(title)}</div>
+        <div style="font-size:0.8rem; color:rgba(255,255,255,0.7); line-height:1.5; margin-bottom:24px;">${escapeHTML(message)}</div>
+        <div style="display:flex; gap:10px;">
+          <button id="master-confirm-cancel" style="flex:1; padding:14px; background:rgba(255,255,255,0.08); color:white; border:none; border-radius:12px; font-weight:900; font-size:0.75rem; cursor:pointer; text-transform:uppercase;">${escapeHTML(cancelText)}</button>
+          <button id="master-confirm-ok" style="flex:1.5; padding:14px; background:${isDestructive ? '#e63946' : '#F5C518'}; color:${isDestructive ? 'white' : '#1a1a2e'}; border:none; border-radius:12px; font-weight:900; font-size:0.75rem; cursor:pointer; text-transform:uppercase;">${escapeHTML(confirmText)}</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    modal.querySelector('#master-confirm-cancel').onclick = () => modal.remove();
+    modal.querySelector('#master-confirm-ok').onclick = async () => {
+      modal.remove();
+      if (onConfirm) await onConfirm();
+    };
+  };
+
+  const showMasterPrompt = ({ title, message, placeholder = '', defaultValue = '', icon = '✏️', confirmText = 'GUARDAR', onConfirm }) => {
+    const existing = document.getElementById('master-prompt-modal');
+    if (existing) existing.remove();
+    const modal = document.createElement('div');
+    modal.id = 'master-prompt-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);z-index:999999;display:flex;align-items:center;justify-content:center;padding:20px;font-family:Montserrat,sans-serif;';
+    modal.innerHTML = `
+      <div style="background:#1a1a2e; border-radius:24px; padding:28px 24px; width:100%; max-width:380px; text-align:center; border:1px solid rgba(255,255,255,0.1); box-shadow:0 25px 60px rgba(0,0,0,0.6);">
+        <div style="font-size:2.5rem; margin-bottom:10px;">${icon}</div>
+        <div style="font-size:1.1rem; font-weight:900; color:white; margin-bottom:6px;">${escapeHTML(title)}</div>
+        <div style="font-size:0.75rem; color:rgba(255,255,255,0.6); margin-bottom:16px;">${escapeHTML(message)}</div>
+        <input id="master-prompt-input" type="text" value="${escapeHTML(defaultValue)}" placeholder="${escapeHTML(placeholder)}"
+          style="width:100%; padding:14px; border-radius:12px; border:1.5px solid rgba(255,255,255,0.2); background:rgba(255,255,255,0.06); color:white; font-weight:700; font-size:0.9rem; margin-bottom:20px; box-sizing:border-box; outline:none; text-align:center;">
+        <div style="display:flex; gap:10px;">
+          <button id="master-prompt-cancel" style="flex:1; padding:14px; background:rgba(255,255,255,0.08); color:white; border:none; border-radius:12px; font-weight:900; font-size:0.75rem; cursor:pointer; text-transform:uppercase;">CANCELAR</button>
+          <button id="master-prompt-ok" style="flex:1.5; padding:14px; background:#F5C518; color:#1a1a2e; border:none; border-radius:12px; font-weight:900; font-size:0.75rem; cursor:pointer; text-transform:uppercase;">${escapeHTML(confirmText)}</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    const input = modal.querySelector('#master-prompt-input');
+    input.focus();
+    modal.querySelector('#master-prompt-cancel').onclick = () => modal.remove();
+    modal.querySelector('#master-prompt-ok').onclick = async () => {
+      const val = input.value.trim();
+      modal.remove();
+      if (onConfirm) await onConfirm(val);
+    };
+  };
+
+  // ─── MODAL DE COTEJO Y COBRO MULTI-MONEDA / MULTI-MÉTODO ─────
+  const showMasterPaymentModal = async ({ building, preselectedPlan = null, onConfirmed }) => {
+    const existing = document.getElementById('master-payment-modal-overlay');
+    if (existing) existing.remove();
+
+    const bcvData = await getExchangeRate().catch(() => ({ rate: 40.0 }));
+    const bcvRate = Number(bcvData?.rate || 40.0);
+
+    const { data: proofs } = await supabase
+      .from('building_payment_proofs')
+      .select('*')
+      .eq('building_id', building.id)
+      .order('created_at', { ascending: false })
+      .limit(6);
+
+    const pendingProofs = (proofs || []).filter(p => p.status === 'PENDING');
+
+    const PLAN_PRICES = { TRIAL: 0, BRONCE: 29, PLATA: 59, ORO: 99 };
+    let currentPlan = preselectedPlan || building.plan || 'BRONCE';
+    let currentMethod = 'EFECTIVO_USD';
+    let currentAmount = PLAN_PRICES[currentPlan] || 29;
+
+    const modal = document.createElement('div');
+    modal.id = 'master-payment-modal-overlay';
+    modal.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.85); backdrop-filter:blur(8px); display:flex; align-items:flex-end; justify-content:center; z-index:99999; overflow-y:auto; font-family:Montserrat,sans-serif;';
+    
+    modal.innerHTML = `
+      <div style="background:#1a1a2e; border-radius:24px 24px 0 0; padding:24px; width:100%; max-width:540px; border:1px solid rgba(255,255,255,0.1); max-height:90vh; overflow-y:auto; box-sizing:border-box;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <div>
+            <div style="font-size:0.65rem; font-weight:900; color:#F5C518; text-transform:uppercase; letter-spacing:1.5px;">Gestión de Cobro & Membresía</div>
+            <div style="font-size:1.15rem; font-weight:900; color:white;">${escapeHTML(building.name)}</div>
+          </div>
+          <button id="btn-close-pay-modal" style="background:rgba(255,255,255,0.08); color:white; border:none; border-radius:50%; width:36px; height:36px; font-weight:900; cursor:pointer;">✕</button>
+        </div>
+
+        <!-- SECCIÓN 1: COTEJO DE COMPROBANTES DE LA NUBE -->
+        <div style="background:rgba(255,255,255,0.04); border-radius:16px; padding:14px; margin-bottom:18px; border:1px solid rgba(255,255,255,0.08);">
+          <div style="font-size:0.65rem; font-weight:900; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; display:flex; justify-content:space-between;">
+            <span>🔍 Cotejo de Pagos Recibidos</span>
+            <span style="color:${pendingProofs.length > 0 ? '#F5C518' : '#888'};">${pendingProofs.length} pendiente(s)</span>
+          </div>
+
+          ${pendingProofs.length > 0 ? `
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              ${pendingProofs.map(p => `
+                <div style="background:rgba(245,197,24,0.08); border:1px solid rgba(245,197,24,0.25); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:8px;">
+                  <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                      <span style="font-weight:900; color:white; font-size:0.9rem;">$${Number(p.amount || 0).toFixed(2)} USD</span>
+                      <span style="color:#bbb; font-size:0.7rem; margin-left:6px;">Plan ${escapeHTML(p.plan_key || currentPlan)}</span>
+                    </div>
+                    <span style="font-size:0.65rem; color:#999;">${new Date(p.created_at || p.submitted_at).toLocaleDateString('es-VE')}</span>
+                  </div>
+                  <div style="font-size:0.75rem; color:rgba(255,255,255,0.8);">
+                    🏦 <strong>${escapeHTML(p.bank || 'Banco')}</strong> &middot; Ref: <code>${escapeHTML(p.reference || 'S/R')}</code>
+                  </div>
+                  ${p.proof_image ? `
+                    <div style="position:relative; margin-top:4px;">
+                      <img src="${escapeHTML(p.proof_image)}" style="width:100%; max-height:120px; object-fit:cover; border-radius:8px; cursor:pointer;" onclick="window.open('${escapeHTML(p.proof_image)}','_blank')" />
+                      <div style="position:absolute; bottom:6px; right:6px; background:rgba(0,0,0,0.7); color:white; font-size:0.6rem; padding:2px 6px; border-radius:4px;">Toca para ampliar</div>
+                    </div>
+                  ` : ''}
+                  <button class="btn-validate-proof" data-proof-id="${p.id}" data-proof-plan="${p.plan_key || currentPlan}"
+                    style="width:100%; padding:10px; background:#22c55e; color:white; border:none; border-radius:10px; font-weight:900; font-size:0.75rem; cursor:pointer; text-transform:uppercase;">
+                    ✓ VALIDAR Y APROBAR ESTE COMPROBANTE
+                  </button>
+                </div>
+              `).join('')}
+            </div>
+          ` : `
+            <div style="font-size:0.75rem; color:rgba(255,255,255,0.5); text-align:center; padding:10px 0;">
+              No hay comprobantes pendientes en el sistema para este edificio.<br>Puedes registrar el pago manual a continuación:
+            </div>
+          `}
+        </div>
+
+        <!-- SECCIÓN 2: REGISTRO MANUAL DE PAGO (MULTI-MÉTODO / MULTI-MONEDA) -->
+        <div style="background:rgba(255,255,255,0.06); border-radius:16px; padding:16px; margin-bottom:16px;">
+          <div style="font-size:0.65rem; font-weight:900; color:#F5C518; text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">
+            💵 Registro Manual de Cobro (Multi-Método)
+          </div>
+
+          <!-- SELECTOR DE PLAN -->
+          <label style="color:#999; font-size:0.6rem; font-weight:900; display:block; margin-bottom:6px;">PLAN A RENOVAR / ASIGNAR</label>
+          <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin-bottom:14px;">
+            ${['TRIAL', 'BRONCE', 'PLATA', 'ORO'].map(pk => `
+              <button type="button" class="btn-plan-select" data-plan="${pk}"
+                style="padding:10px 4px; border-radius:10px; border:2px solid ${pk === currentPlan ? '#F5C518' : 'rgba(255,255,255,0.1)'};
+                       background:${pk === currentPlan ? '#F5C518' : 'rgba(255,255,255,0.05)'};
+                       color:${pk === currentPlan ? '#1a1a2e' : 'white'}; font-weight:900; font-size:0.7rem; cursor:pointer;">
+                ${pk}<br><span style="font-size:0.6rem; opacity:0.8;">$${PLAN_PRICES[pk]}</span>
+              </button>
+            `).join('')}
+          </div>
+
+          <!-- MONTO USD & BCV CALCULATOR -->
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;">
+            <div>
+              <label style="color:#999; font-size:0.6rem; font-weight:900; display:block; margin-bottom:6px;">MONTO EN USD ($)</label>
+              <input id="master-pay-amount-usd" type="number" step="0.01" value="${currentAmount}"
+                style="width:100%; padding:12px; border-radius:10px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.3); color:white; font-weight:900; font-size:1rem; box-sizing:border-box;">
+            </div>
+            <div>
+              <label style="color:#999; font-size:0.6rem; font-weight:900; display:block; margin-bottom:6px;">EQUIVALENTE EN BS (BCV)</label>
+              <div id="master-pay-amount-bs" style="padding:12px; border-radius:10px; background:rgba(245,197,24,0.1); border:1px solid rgba(245,197,24,0.3); color:#F5C518; font-weight:900; font-size:0.95rem; text-align:center;">
+                Bs. ${(currentAmount * bcvRate).toFixed(2)}
+              </div>
+            </div>
+          </div>
+
+          <!-- MÉTODOS DE PAGO DISPONIBLES -->
+          <label style="color:#999; font-size:0.6rem; font-weight:900; display:block; margin-bottom:6px;">MÉTODO DE PAGO RECIBIDO</label>
+          <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-bottom:14px;">
+            ${[
+              { key: 'EFECTIVO_USD', label: '💵 Efectivo $' },
+              { key: 'PAGO_MOVIL',   label: '📲 Pago Móvil' },
+              { key: 'PUNTO_DEBITO', label: '💳 Punto Débito' },
+              { key: 'TRANSFERENCIA',label: '🏦 Transf. Bs' },
+              { key: 'ZELLE',        label: '⚡ Zelle USD' },
+              { key: 'BINANCE_USDT', label: '🟡 Binance Pay' },
+            ].map(m => `
+              <button type="button" class="btn-method-select" data-method="${m.key}"
+                style="padding:10px 4px; border-radius:10px; border:1.5px solid ${m.key === currentMethod ? '#F5C518' : 'rgba(255,255,255,0.1)'};
+                       background:${m.key === currentMethod ? 'rgba(245,197,24,0.2)' : 'rgba(255,255,255,0.04)'};
+                       color:${m.key === currentMethod ? '#F5C518' : 'rgba(255,255,255,0.8)'}; font-weight:800; font-size:0.65rem; cursor:pointer;">
+                ${m.label}
+              </button>
+            `).join('')}
+          </div>
+
+          <!-- REFERENCIA O BANCO -->
+          <label style="color:#999; font-size:0.6rem; font-weight:900; display:block; margin-bottom:6px;">REFERENCIA BANCARIA / BANCO EMISOR</label>
+          <input id="master-pay-reference" type="text" placeholder="Ej: Banesco 49201 ó Efectivo directo"
+            style="width:100%; padding:12px; border-radius:10px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.3); color:white; font-weight:700; font-size:0.8rem; margin-bottom:18px; box-sizing:border-box;">
+
+          <!-- BOTONES DE ACCIÓN -->
+          <div style="display:flex; gap:10px;">
+            <button id="btn-cancel-pay-modal" style="flex:1; padding:14px; background:rgba(255,255,255,0.08); color:white; border:none; border-radius:12px; font-weight:900; font-size:0.75rem; cursor:pointer; text-transform:uppercase;">
+              CANCELAR
+            </button>
+            <button id="btn-submit-manual-pay" style="flex:2; padding:14px; background:#F5C518; color:#1a1a2e; border:none; border-radius:12px; font-weight:900; font-size:0.75rem; cursor:pointer; text-transform:uppercase;">
+              CONFIRMAR Y ACTIVAR
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Eventos
+    modal.querySelector('#btn-close-pay-modal').onclick = () => modal.remove();
+    modal.querySelector('#btn-cancel-pay-modal').onclick = () => modal.remove();
+
+    // Evento de validación de comprobante directo
+    modal.querySelectorAll('.btn-validate-proof').forEach(btn => {
+      btn.onclick = async () => {
+        const proofId = btn.dataset.proofId;
+        const proofPlan = btn.dataset.proofPlan;
+        modal.remove();
+        await actions.APPROVE_PROOF(`${proofId}|${building.id}|${proofPlan}`);
+      };
+    });
+
+    // Actualización de plan
+    const amountInput = modal.querySelector('#master-pay-amount-usd');
+    const amountBsDisplay = modal.querySelector('#master-pay-amount-bs');
+
+    modal.querySelectorAll('.btn-plan-select').forEach(b => {
+      b.onclick = () => {
+        currentPlan = b.dataset.plan;
+        currentAmount = PLAN_PRICES[currentPlan] || 0;
+        amountInput.value = currentAmount;
+        amountBsDisplay.textContent = `Bs. ${(currentAmount * bcvRate).toFixed(2)}`;
+        modal.querySelectorAll('.btn-plan-select').forEach(x => {
+          const isThis = x.dataset.plan === currentPlan;
+          x.style.background = isThis ? '#F5C518' : 'rgba(255,255,255,0.05)';
+          x.style.color = isThis ? '#1a1a2e' : 'white';
+          x.style.border = `2px solid ${isThis ? '#F5C518' : 'rgba(255,255,255,0.1)'}`;
+        });
+      };
+    });
+
+    // Cambio en input de monto
+    amountInput.oninput = () => {
+      const val = parseFloat(amountInput.value) || 0;
+      currentAmount = val;
+      amountBsDisplay.textContent = `Bs. ${(val * bcvRate).toFixed(2)}`;
+    };
+
+    // Selección de método
+    modal.querySelectorAll('.btn-method-select').forEach(b => {
+      b.onclick = () => {
+        currentMethod = b.dataset.method;
+        modal.querySelectorAll('.btn-method-select').forEach(x => {
+          const isThis = x.dataset.method === currentMethod;
+          x.style.background = isThis ? 'rgba(245,197,24,0.2)' : 'rgba(255,255,255,0.04)';
+          x.style.color = isThis ? '#F5C518' : 'rgba(255,255,255,0.8)';
+          x.style.border = `1.5px solid ${isThis ? '#F5C518' : 'rgba(255,255,255,0.1)'}`;
+        });
+      };
+    });
+
+    // Confirmación manual
+    modal.querySelector('#btn-submit-manual-pay').onclick = async () => {
+      const ref = modal.querySelector('#master-pay-reference').value.trim();
+      const durations = { TRIAL: 15, BRONCE: 30, PLATA: 30, ORO: 30 };
+      const days = durations[currentPlan] || 30;
+      const expiry = new Date();
+      expiry.setDate(expiry.getDate() + days);
+
+      const PLAN_FEATURES = {
+        TRIAL:  { finance_module: true, whatsapp_notifications: false, reports_module: false, debt_tracking: false, max_guards: 2 },
+        BRONCE: { finance_module: true, whatsapp_notifications: false, reports_module: false, debt_tracking: true, max_guards: 4 },
+        PLATA:  { finance_module: true, whatsapp_notifications: true, reports_module: true, debt_tracking: true, max_guards: 8 },
+        ORO:    { finance_module: true, whatsapp_notifications: true, reports_module: true, debt_tracking: true, expenses_module: true, max_guards: 999 }
+      };
+
+      await Promise.all([
+        supabase.from('buildings').update({
+          plan: currentPlan,
+          membership_status: 'ACTIVE',
+          membership_expiry: expiry.toISOString(),
+          features: PLAN_FEATURES[currentPlan] || PLAN_FEATURES.BRONCE
+        }).eq('id', building.id),
+        supabase.from('sloty_memberships').insert({
+          building_id: building.id,
+          plan_key: currentPlan,
+          status: 'CONFIRMED',
+          amount: currentAmount,
+          payment_method: currentMethod,
+          payment_reference: ref || 'Cobro directo Master',
+          paid_at: new Date().toISOString(),
+          expiry_date: expiry.toISOString()
+        })
+      ]);
+
+      modal.remove();
+      showMasterAlert('✓ Pago y Membresía Registrados', `El edificio ${building.name} ha sido actualizado a Plan ${currentPlan} exitosamente.`, '🎉');
+      
+      if (document.getElementById('dossier-overlay')) {
+        document.getElementById('dossier-overlay').remove();
+        actions.OPEN_DOSSIER(building.id);
+      }
+      render();
+    };
+  };
+
   const actions = {
     TAB: (btn) => { activeTab = btn.dataset.tab; selectedBuilding = null; render() },
     SET_NOTIFY_FILTER: (id) => { masterNotifyFilter = id; render() },
@@ -89,7 +412,7 @@ export const initMaster = (container) => {
     APPROVE_BUILDING: async (id) => {
       if (!id) return;
       await supabase.from('buildings').update({ membership_status: 'ACTIVE' }).eq('id', id);
-      alert('✓ Edificio aprobado y activado con éxito.');
+      showMasterAlert('✓ Condominio Aprobado', 'El edificio ha sido aprobado y activado con éxito.', '✅');
       if (document.getElementById('dossier-overlay')) {
         document.getElementById('dossier-overlay').remove();
         actions.OPEN_DOSSIER(id);
@@ -98,21 +421,30 @@ export const initMaster = (container) => {
     },
     REJECT_BUILDING: async (id) => {
       if (!id) return;
-      if (!confirm('¿Rechazar solicitud de este edificio?')) return;
-      await supabase.from('buildings').update({ membership_status: 'REJECTED' }).eq('id', id);
-      alert('Edificio marcado como RECHAZADO.');
-      if (document.getElementById('dossier-overlay')) {
-        document.getElementById('dossier-overlay').remove();
-        actions.OPEN_DOSSIER(id);
-      }
-      render();
+      showMasterConfirm({
+        title: '¿Rechazar Registro?',
+        message: 'Esta acción marcará la solicitud del condominio como RECHAZADA.',
+        icon: '⚠️',
+        confirmText: 'SÍ, RECHAZAR',
+        isDestructive: true,
+        onConfirm: async () => {
+          await supabase.from('buildings').update({ membership_status: 'REJECTED' }).eq('id', id);
+          showMasterAlert('Registro Rechazado', 'El edificio ha sido marcado como RECHAZADO.', 'ℹ️');
+          if (document.getElementById('dossier-overlay')) {
+            document.getElementById('dossier-overlay').remove();
+            actions.OPEN_DOSSIER(id);
+          }
+          render();
+        }
+      });
     },
     TOGGLE_FEATURE: async (param) => {
       const [bId, featKey] = (param || '').split('|');
       if (!bId || !featKey) return;
       const { data: bld } = await supabase.from('buildings').select('features').eq('id', bId).single();
       const currentFeatures = bld?.features || {};
-      const updated = { ...currentFeatures, [featKey]: !currentFeatures[featKey] };
+      const currentVal = (currentFeatures[featKey] !== undefined) ? currentFeatures[featKey] : true;
+      const updated = { ...currentFeatures, [featKey]: !currentVal };
       await supabase.from('buildings').update({ features: updated }).eq('id', bId);
       if (document.getElementById('dossier-overlay')) {
         document.getElementById('dossier-overlay').remove();
@@ -150,215 +482,89 @@ export const initMaster = (container) => {
     },
     CHANGE_PLAN: async (id) => {
       if (!id) return;
-      const { data: bld } = await supabase.from('buildings')
-        .select('name, plan').eq('id', id).single();
+      const { data: bld } = await supabase.from('buildings').select('*').eq('id', id).single();
       if (!bld) return;
-
-      const PLAN_OPTIONS = [
-        { key: 'TRIAL',  label: 'Trial',  price: 'Gratis',   slots: '10 puestos',  color: '#888' },
-        { key: 'BRONCE', label: 'Bronce', price: '$29/mes',  slots: '50 puestos',  color: '#cd7f32' },
-        { key: 'PLATA',  label: 'Plata',  price: '$59/mes',  slots: '150 puestos', color: '#aaa' },
-        { key: 'ORO',    label: 'Oro',    price: '$99/mes',  slots: 'Ilimitado',   color: '#F5C518' },
-      ];
-
-      const overlay = document.createElement('div');
-      overlay.id = 'change-plan-overlay';
-      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:99999;display:flex;align-items:flex-end;justify-content:center;';
-      overlay.innerHTML =
-        '<div style="background:#1a1a2e; border-radius:24px 24px 0 0; padding:24px;'
-        + ' width:100%; max-width:500px; border:1px solid rgba(255,255,255,0.1);'
-        + ' font-family:\'Montserrat\',sans-serif;">'
-        + '<div style="font-size:0.65rem; font-weight:900; color:#999; text-transform:uppercase; letter-spacing:2px; margin-bottom:4px;">Cambiar Plan</div>'
-        + '<div style="font-size:1rem; font-weight:900; color:white; margin-bottom:20px;">' + escapeHTML(bld.name || '') + '</div>'
-        + '<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:20px;">'
-        + PLAN_OPTIONS.map(p =>
-            '<button onclick="window._selectMasterPlan(\'' + p.key + '\')"'
-            + ' id="plan-btn-' + p.key + '"'
-            + ' style="background:' + (bld.plan === p.key ? p.color : 'rgba(255,255,255,0.06)') + ';'
-            + 'color:' + (bld.plan === p.key ? (p.key === 'ORO' ? '#1a1a2e' : 'white') : 'rgba(255,255,255,0.7)') + ';'
-            + 'border:2px solid ' + (bld.plan === p.key ? p.color : 'rgba(255,255,255,0.1)') + ';'
-            + 'border-radius:14px; padding:14px 12px; cursor:pointer; text-align:left; transition:all 0.15s;">'
-            + '<div style="font-size:0.85rem; font-weight:900;">' + p.label + '</div>'
-            + '<div style="font-size:0.7rem; opacity:0.8; margin-top:2px;">' + p.price + '</div>'
-            + '<div style="font-size:0.6rem; opacity:0.6; margin-top:1px;">' + p.slots + '</div>'
-            + (bld.plan === p.key ? '<div style="font-size:0.6rem; font-weight:900; margin-top:4px; opacity:0.8;">\u2713 Plan actual</div>' : '')
-            + '</button>'
-          ).join('')
-        + '</div>'
-        + '<div style="display:flex; gap:10px;">'
-        + '<button onclick="document.getElementById(\'change-plan-overlay\').remove(); delete window._selectMasterPlan; delete window._currentPlanId;"'
-        + ' style="flex:1; padding:14px; background:rgba(255,255,255,0.06); color:white; border:none; border-radius:12px; font-weight:900; cursor:pointer; font-family:\'Montserrat\',sans-serif;">CANCELAR</button>'
-        + '<button id="btn-confirm-plan" style="flex:2; padding:14px; background:rgba(255,255,255,0.1); color:rgba(255,255,255,0.4); border:none; border-radius:12px; font-weight:900; cursor:pointer; font-family:\'Montserrat\',sans-serif;" disabled>SELECCIONA UN PLAN</button>'
-        + '</div>'
-        + '</div>';
-
-      document.body.appendChild(overlay);
-
-      let selectedPlan = bld.plan;
-      window._currentPlanId = id;
-
-      window._selectMasterPlan = (planKey) => {
-        selectedPlan = planKey;
-        PLAN_OPTIONS.forEach(p => {
-          const btn = document.getElementById('plan-btn-' + p.key);
-          if (!btn) return;
-          const isSelected = p.key === planKey;
-          btn.style.background = isSelected ? p.color : 'rgba(255,255,255,0.06)';
-          btn.style.color = isSelected ? (p.key === 'ORO' ? '#1a1a2e' : 'white') : 'rgba(255,255,255,0.7)';
-          btn.style.border = '2px solid ' + (isSelected ? p.color : 'rgba(255,255,255,0.1)');
-        });
-        const confirmBtn = document.getElementById('btn-confirm-plan');
-        const plan = PLAN_OPTIONS.find(p => p.key === planKey);
-        confirmBtn.disabled = false;
-        confirmBtn.style.background = '#F5C518';
-        confirmBtn.style.color = '#1a1a2e';
-        confirmBtn.textContent = 'CAMBIAR A ' + (plan?.label?.toUpperCase() || '');
-      };
-
-      document.getElementById('btn-confirm-plan').onclick = async () => {
-        if (!selectedPlan || selectedPlan === bld.plan) { overlay.remove(); return; }
-
-        // Confirmación de pago nativa
-        const paid = selectedPlan === 'TRIAL' ? false : confirm('\u00bfYa recibiste el pago de este cliente?');
-        let amount = 0;
-        let method = 'EFECTIVO';
-        if (paid) {
-          const rawAmount = prompt('\u00bfCu\u00e1nto pagaron? (en d\u00f3lares)');
-          amount = parseFloat(rawAmount) || 0;
-          const rawMethod = prompt('M\u00e9todo de pago:\n1 = Efectivo\n2 = Pago M\u00f3vil\n3 = Transferencia\n4 = Zelle\n\nEscribe el n\u00famero:');
-          const methodMap = { '1':'EFECTIVO', '2':'PAGO_MOVIL', '3':'TRANSFERENCIA', '4':'ZELLE' };
-          method = methodMap[rawMethod] || 'EFECTIVO';
-        }
-
-        if (!confirm('\u00bfConfirmar upgrade a plan ' + selectedPlan + ' para ' + bld.name + '?')) return;
-
-        const durations = { TRIAL: 15, BRONCE: 30, PLATA: 30, ORO: 30 };
-        const days = durations[selectedPlan] || 30;
-        const expiry = new Date();
-        expiry.setDate(expiry.getDate() + days);
-
-        const PLAN_FEATURES = {
-          TRIAL:  { finance_module: true, whatsapp_notifications: false, reports_module: false, debt_tracking: false, max_guards: 2 },
-          BRONCE: { finance_module: true, whatsapp_notifications: false, reports_module: false, debt_tracking: true, max_guards: 4 },
-          PLATA:  { finance_module: true, whatsapp_notifications: true, reports_module: true, debt_tracking: true, max_guards: 8 },
-          ORO:    { finance_module: true, whatsapp_notifications: true, reports_module: true, debt_tracking: true, expenses_module: true, max_guards: 999 }
-        };
-        const newFeatures = PLAN_FEATURES[selectedPlan] || PLAN_FEATURES.BRONCE;
-
-        const updates = [supabase.from('buildings').update({
-          plan: selectedPlan,
-          membership_status: 'ACTIVE',
-          membership_expiry: expiry.toISOString(),
-          features: newFeatures
-        }).eq('id', id)];
-
-        if (paid && amount > 0) {
-          updates.push(supabase.from('sloty_memberships').insert({
-            building_id: id, plan_key: selectedPlan, status: 'CONFIRMED',
-            amount, payment_method: method,
-            paid_at: new Date().toISOString(), expiry_date: expiry.toISOString()
-          }));
-        }
-
-        await Promise.all(updates);
-
-        if (paid && amount > 0) {
-          const bcv = await getExchangeRate();
-          const rateVal = bcv?.rate || 40.0;
-          notifyMasterPayment({
-            buildingName: bld.name,
-            adminName: 'Administración',
-            plan: selectedPlan,
-            amountUsd: amount,
-            amountBs: amount * rateVal,
-            bcvRate: rateVal,
-            method: method,
-            reference: 'Registro Directo Máster'
-          }).catch(e => console.warn('[Sloty] notifyMasterPayment notice:', e));
-        }
-
-        overlay.remove();
-        delete window._selectMasterPlan;
-        delete window._currentPlanId;
-        if (document.getElementById('dossier-overlay')) {
-          document.getElementById('dossier-overlay').remove();
-          actions.OPEN_DOSSIER(id);
-        }
-        render();
-      };
+      showMasterPaymentModal({ building: bld });
     },
-    REGISTER_PAYMENT: (btn) => {
-      const bId = btn.dataset.id
-      const plan = btn.dataset.plan
-      const bName = btn.dataset.name || 'Edificio'
-      
-      // Mostrar modal inline en master-content-area
-      const overlay = document.createElement('div')
-      overlay.id = 'master-modal'
-      overlay.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,0.7);
-        z-index:999;display:flex;align-items:flex-end;justify-content:center;`
-      overlay.innerHTML = `
-        <div style="background:#1a1a2e;border-radius:24px 24px 0 0;padding:30px;
-          width:100%;max-width:500px;border:1px solid rgba(255,255,255,0.1);">
-          <div style="font-size:1rem;font-weight:900;color:white;
-            margin-bottom:6px;">Registrar Pago</div>
-          <div style="font-size:0.7rem;color:#999;margin-bottom:20px;">${escapeHTML(bName)} · Plan ${escapeHTML(plan)}</div>
-          <input id="master-pay-amount" type="number" placeholder="Monto" min="0" step="0.01"
-            style="width:100%;padding:14px;border-radius:12px;border:none;
-            background:rgba(255,255,255,0.08);color:white;font-size:1rem;
-            font-weight:900;margin-bottom:12px;box-sizing:border-box;">
-          <input id="master-pay-ref" type="text" placeholder="Referencia (opcional)"
-            style="width:100%;padding:14px;border-radius:12px;border:none;
-            background:rgba(255,255,255,0.08);color:white;font-size:0.8rem;
-            font-weight:700;margin-bottom:20px;box-sizing:border-box;">
-          <div style="display:flex;gap:10px;">
-            <button id="master-pay-cancel"
-              style="flex:1;padding:14px;background:rgba(255,255,255,0.08);
-              color:white;border:none;border-radius:12px;font-weight:900;cursor:pointer;">
-              CANCELAR
-            </button>
-            <button id="master-pay-confirm"
-              style="flex:2;padding:14px;background:#F5C518;color:#1a1a2e;
-              border:none;border-radius:12px;font-weight:900;cursor:pointer;">
-              CONFIRMAR PAGO
-            </button>
-          </div>
-        </div>`
-      document.body.appendChild(overlay)
-
-      document.getElementById('master-pay-cancel').onclick = () => overlay.remove()
-      document.getElementById('master-pay-confirm').onclick = async () => {
-        const amount = parseFloat(document.getElementById('master-pay-amount').value) || 0
-        const ref = document.getElementById('master-pay-ref').value || ''
-        if (amount <= 0) { 
-          document.getElementById('master-pay-amount').style.border = '1px solid #e63946'
-          return 
-        }
-        overlay.remove()
-        const expiry = new Date()
-        expiry.setDate(expiry.getDate() + 30)
-        await supabase.from('sloty_memberships').insert({
-          building_id: bId, plan_key: plan, status: 'CONFIRMED',
-          amount, payment_reference: ref,
-          paid_at: new Date().toISOString(), expiry_date: expiry.toISOString()
-        })
-        await supabase.from('buildings')
-          .update({ membership_status: 'ACTIVE' }).eq('id', bId)
-        render()
-      }
+    REGISTER_PAYMENT: async (btn) => {
+      const bId = btn.dataset.id;
+      if (!bId) return;
+      const { data: bld } = await supabase.from('buildings').select('*').eq('id', bId).single();
+      if (!bld) return;
+      showMasterPaymentModal({ building: bld });
     },
     CONTACT_COLLECTION: async (id) => {
-        const { data: bld } = await supabase.from('buildings').select('name, phone, plan').eq('id', id).single();
-        if (!bld || !bld.phone) return alert('No hay teléfono registrado para este edificio.');
-        const phone = bld.phone.replace(/\D/g, '');
-        const msg = encodeURIComponent(`Hola admin de ${bld.name}, te contactamos de Sloty. Tienes una deuda pendiente por tu plan ${bld.plan}. Por favor, realiza el pago a la brevedad para reactivar tu servicio.`);
-        window.open(`https://wa.me/${phone}?text=${msg}`, '_blank');
+      const { data: bld } = await supabase.from('buildings').select('id, name, phone, plan').eq('id', id).single();
+      if (!bld) return;
+      if (!bld.phone) {
+        showMasterPrompt({
+          title: 'Sin Teléfono Registrado',
+          message: `El edificio "${bld.name}" no tiene número de WhatsApp. Ingresa el teléfono del administrador para contactarlo:`,
+          placeholder: 'Ej: +584121234567',
+          icon: '📱',
+          confirmText: 'GUARDAR Y COBRAR',
+          onConfirm: async (newPhone) => {
+            if (!newPhone) return;
+            await supabase.from('buildings').update({ phone: newPhone }).eq('id', id);
+            const cleanPhone = newPhone.replace(/\D/g, '');
+            const msg = encodeURIComponent(`Hola admin de ${bld.name}, te contactamos de Sloty. Tienes una deuda pendiente por tu plan ${bld.plan}. Por favor, realiza el pago a la brevedad para reactivar tu servicio.`);
+            window.open(`https://wa.me/${cleanPhone}?text=${msg}`, '_blank');
+            if (document.getElementById('dossier-overlay')) {
+              document.getElementById('dossier-overlay').remove();
+              actions.OPEN_DOSSIER(id);
+            }
+          }
+        });
+        return;
+      }
+      const phone = bld.phone.replace(/\D/g, '');
+      const msg = encodeURIComponent(`Hola admin de ${bld.name}, te contactamos de Sloty. Tienes una deuda pendiente por tu plan ${bld.plan}. Por favor, realiza el pago a la brevedad para reactivar tu servicio.`);
+      window.open(`https://wa.me/${phone}?text=${msg}`, '_blank');
     },
     ACTIVATE_CASH: (btn) => {
-      const bId = btn.dataset.id
-      const bName = 'Confirmar Pago en Efectivo'
-      actions.REGISTER_PAYMENT({ dataset: { id: bId, plan: 'SELECCIONADO', name: bName } })
+      const bId = btn.dataset.id;
+      actions.REGISTER_PAYMENT({ dataset: { id: bId } });
     },
+    EDIT_PHONE: async (id) => {
+      const { data: bld } = await supabase.from('buildings').select('name, phone').eq('id', id).single();
+      showMasterPrompt({
+        title: 'Editar Teléfono WhatsApp',
+        message: `Ingresa el número de WhatsApp para "${bld?.name || 'el edificio'}":`,
+        placeholder: 'Ej: +584121234567',
+        defaultValue: bld?.phone || '',
+        icon: '📱',
+        confirmText: 'GUARDAR TELÉFONO',
+        onConfirm: async (val) => {
+          await supabase.from('buildings').update({ phone: val || null }).eq('id', id);
+          showMasterAlert('Teléfono Actualizado', 'El número de teléfono ha sido guardado con éxito.', '✅');
+          if (document.getElementById('dossier-overlay')) {
+            document.getElementById('dossier-overlay').remove();
+            actions.OPEN_DOSSIER(id);
+          }
+        }
+      });
+    },
+    EDIT_CITY: async (id) => {
+      const { data: bld } = await supabase.from('buildings').select('name, city').eq('id', id).single();
+      showMasterPrompt({
+        title: 'Editar Ubicación Geográfica',
+        message: `Ciudad o zona del edificio "${bld?.name || ''}":`,
+        placeholder: 'Ej: Caracas, Las Mercedes',
+        defaultValue: bld?.city || '',
+        icon: '📍',
+        confirmText: 'GUARDAR CIUDAD',
+        onConfirm: async (val) => {
+          await supabase.from('buildings').update({ city: val || null }).eq('id', id);
+          showMasterAlert('Ubicación Actualizada', 'La ciudad ha sido guardada con éxito.', '✅');
+          if (document.getElementById('dossier-overlay')) {
+            document.getElementById('dossier-overlay').remove();
+            actions.OPEN_DOSSIER(id);
+          }
+        }
+      });
+    },
+      
+
     APPROVE_PROOF: async (raw) => {
       // Support both old object call and new pipe-string call from dossier
       const isRaw = typeof raw === 'string'
@@ -435,34 +641,42 @@ export const initMaster = (container) => {
       const buildingId = isRaw ? raw.split('|')[1] : raw?.building_id
       if (!proofId || !buildingId) return
 
-      const reason = prompt('Motivo del rechazo (opcional):') || ''
+      showMasterPrompt({
+        title: 'Rechazar Comprobante',
+        message: 'Ingresa el motivo del rechazo para informar al administrador del edificio:',
+        placeholder: 'Ej: Referencia no encontrada en cuenta bancaria',
+        icon: '⚠️',
+        confirmText: 'RECHAZAR PAGO',
+        onConfirm: async (reason) => {
+          await Promise.all([
+            supabase.from('building_payment_proofs').update({
+              status: 'REJECTED',
+              reviewed_at: new Date().toISOString(),
+              rejection_reason: reason || null,
+              reference: reason ? `RECHAZADO: ${reason}` : 'RECHAZADO'
+            }).eq('id', proofId),
+            supabase.from('buildings').update({
+              membership_status: 'SUSPENDED'
+            }).eq('id', buildingId)
+          ]);
 
-      await Promise.all([
-        supabase.from('building_payment_proofs').update({
-          status: 'REJECTED',
-          reviewed_at: new Date().toISOString(),
-          rejection_reason: reason || null,
-          reference: reason ? `RECHAZADO: ${reason}` : 'RECHAZADO'
-        }).eq('id', proofId),
-        supabase.from('buildings').update({
-          membership_status: 'SUSPENDED'
-        }).eq('id', buildingId)
-      ])
+          logAudit(`Master rechazó comprobante de pago para edificio: ${buildingId} (${reason || 'Sin motivo'})`);
 
-      logAudit(`Master rechazó comprobante de pago para edificio: ${buildingId} (${reason || 'Sin motivo'})`)
+          // Notificar al administrador del edificio sobre el rechazo
+          supabase.functions.invoke('send-push', {
+            body: {
+              building_id: buildingId,
+              role: 'ADMIN',
+              title: '❌ Pago de Membresía Rechazado',
+              body: `El pago de membresía fue rechazado.${reason ? ` Motivo: ${reason}` : ' Por favor, revisa los datos suministrados o contacta con soporte.'}`
+            }
+          }).catch(e => console.warn('[Sloty] push notification error:', e));
 
-      // Notificar al administrador del edificio sobre el rechazo
-      supabase.functions.invoke('send-push', {
-        body: {
-          building_id: buildingId,
-          role: 'ADMIN',
-          title: '❌ Pago de Membresía Rechazado',
-          body: `El pago de membresía fue rechazado.${reason ? ` Motivo: ${reason}` : ' Por favor, revisa los datos suministrados o contacta con soporte.'}`
+          showMasterAlert('Comprobante Rechazado', 'El comprobante ha sido marcado como rechazado y el condominio suspendido.', 'ℹ️');
+          document.getElementById('dossier-overlay')?.remove();
+          render();
         }
-      }).catch(e => console.warn('[Sloty] push notification error:', e));
-
-      document.getElementById('dossier-overlay')?.remove()
-      render();
+      });
     },
     ACTIVATE_CASH: async (buildingId) => {
       if (!buildingId) return;
@@ -497,7 +711,7 @@ export const initMaster = (container) => {
       const rate  = parseFloat(input?.value);
 
       if (!rate || rate < 10) {
-        alert('Ingresa una tasa válida mayor a 10');
+        showMasterAlert('Tasa Inválida', 'Ingresa una tasa válida mayor a 10', '⚠️');
         return;
       }
 
@@ -509,7 +723,7 @@ export const initMaster = (container) => {
       }).eq('id', 'global');
 
       if (error) {
-        alert('Error al actualizar: ' + error.message);
+        showMasterAlert('Error al actualizar', error.message, '❌');
         return;
       }
 
@@ -520,7 +734,7 @@ export const initMaster = (container) => {
       if (display) display.textContent =
         `Bs. ${rate.toLocaleString('es-VE', {minimumFractionDigits:2})} · Manual ⚠️`;
       if (input) input.value = '';
-      alert(`✓ Tasa actualizada a Bs. ${rate.toLocaleString('es-VE')}`);
+      showMasterAlert('✓ Tasa Actualizada', `La tasa oficial fue actualizada a Bs. ${rate.toLocaleString('es-VE')}`, '✅');
     },
     OPEN_DOSSIER: async (btn) => {
       const buildingId = typeof btn === 'string' ? btn : btn.dataset.id
@@ -831,30 +1045,77 @@ export const initMaster = (container) => {
           }).join('')}
       </div>
 
-      <!-- CONTACTO -->
-      ${bld?.phone || bld?.admin_email ? `
-        <div style="background:rgba(255,255,255,0.06); border-radius:14px;
-                    padding:14px; margin-bottom:16px;">
-          <div style="font-size:0.65rem; font-weight:900; color:#999;
-                      text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">
-            Contacto
+      <!-- CONTACTO & DETALLES DE CONEXIÓN -->
+      <div style="background:rgba(255,255,255,0.06); border-radius:16px; padding:16px; margin-bottom:16px;">
+        <div style="font-size:0.65rem; font-weight:900; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">
+          Contacto & Datos de Conexión
+        </div>
+        
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <!-- TELÉFONO WHATSAPP -->
+          <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.2); padding:10px 14px; border-radius:12px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:1.1rem;">📱</span>
+              <div>
+                <div style="font-size:0.55rem; color:#999; font-weight:800; text-transform:uppercase;">Teléfono WhatsApp</div>
+                <div style="font-size:0.85rem; font-weight:900; color:white;">${bld?.phone ? escapeHTML(bld.phone) : '<span style="color:#e63946;">Sin registrar</span>'}</div>
+              </div>
+            </div>
+            <div style="display:flex; gap:6px;">
+              ${bld?.phone ? `
+                <a href="https://wa.me/${bld.phone.replace(/\D/g,'')}" target="_blank" style="background:#22c55e; color:white; padding:6px 12px; border-radius:10px; font-size:0.7rem; font-weight:900; text-decoration:none; display:flex; align-items:center; gap:4px;">
+                  💬 Chat
+                </a>` : ''}
+              <button onclick="window.handleMasterAction('EDIT_PHONE','${buildingId}')" style="background:rgba(255,255,255,0.1); color:white; border:none; padding:6px 12px; border-radius:10px; font-size:0.7rem; font-weight:800; cursor:pointer;">
+                ${bld?.phone ? '✏️ Editar' : '+ Agregar Teléfono'}
+              </button>
+            </div>
           </div>
-          ${bld.phone ? `
-            <a href="https://wa.me/${bld.phone.replace(/\D/g,'')}"
-               target="_blank"
-               style="display:flex; align-items:center; gap:10px; color:white;
-                      text-decoration:none; padding:8px 0;">
-              <span style="font-size:1.2rem;">💬</span>
-              <span style="font-size:0.8rem; font-weight:700;">${escapeHTML(bld.phone)}</span>
-            </a>` : ''}
-          ${bld.admin_email ? `
-            <a href="mailto:${bld.admin_email}"
-               style="display:flex; align-items:center; gap:10px; color:white;
-                      text-decoration:none; padding:8px 0;">
-              <span style="font-size:1.2rem;">✉️</span>
-              <span style="font-size:0.8rem; font-weight:700;">${escapeHTML(bld.admin_email)}</span>
-            </a>` : ''}
-        </div>` : ''}
+
+          <!-- EMAIL ADMINISTRADOR -->
+          <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.2); padding:10px 14px; border-radius:12px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:1.1rem;">✉️</span>
+              <div>
+                <div style="font-size:0.55rem; color:#999; font-weight:800; text-transform:uppercase;">Email Administrador</div>
+                <div style="font-size:0.85rem; font-weight:900; color:white;">${escapeHTML(bld?.admin_email || 'Sin email registrado')}</div>
+              </div>
+            </div>
+            ${bld?.admin_email ? `
+              <a href="mailto:${bld.admin_email}" style="background:rgba(255,255,255,0.1); color:white; padding:6px 12px; border-radius:10px; font-size:0.7rem; font-weight:800; text-decoration:none;">
+                ✉️ Enviar Correo
+              </a>` : ''}
+          </div>
+
+          <!-- UBICACIÓN GEOGRÁFICA -->
+          <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.2); padding:10px 14px; border-radius:12px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:1.1rem;">📍</span>
+              <div>
+                <div style="font-size:0.55rem; color:#999; font-weight:800; text-transform:uppercase;">Ubicación Geográfica / Ciudad</div>
+                <div style="font-size:0.85rem; font-weight:900; color:white;">${escapeHTML(bld?.city || 'Venezuela (Sin especificar)')}</div>
+              </div>
+            </div>
+            <button onclick="window.handleMasterAction('EDIT_CITY','${buildingId}')" style="background:rgba(255,255,255,0.1); color:white; border:none; padding:6px 12px; border-radius:10px; font-size:0.7rem; font-weight:800; cursor:pointer;">
+              ✏️ Editar
+            </button>
+          </div>
+
+          <!-- DISPOSITIVO / PLATAFORMA -->
+          <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.2); padding:10px 14px; border-radius:12px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:1.1rem;">💻</span>
+              <div>
+                <div style="font-size:0.55rem; color:#999; font-weight:800; text-transform:uppercase;">Dispositivo / Plataforma</div>
+                <div style="font-size:0.85rem; font-weight:900; color:#F5C518;">Web App PWA · Conexión En Línea</div>
+              </div>
+            </div>
+            <span style="background:rgba(34,197,94,0.15); color:#22c55e; font-size:0.65rem; font-weight:900; padding:4px 10px; border-radius:8px;">
+              ACTIVO
+            </span>
+          </div>
+        </div>
+      </div>
 
     </div>`;
 
@@ -968,7 +1229,7 @@ export const initMaster = (container) => {
         render()
       } catch(e) {
         console.error('Error subiendo anuncio:', e)
-        alert('Error al subir el anuncio. Intenta de nuevo.')
+        showMasterAlert('Error', 'Error al subir el anuncio. Intenta de nuevo.', '❌');
       }
     },
     TOGGLE_AD: async (btn) => {
@@ -983,10 +1244,18 @@ export const initMaster = (container) => {
       render()
     },
     DELETE_AD: async (btn) => {
-      if(!confirm('¿Borrar anuncio definitivamente?')) return; 
       const id = btn.dataset.id;
-      await supabase.from('ads').delete().eq('id', id)
-      render()
+      showMasterConfirm({
+        title: '¿Borrar Anuncio?',
+        message: '¿Estás seguro de eliminar este anuncio definitivamente?',
+        icon: '🗑️',
+        confirmText: 'SÍ, BORRAR',
+        isDestructive: true,
+        onConfirm: async () => {
+          await supabase.from('ads').delete().eq('id', id);
+          render();
+        }
+      });
     },
     ADD_BUILDING: () => {
       const overlay = document.createElement('div');
@@ -1063,7 +1332,7 @@ export const initMaster = (container) => {
           membership_expiry: expiry.toISOString(),
           created_at: new Date().toISOString()
         }).select().single();
-        if (error) { alert('Error al crear el edificio: ' + error.message); return; }
+        if (error) { showMasterAlert('Error', 'Error al crear el edificio: ' + error.message, '❌'); return; }
         if (plan !== 'TRIAL' && amount > 0 && newBld) {
           await supabase.from('sloty_memberships').insert({
             building_id: newBld.id, plan_key: plan, status: 'CONFIRMED',
@@ -1075,33 +1344,49 @@ export const initMaster = (container) => {
         render();
         // Ofrecer envío de enlace si hay teléfono
         if (phone && newBld) {
-          if (confirm('¿Enviar enlace de acceso al admin por WhatsApp?')) {
-            const loginUrl = window.location.origin + window.location.pathname;
-            const msg = encodeURIComponent(
-              'Hola! Bienvenido a Sloty \u{1F680}\n\nTu edificio *' + name + '* ya est\u00e1 activo.\n\n'
-              + '\u{1F449} Accede aqu\u00ed: ' + loginUrl + '\n'
-              + '\u{1F511} C\u00f3digo de edificio: *' + code + '*\n'
-              + (email ? '\u{1F4E7} Email admin: *' + email + '*\n' : '')
-              + '\n\u00a1\u00c9xito con tu gesti\u00f3n! \u{1F680}'
-            );
-            window.open('https://wa.me/' + phone.replace(/\D/g,'') + '?text=' + msg, '_blank');
-          }
+          showMasterConfirm({
+            title: '¿Enviar Acceso por WhatsApp?',
+            message: `¿Deseas abrir WhatsApp para enviar las credenciales y el enlace al administrador de "${name}"?`,
+            icon: '💬',
+            confirmText: 'SÍ, ENVIAR',
+            cancelText: 'DESPUÉS',
+            onConfirm: () => {
+              const loginUrl = window.location.origin + window.location.pathname;
+              const msg = encodeURIComponent(
+                'Hola! Bienvenido a Sloty \u{1F680}\n\nTu edificio *' + name + '* ya est\u00e1 activo.\n\n'
+                + '\u{1F449} Accede aqu\u00ed: ' + loginUrl + '\n'
+                + '\u{1F511} C\u00f3digo de edificio: *' + code + '*\n'
+                + (email ? '\u{1F4E7} Email admin: *' + email + '*\n' : '')
+                + '\n\u00a1\u00c9xito con tu gesti\u00f3n! \u{1F680}'
+              );
+              window.open('https://wa.me/' + phone.replace(/\D/g,'') + '?text=' + msg, '_blank');
+            }
+          });
         }
       };
     },
     DELETE_BUILDING: async (btn) => {
       const id   = btn.dataset.id;
       const name = btn.dataset.name || 'este edificio';
-      if (!confirm('\u26a0\ufe0f \u00bfEliminar ' + name + '?\n\nEsta acci\u00f3n es IRREVERSIBLE y borrar\u00e1 todos los datos asociados.')) return;
-      const { error } = await supabase.from('buildings').delete().eq('id', id);
-      if (error) { alert('Error al eliminar: ' + error.message); return; }
-      render();
+      showMasterConfirm({
+        title: `¿Eliminar ${name}?`,
+        message: 'Esta acción es IRREVERSIBLE y borrará todos los datos asociados a este condominio.',
+        icon: '🗑️',
+        confirmText: 'SÍ, ELIMINAR',
+        isDestructive: true,
+        onConfirm: async () => {
+          const { error } = await supabase.from('buildings').delete().eq('id', id);
+          if (error) { showMasterAlert('Error', 'Error al eliminar: ' + error.message, '❌'); return; }
+          showMasterAlert('Edificio Eliminado', `El edificio ${name} fue eliminado correctamente.`, '✅');
+          render();
+        }
+      });
     },
     SEND_ACCESS_LINK: async (id) => {
       if (!id) return
       const { data: bld } = await supabase.from('buildings').select('name, phone, code, admin_email').eq('id', id).single()
-      if (!bld) return alert('No se encontró el edificio.')
-      if (!bld.phone) return alert('El edificio no tiene teléfono registrado.')
+      if (!bld) return showMasterAlert('Error', 'No se encontró el edificio.', '❌')
+      if (!bld.phone) return showMasterAlert('Sin Teléfono', 'El edificio no tiene teléfono registrado.', '⚠️')
       const phone = bld.phone.replace(/\D/g, '')
       const loginUrl = `${window.location.origin}${window.location.pathname}`
       const msg = encodeURIComponent(
@@ -1113,11 +1398,17 @@ export const initMaster = (container) => {
       window.open(`https://wa.me/${phone}?text=${msg}`, '_blank')
     },
     RESET_FULL: () => {
-       if(confirm('⚠ ¿RESET FULL SYSTEM? Esto borrará el caché local por completo.')) { 
-           if(confirm('¿Estás absolutamente seguro?')) {
-               localStorage.clear(); location.reload() 
-           }
-       }
+      showMasterConfirm({
+        title: '⚠ RESET FULL SYSTEM',
+        message: 'Esto borrará el caché local por completo y reiniciará la aplicación. ¿Deseas continuar?',
+        icon: '⚠️',
+        confirmText: 'SÍ, RESETEAR',
+        isDestructive: true,
+        onConfirm: () => {
+          localStorage.clear();
+          location.reload();
+        }
+      });
     },
     LOGOUT: () => {
       if (window.slotyLogout) window.slotyLogout()
