@@ -1230,7 +1230,8 @@ const renderRegister = () => {
 
         const finalRef = `${bank} - Ref: ${ref}`
 
-        // 2. Registro en base de datos Supabase
+        // 2. Registro en base de datos Supabase con fallback local resiliente
+        let dbInsertSuccess = false
         const proofPayload = {
           building_id:  building.id,
           plan_key:     plan.key,
@@ -1242,63 +1243,81 @@ const renderRegister = () => {
         }
 
         try {
-          await supabase.from('building_payment_proofs').insert(proofPayload)
-          await supabase.from('buildings').update({
-            membership_status: 'PENDING_PROOF',
-            plan: plan.key
-          }).eq('id', building.id)
+          const { error: insertErr } = await supabase.from('building_payment_proofs').insert(proofPayload)
+          if (!insertErr) {
+            dbInsertSuccess = true
+            await supabase.from('buildings').update({
+              membership_status: 'PENDING_PROOF',
+              plan: plan.key
+            }).eq('id', building.id)
+          } else {
+            console.warn('[Sloty DB] RLS o error al insertar comprobante:', insertErr)
+          }
         } catch(dbErr) {
-          console.warn('[Sloty DB] Error guardando comprobante en la nube, archivando localmente:', dbErr)
-          try {
-            const localProofs = JSON.parse(localStorage.getItem('sloty_pending_proofs') || '[]')
-            localProofs.push({ ...proofPayload, savedAt: new Date().toISOString() })
-            localStorage.setItem('sloty_pending_proofs', JSON.stringify(localProofs))
-          } catch(e) {}
+          console.warn('[Sloty DB] Excepción insertando comprobante en Supabase:', dbErr)
         }
 
+        // Siempre asegurar copia local en caso de fallo de red o RLS
+        try {
+          const localProofs = JSON.parse(localStorage.getItem('sloty_pending_proofs') || '[]')
+          localProofs.push({ ...proofPayload, savedAt: new Date().toISOString(), synced: dbInsertSuccess })
+          localStorage.setItem('sloty_pending_proofs', JSON.stringify(localProofs))
+        } catch(e) {}
+
         // 3. Tasa BCV y Generador de Mensaje / Notificación de WhatsApp
-        const bcvRateData = await getExchangeRate().catch(() => ({ rate: 40.0 }))
-        const currentRate = Number(bcvRateData?.rate || 40.0)
+        let currentRate = 40.0
+        try {
+          const bcvRateData = await getExchangeRate()
+          if (bcvRateData?.rate) currentRate = Number(bcvRateData.rate)
+        } catch(e) {}
         const amountBs = Number((amount * currentRate).toFixed(2))
 
-        const waData = formatProofWhatsAppMessage({
-          buildingName: building.name,
-          buildingCode: building.code,
-          adminName: building.admin_name || building.admin_email || 'Administrador',
-          planLabel: plan.label,
-          amountUsd: amount,
-          amountBs: amountBs,
-          bcvRate: currentRate,
-          bank: bank,
-          reference: finalRef,
-          proofUrl: uploadSuccess ? finalImageUrl : 'Foto adjunta en app',
-          masterPhone: '584120770776'
-        })
-
-        // 4. Invocar Edge Function para notificación push / bot si está disponible
-        supabase.functions.invoke('notify-new-payment', {
-          body: {
-            building_name: building.name || 'Desconocido',
-            admin_name: building.admin_name || 'Buscando..',
-            plan_key: plan.key,
-            amount: amount,
+        let waData = null
+        try {
+          waData = formatProofWhatsAppMessage({
+            buildingName: building.name,
+            buildingCode: building.code || building.id || 'SLO',
+            adminName: building.admin_name || building.admin_email || 'Administrador',
+            planLabel: plan.label,
+            amountUsd: amount,
+            amountBs: amountBs,
+            bcvRate: currentRate,
             bank: bank,
             reference: finalRef,
-            payment_date: date
-          }
-        }).catch(() => {})
+            proofUrl: uploadSuccess ? finalImageUrl : (proofFile ? `Foto local (${proofFile.name})` : 'Foto adjunta en app'),
+            masterPhone: '584120770776'
+          })
+        } catch(waErr) {
+          console.error('[Sloty WhatsApp] Error formateando mensaje:', waErr)
+        }
+
+        // 4. Invocar Edge Function para notificación push / bot si está disponible
+        try {
+          supabase.functions.invoke('notify-new-payment', {
+            body: {
+              building_name: building.name || 'Desconocido',
+              admin_name: building.admin_name || 'Buscando..',
+              plan_key: plan.key,
+              amount: amount,
+              bank: bank,
+              reference: finalRef,
+              payment_date: date
+            }
+          }).catch(() => {})
+        } catch(e) {}
 
         // 5. Abrir WhatsApp con el mensaje automatizado y transicionar a pantalla de confirmación
-        if (waData.whatsappUrl) {
+        if (waData && waData.whatsappUrl) {
           window.open(waData.whatsappUrl, '_blank')
         }
 
         renderPendingScreen('PROOF', plan)
 
       } catch(e) {
-        console.error('Error enviando comprobante:', e)
-        errEl.textContent = 'Error al enviar. Intenta de nuevo.'
-        btn.textContent = 'ENVIAR COMPROBANTE'
+        console.error('Error general enviando comprobante:', e)
+        const waHelpUrl = `https://wa.me/584120770776?text=${encodeURIComponent(`Hola, hubo un error al subir mi comprobante para el edificio ${building.name || ''} (Código: ${building.code || 'SLO'}). Mi referencia bancaria es: ${document.getElementById('proof-ref')?.value || 'N/A'}`)}`
+        errEl.innerHTML = `No pudimos conectar con el servidor. Tu banco y referencia fueron respaldados.<br><a href="${waHelpUrl}" target="_blank" style="color:#F5C518; text-decoration:underline; font-weight:900; display:inline-block; margin-top:6px;">📲 Enviar comprobante por WhatsApp al Administrador Master</a>`
+        btn.textContent = 'REINTENTAR ENVÍO'
         btn.disabled = false
       }
     }
@@ -1458,14 +1477,14 @@ const renderGuardPin = () => {
         <p style="color:rgba(255,255,255,0.4);font-size:0.65rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 32px;">SELECCIONA TU PERFIL</p>
         
         <div style="width:100%;max-width:320px;display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-          ${activeGuards.map(p => `
+          ${activeGuards.length ? activeGuards.map(p => `
             <div class="guard-card" data-id="${p.id}" style="background:rgba(255,255,255,0.05);padding:20px 10px;border-radius:18px;text-align:center;cursor:pointer;border:2px solid transparent;transition:all 0.2s;">
               <div style="width:60px;height:60px;border-radius:50%;background:#333;margin:0 auto 10px;overflow:hidden;border:2px solid rgba(255,255,255,0.1);">
                 ${p.photo ? `<img src="${p.photo}" style="width:100%;height:100%;object-fit:cover;">` : `<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#666;font-weight:900;">${p.name.charAt(0)}</div>`}
               </div>
               <div style="color:white;font-weight:700;font-size:0.8rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.name}</div>
             </div>
-          `).join(activeGuards.length ? '' : '<p style="color:rgba(255,255,255,0.3);grid-column:span 2;padding:40px 0;">No hay guardias registrados.</p>')}
+          `).join('') : '<p style="color:rgba(255,255,255,0.3);grid-column:span 2;padding:40px 0;">No hay guardias registrados.</p>'}
         </div>
         
         <p style="color:rgba(255,255,255,0.2);font-size:0.75rem;margin-top:auto;padding-top:40px;">${state.buildingName || 'Edificio'}</p>
