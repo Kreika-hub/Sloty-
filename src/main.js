@@ -1587,9 +1587,10 @@ async function redirectByRole(userId) {
 
 const checkInvitationLink = async () => {
   const params = new URLSearchParams(window.location.search);
-  const plate = params.get('setup');
+  const rawSetup = params.get('setup');
+  const guardId = params.get('setup_guard') || params.get('guard_id') || (rawSetup && rawSetup.includes('guard') ? rawSetup : null);
+  const plate = guardId ? null : rawSetup;
   const bldCode = params.get('bld');
-  const guardId = params.get('setup_guard');
   // Guard ID may be base64-encoded, or it may be a raw numeric ID (Date.now()).
   // Only attempt base64 decode if the value is NOT already a plain number.
   let guardIdDecoded = null;

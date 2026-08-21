@@ -204,7 +204,7 @@ export const initGuardActions = (actions, container, refresh) => {
       
       if (!p || !p.phone) return showToast('No hay teléfono registrado', 'error');
       
-      const url = `${window.location.origin}/onboarding.html?setup=${p.id}&bld=${state.buildingCode}`;
+      const url = `${window.location.origin}/?setup_guard=${p.id}&bld=${state.buildingCode}`;
       const msg = `¡Bienvenido a Sloty, ${p.name}! 🚗\n\nHas sido añadido como operador para ${state.buildingName}.\n\nPor favor, ingresa al siguiente enlace para configurar tu PIN de seguridad e iniciar tus turnos:\n\n${url}`;
       
       window.open(`https://wa.me/${p.phone.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`, '_blank');
