@@ -4,7 +4,7 @@
  */
 import { getParkingState, saveParkingState, logAudit, showToast } from '../../db.js'
 import { escapeHTML } from '../../utils/sanitize.js'
-import { ICONS } from './admin-ui-components.js'
+import { ICONS, compressBase64Image } from './admin-ui-components.js'
 import { store } from './admin-store.js'
 
 // ─── PERSONAL TAB RENDERER (PERSONAL) ────────────────────────
@@ -106,8 +106,6 @@ export const setupGuardHooks = (container) => {
       
       const reader = new FileReader()
       reader.onload = async (evt) => {
-        // Compress base64 image on select
-        const { compressBase64Image } = await import('./admin-ui-components.js')
         const compressed = await compressBase64Image(evt.target.result, 180, 0.65)
         if (preview) {
           preview.src = compressed
