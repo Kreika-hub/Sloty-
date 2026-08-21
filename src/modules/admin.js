@@ -224,12 +224,14 @@ export const initAdmin = (container) => {
       const rev = (state.movements || []).filter(m => new Date(m.timestamp) >= new Date().setHours(0,0,0,0)).reduce((acc, m) => acc + (m.amount || 0), 0)
       metricHtml = `<div class="header-status" style="background:rgba(34,197,94,0.15); color:#22c55e;"><span>$${rev.toFixed(2)}</span></div>`
     } else if (store.activeTab === 'SUBS' || store.activeTab === 'ABONOS') {
-      metricHtml = `<div class="header-status" id="sub-count-badge" style="background:rgba(59,130,246,0.15); color:#3b82f6;"><span>... RESIDENTES</span></div>`
-      supabase.from('subscriptions').select('id', { count: 'exact', head: true }).eq('building_id', state.buildingId)
-        .then(({count}) => {
-          const badge = container.querySelector('#sub-count-badge')
-          if(badge) badge.innerHTML = html`<span>${count || 0} RESIDENTES</span>`
-        })
+      metricHtml = `<div class="header-status" id="sub-count-badge" style="background:rgba(59,130,246,0.15); color:#3b82f6;"><span>0 RESIDENTES</span></div>`
+      if (isUUID(state.buildingId)) {
+        supabase.from('subscriptions').select('id', { count: 'exact', head: true }).eq('building_id', state.buildingId)
+          .then(({count}) => {
+            const badge = container.querySelector('#sub-count-badge')
+            if(badge) badge.innerHTML = html`<span>${count || 0} RESIDENTES</span>`
+          }).catch(() => {})
+      }
     }
 
     const titles = { STRUCTURE:'Pisos', SUBS:'Mensuales', FINANCE:'Caja', PERSONAL:'Personal', REPORTES:'Reportes', SETTINGS:'Auditoría', NOTIFICATIONS:'Notificaciones', PROFILE:'Perfil', ABONOS:'Abonos' }
