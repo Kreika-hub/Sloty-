@@ -1818,10 +1818,16 @@ const checkInvitationLink = async () => {
 
 // ─── INIT ──────────────────────────────────────────────────────
 async function init() {
+  const params = new URLSearchParams(window.location.search)
+  if (params.get('role') === 'guard' || params.get('guard') === '1') {
+    window.history.replaceState({}, document.title, '/')
+    window.slotySwitchToGuard('Carlos Guardia (Demo)')
+    return
+  }
+
   const isSetup = await checkInvitationLink();
   if (isSetup) return;
 
-  const params = new URLSearchParams(window.location.search)
   const bParam = params.get('building')
   if (bParam) {
     localStorage.setItem('sloty_active_building', bParam)

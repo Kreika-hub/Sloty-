@@ -473,6 +473,12 @@ export async function initResident(container, subscription) {
         if (qrEl && typeof QRCode !== 'undefined') {
           new QRCode(qrEl, { text: JSON.stringify({ plate: subData.plate, status: isPaid ? 'PAID' : 'DEBT' }), width: 150, height: 150, colorDark: '#1a1a2e', colorLight: '#f9f9f9', correctLevel: QRCode.CorrectLevel.H })
         }
+        const btnSwitchGuard = document.getElementById('btn-switch-to-guard-from-res')
+        if (btnSwitchGuard) {
+          btnSwitchGuard.onclick = () => {
+            if (window.slotySwitchToGuard) window.slotySwitchToGuard('Carlos Guardia (Demo)')
+          }
+        }
         const btnComing = document.getElementById('res-btn-coming')
         if (btnComing) {
           btnComing.onclick = async () => {
