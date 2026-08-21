@@ -125,6 +125,60 @@ export const renderSettings = (state) => {
             </div>
          </div>
 
+         <!-- REGLAS DE TOLERANCIA Y COBRO POR CATEGORÍA -->
+         <div style="margin-bottom:25px; padding-top:20px; border-top:1px dashed #eee;">
+            <div style="font-weight:900; color:var(--primary); font-size:0.85rem; margin-bottom:15px; text-transform:uppercase;">
+               📋 REGLAS DE ACCESO Y TOLERANCIA POR CATEGORÍA
+            </div>
+            
+            <div style="display:grid; gap:12px;">
+               <!-- VISITANTES -->
+               <div style="background:#fafafa; padding:16px; border-radius:18px; border:1px solid #eee;">
+                  <div style="font-size:0.75rem; font-weight:900; color:#F5C518; margin-bottom:8px;">🚗 VISITANTES (GENERAL)</div>
+                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                     <div>
+                        <label style="font-size:0.5rem; color:#666; font-weight:800;">HORAS GRATIS (Tolerancia)</label>
+                        <input type="number" id="rule-vis-free" value="${set.categoryRules?.visFree ?? 8}" style="width:100%; box-sizing:border-box; padding:10px; border-radius:10px; border:1px solid #eee; font-weight:900; outline:none; font-family:var(--font);">
+                     </div>
+                     <div>
+                        <label style="font-size:0.5rem; color:#666; font-weight:800;">TARIFA EXCESO ($ desde 8h 01m)</label>
+                        <input type="number" step="0.5" id="rule-vis-rate" value="${set.categoryRules?.visRate ?? 1.00}" style="width:100%; box-sizing:border-box; padding:10px; border-radius:10px; border:1px solid #eee; font-weight:900; outline:none; font-family:var(--font);">
+                     </div>
+                  </div>
+               </div>
+
+               <!-- MERCADO / REPARTIDORES -->
+               <div style="background:#fafafa; padding:16px; border-radius:18px; border:1px solid #eee;">
+                  <div style="font-size:0.75rem; font-weight:900; color:#22c55e; margin-bottom:8px;">🛵 MERCADO / REPARTIDORES</div>
+                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                     <div>
+                        <label style="font-size:0.5rem; color:#666; font-weight:800;">MINUTOS GRATIS (Tolerancia)</label>
+                        <input type="number" id="rule-merc-min" value="${set.categoryRules?.mercMin ?? 30}" style="width:100%; box-sizing:border-box; padding:10px; border-radius:10px; border:1px solid #eee; font-weight:900; outline:none; font-family:var(--font);">
+                     </div>
+                     <div>
+                        <label style="font-size:0.5rem; color:#666; font-weight:800;">TARIFA EXCESO ($)</label>
+                        <input type="number" step="0.5" id="rule-merc-rate" value="${set.categoryRules?.mercRate ?? 1.00}" style="width:100%; box-sizing:border-box; padding:10px; border-radius:10px; border:1px solid #eee; font-weight:900; outline:none; font-family:var(--font);">
+                     </div>
+                  </div>
+               </div>
+
+               <!-- MUDANZAS -->
+               <div style="background:#fafafa; padding:16px; border-radius:18px; border:1px solid #eee;">
+                  <div style="font-size:0.75rem; font-weight:900; color:#e63946; margin-bottom:8px;">📦 MUDANZAS / CARGA</div>
+                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                     <div>
+                        <label style="font-size:0.5rem; color:#666; font-weight:800;">HORAS PERMITIDAS (Gratis)</label>
+                        <input type="number" id="rule-mud-hours" value="${set.categoryRules?.mudHours ?? 2}" style="width:100%; box-sizing:border-box; padding:10px; border-radius:10px; border:1px solid #eee; font-weight:900; outline:none; font-family:var(--font);">
+                     </div>
+                     <div>
+                        <label style="font-size:0.5rem; color:#666; font-weight:800;">NOTIFICACIÓN DE SALIDA</label>
+                        <div style="padding:8px; background:#fee2e2; color:#ef4444; border-radius:10px; font-size:0.55rem; font-weight:900; text-align:center;">🔔 OBLIGATORIA TRAS 2H</div>
+                     </div>
+                  </div>
+               </div>
+            </div>
+         </div>
+
          <button data-action="SAVE_TARIFFS" style="width:100%; padding:20px; background:#1a1a2e; color:var(--accent); border:none; border-radius:20px; font-weight:900; cursor:pointer; font-size:0.85rem; letter-spacing:1px; text-transform:uppercase; box-shadow:0 10px 20px rgba(26,26,46,0.15); margin-top:10px;">GUARDAR CAMBIOS CONTABLES</button>
       </div>
     `;
@@ -474,9 +528,18 @@ export const initSettingsActions = (actions, container, refresh) => {
         t.type = types[i]?.value
       })
       
+      // Save Category Access & Tolerance Rules
+      state.settings.categoryRules = {
+        visFree: parseFloat(container.querySelector('#rule-vis-free')?.value) || 8,
+        visRate: parseFloat(container.querySelector('#rule-vis-rate')?.value) || 1.00,
+        mercMin: parseFloat(container.querySelector('#rule-merc-min')?.value) || 30,
+        mercRate: parseFloat(container.querySelector('#rule-merc-rate')?.value) || 1.00,
+        mudHours: parseFloat(container.querySelector('#rule-mud-hours')?.value) || 2
+      }
+      
       saveParkingState(state)
-      logAudit('Actualizó tarifas de cobro')
-      showToast('Tarifas actualizadas', 'success')
+      logAudit('Actualizó tarifas y reglas por categoría')
+      showToast('Tarifas y reglas por categoría actualizadas', 'success')
       refresh()
     },
     SAVE_RENTAL_CAP: () => {

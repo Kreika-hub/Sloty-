@@ -603,24 +603,42 @@ export const initGuard = (container, guardName = 'Guardia') => {
        win.document.close()
     },
     EXIT_PAID: () => {
-      const entryTime = new Date(selectedSlot.entryTime)
-      const hoursStayed = (new Date() - entryTime) / 3600000
+      const entryTime = selectedSlot.entryTime ? new Date(selectedSlot.entryTime) : new Date(Date.now() - 3600000);
+      const diffMs = Math.max(0, new Date() - entryTime);
+      const hoursStayed = diffMs / 3600000;
+      const minsStayed = diffMs / 60000;
+      
+      const cat = (selectedSlot.category || 'VISITANTE').toUpperCase();
+      const rules = state.settings?.categoryRules || { visFree: 8, visRate: 1.00, mercMin: 30, mercRate: 1.00, mudHours: 2 };
       
       let totalOwed = 0;
-      const activeTariffs = state.settings?.tariffs?.filter(t => t.active) || [];
-      
-      if (activeTariffs.length > 0) {
-         for (let t of activeTariffs) {
-             if (hoursStayed > t.freeHours || selectedSlot.status === 'DEBT') {
-                 totalOwed = Math.max(totalOwed, t.baseRate);
-             }
+      let alertNotice = '';
+
+      if (cat.includes('MERCADO') || cat.includes('DELIVERY')) {
+         if (minsStayed > (rules.mercMin || 30)) {
+            totalOwed = rules.mercRate || 1.00;
          }
+      } else if (cat.includes('MUDANZA') || cat.includes('CARGA')) {
+         if (hoursStayed > (rules.mudHours || 2)) {
+            alertNotice = `🚨 MUDANZA EXCEDIÓ EL LÍMITE PERMITIDO (${rules.mudHours || 2}h). (Notificación de salida enviada a Administración)`;
+            totalOwed = 1.00;
+            logNotification('⚠️ Mudanza Excedida', `Puesto ${selectedSlot.label} (${selectedSlot.plate || 'Mudanza'}) excedió el límite de ${rules.mudHours || 2} horas.`);
+         }
+      } else if (cat.includes('RESIDENTE')) {
+         totalOwed = 0;
       } else {
-         const freeHours = state.settings?.freeHours || 8
-         totalOwed = (hoursStayed > freeHours || selectedSlot.status === 'DEBT') ? (state.settings?.baseRate || 1) : 0
+         // VISITANTE GENERAL
+         if (hoursStayed > (rules.visFree || 8)) {
+            const extraHours = Math.max(1, Math.ceil(hoursStayed - (rules.visFree || 8)));
+            totalOwed = extraHours * (rules.visRate || 1.00);
+         }
       }
       
       if (selectedSlot.paymentStatus === 'PAGADO') totalOwed = 0; // Si ya pre-pagó, no debe nada.
+
+      if (alertNotice) {
+         showToast(alertNotice, 'warning');
+      }
 
       if (totalOwed > 0) {
         pendingPayment = {
@@ -634,18 +652,21 @@ export const initGuard = (container, guardName = 'Guardia') => {
           targetStatus: 'FREE'
         }
         currentView = 'PAYMENT'; render()
-getExchangeRate().then(bcv => {
-  if (!bcv?.rate) return;
-  const amount = pendingPayment?.amount || 0;
-  const bs = Math.round(amount * bcv.rate);
-  const formattedDate = bcv.fecha || new Date().toISOString().slice(0, 10);
-  const sourceText = bcv.source === 'auto' ? '✓ BCV' : '⚠️ Manual';
-  if (elBs)  elBs.textContent  = `Bs. ${bs.toLocaleString('es-VE')}`;
-  if (elRate) elRate.textContent = `Bs. ${Number(bcv.rate).toLocaleString('es-VE', {minimumFractionDigits:2})} / USD · ${sourceText} · ${formattedDate}`;
-});
+        getExchangeRate().then(bcv => {
+          if (!bcv?.rate) return;
+          const amount = pendingPayment?.amount || 0;
+          const bs = Math.round(amount * bcv.rate);
+          const formattedDate = bcv.fecha || new Date().toISOString().slice(0, 10);
+          const sourceText = bcv.source === 'auto' ? '✓ BCV' : '⚠️ Manual';
+          if (elBs)  elBs.textContent  = `Bs. ${bs.toLocaleString('es-VE')}`;
+          if (elRate) elRate.textContent = `Bs. ${Number(bcv.rate).toLocaleString('es-VE', {minimumFractionDigits:2})} / USD · ${sourceText} · ${formattedDate}`;
+        });
       } else {
         processExit('FREE')
       }
+    },
+    SWITCH_TO_ADMIN: () => {
+      if (window.slotySwitchToAdmin) window.slotySwitchToAdmin();
     },
     EXIT_DEBT: () => processExit('DEBT'),
     FORMA_PRINT: () => printTicket('EXIT'),
@@ -1114,6 +1135,9 @@ getExchangeRate().then(bcv => {
           <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
             <div style="font-size:1.2rem;font-weight:900;">${guardName}</div>
             <div style="display:flex; gap:8px; align-items:center;">
+               <button data-action="SWITCH_TO_ADMIN" style="background:#F5C518; color:#1a1a2e; border:none; padding:5px 12px; border-radius:8px; font-size:0.65rem; font-weight:900; cursor:pointer; display:flex; align-items:center; gap:4px;">
+                 🏢 PANEL ADMIN
+               </button>
                <button data-action="LOGOUT" style="background:rgba(255,255,255,0.1);color:white;border:none;padding:5px 12px;border-radius:8px;font-size:0.65rem;font-weight:900;cursor:pointer; display:flex; align-items:center; gap:6px;">
                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:12px; height:12px;"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                  CERRAR SESIÓN

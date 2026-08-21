@@ -57,6 +57,22 @@ const showOnly = (name) => {
   })
 }
 
+window.slotySwitchToGuard = (guardName = 'Carlos Guardia (Día)') => {
+  showOnly('main')
+  const mainScreen = $('main-screen')
+  if (mainScreen._cleanup) mainScreen._cleanup()
+  mainScreen.innerHTML = ''
+  initGuard(mainScreen, guardName)
+}
+
+window.slotySwitchToAdmin = () => {
+  showOnly('main')
+  const mainScreen = $('main-screen')
+  if (mainScreen._cleanup) mainScreen._cleanup()
+  mainScreen.innerHTML = ''
+  initAdmin(mainScreen)
+}
+
 // ─── WELCOME SCREEN ───────────────────────────────────────────
 const renderWelcome = () => {
   screens.welcome.innerHTML = `

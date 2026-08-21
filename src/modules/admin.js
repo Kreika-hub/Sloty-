@@ -197,6 +197,9 @@ export const initAdmin = (container) => {
                 ${raw(ICONS.BELL)}
                 ${raw(unread ? `<div style="position:absolute; top:-2px; right:-2px; width:8px; height:8px; background:#e63946; border-radius:50%; border:2px solid #1a1a2e;"></div>` : '')}
               </button>
+              <button data-action="SWITCH_TO_GUARD" style="background:#22c55e; color:white; border:none; padding:4px 10px; border-radius:8px; font-size:0.6rem; font-weight:900; cursor:pointer; flex-shrink:0; display:flex; align-items:center; gap:4px;" title="Cambiar a Módulo Guardia">
+                👮‍♂️ GARITA
+              </button>
               <button data-action="LOGOUT" style="background:none; border:none; cursor:pointer; color:rgba(255,255,255,0.6); padding:0; display:flex; align-items:center; justify-content:center; width:24px; height:24px;">
                 ${raw(ICONS.LOGOUT)}
               </button>
@@ -465,6 +468,9 @@ export const initAdmin = (container) => {
 
   // Shell actions orchestrator
   const actions = {
+    SWITCH_TO_GUARD: () => {
+      if (window.slotySwitchToGuard) window.slotySwitchToGuard('Carlos Guardia (Día)');
+    },
     ACTIVATE_PUSH: async () => {
       const { subscribeToPushNotifications } = await import('./push.js');
       const s = getParkingState()
