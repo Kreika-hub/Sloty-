@@ -738,7 +738,7 @@ export const initUserActions = (actions, container, refresh) => {
           proofHtml = `
             <div style="margin-top:8px;">
                <div style="font-size:0.55rem; font-weight:800; color:#666; margin-bottom:4px;">EVIDENCIA ADJUNTA (Toque para agrandar)</div>
-               <img src="${p.evidence_b64}" style="width:100%; max-width:180px; border-radius:10px; border:1px solid #eee; object-fit:cover; cursor:pointer;" onclick="const w=window.open('','_blank');w.document.write('<img src=\\'${p.evidence_b64}\\' style=\\'width:100%\\' />');"/>
+               <img src="${p.evidence_b64}" style="width:100%; max-width:180px; border-radius:10px; border:1px solid #eee; object-fit:cover; cursor:pointer;" onclick="const w=window.open('','_blank');if(w){w.document.write('<img src=\x22'+this.src+'\x22 style=\x22width:100%\x22 />');}"/>
              </div>
           `;
         } else if (proofs && proofs.length > 0) {

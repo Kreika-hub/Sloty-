@@ -1,5 +1,5 @@
 import { login, getSession, getUserRole, setDevRole } from './auth.js'
-import { supabase, getParkingState, saveParkingState, getCleanPrefix, syncDown, getExchangeRate } from './db.js'
+import { supabase, getParkingState, saveParkingState, getCleanPrefix, syncDown, getExchangeRate, isUUID } from './db.js'
 import { initGuard } from './modules/guard.js'
 import { initAdmin } from './modules/admin.js'
 import { initMaster } from './modules/master.js'
@@ -348,7 +348,7 @@ const renderLogin = () => {
 
       // DEV BYPASS: always bypass if not found
       let resolvedBuilding = building
-      if (resolvedBuilding) {
+      if (resolvedBuilding && isUUID(resolvedBuilding.id)) {
          try {
            const { data: mems } = await supabase.from('sloty_memberships').select('expiry_date').eq('building_id', resolvedBuilding.id).eq('status', 'CONFIRMED').order('expiry_date', { ascending: false }).limit(1);
            if (mems && mems.length > 0) {
