@@ -51,130 +51,39 @@ export const initAdmin = (container) => {
   console.log('[Sloty] Inicializando Panel Admin Modular...')
   
   let elMain = null
-
-  const handleSyncUpdated = (e) => {
-    const el = document.getElementById('admin-sync-queue')
-    if (el) {
-      el.style.display = e.detail.count > 0 ? 'inline-block' : 'none'
-      const countEl = document.getElementById('admin-sync-count')
-      if (countEl) countEl.textContent = e.detail.count
-    }
-  }
-
-  const handleConnectionStatus = (e) => {
-    const el = document.getElementById('admin-conn-status')
-    if (el) {
-      el.style.background = e.detail.online ? 'rgba(34,197,94,0.15)' : 'rgba(245,197,24,0.15)'
-      el.style.color = e.detail.online ? '#22c55e' : '#ce8a05'
-      el.style.borderColor = e.detail.online ? 'rgba(34,197,94,0.3)' : 'rgba(245,197,24,0.3)'
-      el.innerHTML = html`● ${e.detail.online ? 'En Línea' : 'Offline'}`
-    }
-  }
-
-  window.addEventListener('sloty-sync-updated', handleSyncUpdated)
-  window.addEventListener('sloty-connection-status', handleConnectionStatus)
-
-  const handleSyncDownloaded = () => {
-    debouncedRender()
-  }
-  window.addEventListener('sloty-sync-downloaded', handleSyncDownloaded)
-  window.addEventListener('sloty-subscriptions-updated', handleSyncDownloaded)
-
   let renderTimeout = null
-  const debouncedRender = () => {
+
+  // ─── HOISTED RENDER FUNCTIONS (PREVENTS TEMPORAL DEAD ZONE / TDZ ERRORS) ───
+  async function render() {
+    try {
+      const s = getParkingState()
+      if (!elMain) renderShell(s)
+      renderHeader(s)
+      renderModal()
+      await renderTabContent(s); 
+      
+      // Sync tab styles
+      if (container) {
+        container.querySelectorAll('.admin-tab-btn').forEach(v => {
+          const active = (v.dataset.tab === store.activeTab) || 
+                         (store.activeTab === 'ABONOS' && v.dataset.tab === 'SUBS') ||
+                         (store.activeTab === 'REPORTES' && v.dataset.tab === 'FINANCE')
+          v.style.color = active ? '#F5C518' : 'rgba(255,255,255,0.4)'
+        })
+      }
+    } catch (err) {
+      console.error('[Sloty Admin] Exception inside render():', err);
+    }
+  }
+
+  function debouncedRender() {
     if (renderTimeout) clearTimeout(renderTimeout)
     renderTimeout = setTimeout(() => {
       render()
     }, 150)
   }
 
-  // Shell actions orchestrator
-  const actions = {
-    ACTIVATE_PUSH: async () => {
-      const { subscribeToPushNotifications } = await import('./push.js');
-      const s = getParkingState()
-      const email = s.adminInfo?.email || 'admin@sloty.com'
-      await subscribeToPushNotifications(s.buildingId, 'ADMIN', email)
-    },
-    CANCEL_MODAL: () => { 
-      store.pendingAction = null; 
-      render() 
-    },
-    TAB: (btn) => {
-      store.activeTab = btn.dataset.tab
-      if (store.activeTab === 'SETTINGS') store.activeSettingsMenu = 'MAIN'
-      
-      // Update tab selection styles immediately
-      container.querySelectorAll('.admin-tab-btn').forEach(v => {
-        const active = (v.dataset.tab === store.activeTab) || 
-                       (store.activeTab === 'ABONOS' && v.dataset.tab === 'SUBS') ||
-                       (store.activeTab === 'REPORTES' && v.dataset.tab === 'FINANCE')
-        v.style.color = active ? '#F5C518' : 'rgba(255,255,255,0.4)'
-      })
-      render()
-    },
-    SYNC: async () => {
-      const state = getParkingState();
-      if (state.buildingCode) {
-        await syncDown(state.buildingCode);
-      }
-      render();
-      const btn = container.querySelector('[data-action="SYNC"]');
-      if(btn) {
-        btn.style.transform = 'rotate(360deg)';
-        btn.style.transition = 'transform 0.5s';
-        setTimeout(() => { btn.style.transform = 'rotate(0deg)'; btn.style.transition = 'none' }, 500);
-      }
-    },
-    LOGOUT: () => {
-      if (window.slotyLogout) window.slotyLogout()
-      else {
-        localStorage.clear()
-        location.reload()
-      }
-    },
-    CONFIRM_DELETE: () => {
-      if (!store.pendingAction) return
-      const state = getParkingState()
-      if (store.pendingAction.type === 'LEVEL') {
-        state.levels = state.levels.filter(l => l.name !== store.pendingAction.name)
-      } else if (store.pendingAction.type === 'SLOT') {
-        const level = state.levels.find(l => l.name === store.pendingAction.lName)
-        if (level) level.slots = level.slots.filter(s => s.label !== store.pendingAction.sLabel)
-      }
-      saveParkingState(state)
-      store.pendingAction = null
-      render()
-    }
-  }
-
-  // Bind actions from specialized submodules
-  initUserActions(actions, container, render);
-  initFinanceActions(actions, container, render);
-  initStructureActions(actions, container, render);
-  initGuardActions(actions, container, render);
-  initSettingsActions(actions, container, render);
-
-  window.handleAction = (type, payload) => {
-    if (actions[type]) actions[type](payload)
-  }
-
-  container.addEventListener('click', (e) => {
-    const trigger = e.target.closest('[data-action]')
-    if (trigger) {
-      const action = trigger.dataset.action
-      if (actions[action]) {
-        try {
-          actions[action](trigger)
-        } catch (err) {
-          console.error('Error in action:', action, err)
-        }
-      }
-    }
-  })
-
-  // ─── RENDERING LAYOUTS ─────────────────────────────────────
-  const renderShell = (state) => {
+  function renderShell(state) {
     container.innerHTML = html`
       <div id="admin-shell" style="background:#f8f9fa; min-height:100vh; font-family:var(--font); color:var(--primary); padding-bottom:120px;">
         <div id="admin-header"></div>
@@ -211,7 +120,7 @@ export const initAdmin = (container) => {
     elMain = container.querySelector('#admin-main')
   }
 
-  const renderHeader = async (state) => {
+  async function renderHeader(state) {
     const header = container.querySelector('#admin-header')
     if (!header) return
     const unread = (state.notifications || []).filter(n => n.unread).length
@@ -330,7 +239,7 @@ export const initAdmin = (container) => {
       </div>`
   }
 
-  const renderModal = () => {
+  function renderModal() {
     const l = container.querySelector('#modal-layer')
     if (!l) return
     if (!store.pendingAction) {
@@ -384,7 +293,7 @@ export const initAdmin = (container) => {
     }
   }
 
-  const renderTabContent = async (state) => {
+  async function renderTabContent(state) {
     if (!elMain) return; 
     let tabHtml = ''
     const renderingTab = store.activeTab;
@@ -515,21 +424,96 @@ export const initAdmin = (container) => {
     if(renderingTab==='SUBS') setupMonthlySystemHooks(elMain)
   }
 
-  const render = async () => {
-    const s = getParkingState()
-    if (!elMain) renderShell(s)
-    renderHeader(s)
-    renderModal()
-    await renderTabContent(s); 
-    
-    // Sync tab styles
-    container.querySelectorAll('.admin-tab-btn').forEach(v => {
-      const active = (v.dataset.tab === store.activeTab) || 
-                     (store.activeTab === 'ABONOS' && v.dataset.tab === 'SUBS') ||
-                     (store.activeTab === 'REPORTES' && v.dataset.tab === 'FINANCE')
-      v.style.color = active ? '#F5C518' : 'rgba(255,255,255,0.4)'
-    })
+  // ─── EVENT LISTENERS & ACTION BINDINGS ───
+  window.addEventListener('sloty-sync-updated', handleSyncUpdated)
+  window.addEventListener('sloty-connection-status', handleConnectionStatus)
+  window.addEventListener('sloty-sync-downloaded', handleSyncDownloaded)
+  window.addEventListener('sloty-subscriptions-updated', handleSyncDownloaded)
+
+  // Shell actions orchestrator
+  const actions = {
+    ACTIVATE_PUSH: async () => {
+      const { subscribeToPushNotifications } = await import('./push.js');
+      const s = getParkingState()
+      const email = s.adminInfo?.email || 'admin@sloty.com'
+      await subscribeToPushNotifications(s.buildingId, 'ADMIN', email)
+    },
+    CANCEL_MODAL: () => { 
+      store.pendingAction = null; 
+      render() 
+    },
+    TAB: (btn) => {
+      store.activeTab = btn.dataset.tab
+      if (store.activeTab === 'SETTINGS') store.activeSettingsMenu = 'MAIN'
+      
+      // Update tab selection styles immediately
+      container.querySelectorAll('.admin-tab-btn').forEach(v => {
+        const active = (v.dataset.tab === store.activeTab) || 
+                       (store.activeTab === 'ABONOS' && v.dataset.tab === 'SUBS') ||
+                       (store.activeTab === 'REPORTES' && v.dataset.tab === 'FINANCE')
+        v.style.color = active ? '#F5C518' : 'rgba(255,255,255,0.4)'
+      })
+      render()
+    },
+    SYNC: async () => {
+      const state = getParkingState();
+      if (state.buildingCode) {
+        await syncDown(state.buildingCode);
+      }
+      render();
+      const btn = container.querySelector('[data-action="SYNC"]');
+      if(btn) {
+        btn.style.transform = 'rotate(360deg)';
+        btn.style.transition = 'transform 0.5s';
+        setTimeout(() => { btn.style.transform = 'rotate(0deg)'; btn.style.transition = 'none' }, 500);
+      }
+    },
+    LOGOUT: () => {
+      if (window.slotyLogout) window.slotyLogout()
+      else {
+        localStorage.clear()
+        location.reload()
+      }
+    },
+    CONFIRM_DELETE: () => {
+      if (!store.pendingAction) return
+      const state = getParkingState()
+      if (store.pendingAction.type === 'LEVEL') {
+        state.levels = state.levels.filter(l => l.name !== store.pendingAction.name)
+      } else if (store.pendingAction.type === 'SLOT') {
+        const level = state.levels.find(l => l.name === store.pendingAction.lName)
+        if (level) level.slots = level.slots.filter(s => s.label !== store.pendingAction.sLabel)
+      }
+      saveParkingState(state)
+      store.pendingAction = null
+      render()
+    }
   }
+
+  // Bind actions from specialized submodules (render is now 100% hoisted & defined)
+  initUserActions(actions, container, render);
+  initFinanceActions(actions, container, render);
+  initStructureActions(actions, container, render);
+  initGuardActions(actions, container, render);
+  initSettingsActions(actions, container, render);
+
+  window.handleAction = (type, payload) => {
+    if (actions[type]) actions[type](payload)
+  }
+
+  container.addEventListener('click', (e) => {
+    const trigger = e.target.closest('[data-action]')
+    if (trigger) {
+      const action = trigger.dataset.action
+      if (actions[action]) {
+        try {
+          actions[action](trigger)
+        } catch (err) {
+          console.error('Error in action:', action, err)
+        }
+      }
+    }
+  })
 
   // Carousel transition timer
   const carouselInterval = setInterval(() => {
