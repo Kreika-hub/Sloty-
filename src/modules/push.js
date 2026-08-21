@@ -84,33 +84,18 @@ export async function subscribeToPushNotifications(buildingId, role, identifier)
 }
 
 export function renderPushBanner() {
-  const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+  if (typeof window === 'undefined' || !window.Notification) return '';
+  if (Notification.permission === 'granted') return '';
 
-  if (isIos && !isStandalone) {
-    return `
-      <div style="background:#F5C518; color:#1a1a2e; padding:15px; border-radius:18px; margin-bottom:20px; font-weight:700; font-size:0.75rem; text-align:left; display:flex; align-items:start; gap:12px; box-shadow:0 5px 15px rgba(245,197,24,0.3);">
-         <span style="font-size:1.5rem; margin-top:2px;">🍎</span>
-         <div>
-            <div style="font-weight:900; margin-bottom:4px; font-size:0.8rem;">iOS DETECTADO</div>
-            Para recibir notificaciones, toca el botón central de "Compartir" en Safari y luego elige <b>"Agregar a Inicio"</b>. Abre la app desde tu pantalla de inicio para activarlas.
-         </div>
-      </div>
-    `;
-  }
-
-  if (window.pushPermissionDenied || (window.Notification && Notification.permission !== 'granted')) {
-    return `
-      <div style="background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; padding:15px; border-radius:18px; margin-bottom:20px; font-weight:700; font-size:0.7rem; text-align:left; display:flex; align-items:start; gap:12px; box-shadow:0 4px 10px rgba(0,0,0,0.02);">
-         <span style="font-size:1.5rem; margin-top:2px;">🔔</span>
-         <div>
-            <div style="font-weight:900; margin-bottom:4px; font-size:0.8rem;">NOTIFICACIONES CERRADAS</div>
-            Para que la app funcione incluso con la pantalla apagada, debes permitir los avisos. Toca el candado en tu navegador (arriba junto a la URL) y dale a <b>Permitir Notificaciones</b>.
-            ${!isStandalone && !isIos ? '<br><br><b>Truco Pro:</b> En Chrome pulsa los 3 puntos y dale a "Agregar a Pantalla Principal" para una mejor experiencia.' : ''}
-         </div>
-      </div>
-    `;
-  }
-
-  return '';
+  return `
+    <div style="background:rgba(245,197,24,0.12); border:1.5px solid #F5C518; border-radius:18px; padding:12px 18px; margin-bottom:15px; display:flex; justify-content:space-between; align-items:center; gap:10px;">
+       <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:1.2rem;">🔔</span>
+          <span style="font-size:0.75rem; font-weight:800; color:#1a1a2e;">Activar alertas de garita</span>
+       </div>
+       <button onclick="if(window.Notification) Notification.requestPermission().then(p => { const a = document.getElementById('push-banner-area'); if(a && p==='granted') a.innerHTML=''; })" style="background:#1a1a2e; color:#F5C518; border:none; padding:8px 14px; border-radius:12px; font-weight:900; font-size:0.65rem; cursor:pointer;">
+          ACTIVAR
+       </button>
+    </div>
+  `;
 }

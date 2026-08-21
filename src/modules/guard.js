@@ -467,13 +467,18 @@ export const initGuard = (container, guardName = 'Guardia') => {
 
        // COLLECT CUSTOM FIELDS
        const metadata = {}
-       let missingField = null
-       (state.settings?.customFields || []).forEach(f => {
-         const val = document.getElementById(`custom-${f.id}`)?.value.trim()
-         if (!val) missingField = f.label
+       const fields = (state.settings?.customFields && state.settings.customFields.length > 0)
+         ? state.settings.customFields
+         : [
+            {id:'nombre', label:'Nombre del Visitante'}, 
+            {id:'torre', label:'Torre'}, 
+            {id:'apto', label:'Piso / Apto'}
+         ];
+
+       fields.forEach(f => {
+         const val = document.getElementById(`custom-${f.id}`)?.value?.trim() || ''
          metadata[f.id] = val
        })
-       if (missingField) return showToast(`Falta el campo ${missingField}`, 'error')
 
        const category = document.querySelector('.cat-active')?.dataset.cat || 'VISITANTE'
        if (!selectedSlot) {
@@ -1127,17 +1132,11 @@ export const initGuard = (container, guardName = 'Guardia') => {
             <span id="header-conn-status" style="font-size:0.65rem; font-weight:900; padding:2px 8px; border-radius:6px; background:${navigator.onLine ? 'rgba(34,197,94,0.15)' : 'rgba(245,197,24,0.15)'}; color:${navigator.onLine ? '#22c55e' : '#ce8a05'}; border:1px solid ${navigator.onLine ? 'rgba(34,197,94,0.3)' : 'rgba(245,197,24,0.3)'};">
                ● ${navigator.onLine ? 'En Línea' : 'Offline'}
             </span>
-            <span id="header-sync-queue" title="Tareas pendientes de sincronización con la nube" style="font-size:0.65rem; font-weight:900; padding:2px 8px; border-radius:6px; background:rgba(255,255,255,0.06); color:#ce8a05; border:1px solid rgba(255,255,255,0.15); display:${getSyncQueueCount() > 0 ? 'inline-block' : 'none'}; cursor:help;">
-               ⏳ Pendientes: <b id="header-sync-count">${getSyncQueueCount()}</b>
-            </span>
           </div>
           <div style="font-size:1.1rem; font-weight:900; color:white; margin-top:2px;">${(state.buildingName || '').toUpperCase()}</div>
           <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
             <div style="font-size:1.2rem;font-weight:900;">${guardName}</div>
             <div style="display:flex; gap:8px; align-items:center;">
-               <button data-action="SWITCH_TO_ADMIN" style="background:#F5C518; color:#1a1a2e; border:none; padding:5px 12px; border-radius:8px; font-size:0.65rem; font-weight:900; cursor:pointer; display:flex; align-items:center; gap:4px;">
-                 🏢 PANEL ADMIN
-               </button>
                <button data-action="LOGOUT" style="background:rgba(255,255,255,0.1);color:white;border:none;padding:5px 12px;border-radius:8px;font-size:0.65rem;font-weight:900;cursor:pointer; display:flex; align-items:center; gap:6px;">
                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:12px; height:12px;"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                  CERRAR SESIÓN
