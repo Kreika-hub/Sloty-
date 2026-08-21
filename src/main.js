@@ -357,11 +357,86 @@ const renderLogin = () => {
          } catch(e) { console.warn('Could not fetch membership expiry') }
       }
       if (!resolvedBuilding && !isMaster) {
-         console.warn('Network or missing building. Creating DEV mock building instantly.')
+         console.warn('[Sloty] Network or missing building. Creating rich DEV demo state instantly.')
+         const demoState = {
+           buildingId: '00000000-0000-0000-0000-000000000001',
+           buildingName: 'Edificio de Prueba (Demo)',
+           buildingCode: 'DEV-123',
+           plan: 'ORO',
+           membership_status: 'ACTIVE',
+           adminInfo: { name: 'Administrador Demo', email: email || 'admin@test.com', registered: true },
+           levels: [
+             {
+               name: 'Planta Baja (PB)',
+               collapsed: false,
+               color: '#38bdf8',
+               slots: [
+                 { label: 'PB-01', status: 'OCCUPIED', category: 'RESIDENTE' },
+                 { label: 'PB-02', status: 'AVAILABLE', category: 'VISITANTE' },
+                 { label: 'PB-03', status: 'OCCUPIED', category: 'VISITANTE' },
+                 { label: 'PB-04', status: 'AVAILABLE', category: 'MERCADO' },
+                 { label: 'PB-05', status: 'OCCUPIED', category: 'RESIDENTE' },
+                 { label: 'PB-06', status: 'AVAILABLE', category: 'VISITANTE' }
+               ]
+             },
+             {
+               name: 'Piso 1 (E-1)',
+               collapsed: false,
+               color: '#F5C518',
+               slots: [
+                 { label: 'E1-01', status: 'AVAILABLE', category: 'RESIDENTE' },
+                 { label: 'E1-02', status: 'OCCUPIED', category: 'RESIDENTE' },
+                 { label: 'E1-03', status: 'AVAILABLE', category: 'VISITANTE' },
+                 { label: 'E1-04', status: 'AVAILABLE', category: 'VISITANTE' }
+               ]
+             }
+           ],
+           personnel: [
+             { id: 'p-1', name: 'Carlos Guardia (Día)', phone: '+584120000001', shift: 'MAÑANA', pin: '1234' },
+             { id: 'p-2', name: 'José Martínez (Noche)', phone: '+584140000002', shift: 'NOCHE', pin: '5678' }
+           ],
+           movements: [
+             {
+               id: `m-${Date.now() - 3600000}`,
+               type: 'INGRESO',
+               timestamp: new Date(Date.now() - 3600000).toISOString(),
+               plate: 'ABC123X',
+               slot: 'PB-01',
+               category: 'VISITANTE',
+               guardName: 'Carlos Guardia',
+               payMethod: 'EFECTIVO_USD',
+               amount: 2.0,
+               amount_usd: 2.0,
+               amount_bs: 80.0,
+               bcv_rate_used: 40.0,
+               closed: false
+             }
+           ],
+           stats: {
+             totalCollected: 2.0,
+             totalSpots: 10,
+             occupied: 4,
+             debt: 0
+           },
+           settings: {
+             freeHours: 8, baseRate: 1, extraPerHour: 0, rentalSlotsCap: null,
+             customFields: [ 
+                { id: 'torre', label: 'Torre', required: true }, 
+                { id: 'piso', label: 'Piso', required: true }, 
+                { id: 'apto', label: 'Apartamento', required: true } 
+             ],
+             categories: [
+               { id:'VISITANTE', label:'Visitante', color:'#F5C518', tag:'V', txt:'#000000', maxHours: 8 },
+               { id:'RESIDENTE', label:'Residente', color:'#38bdf8', tag:'R', txt:'white', maxHours: null },
+               { id:'MERCADO', label:'Mercado', color:'#22c55e', tag:'M', txt:'white', maxHours: 0.5 }
+             ]
+           }
+         }
+         localStorage.setItem('sloty_state', JSON.stringify(demoState))
          resolvedBuilding = {
-           id: 'test-building-id',
-           name: 'Edificio de Prueba',
-           code: 'DEV-123',
+           id: demoState.buildingId,
+           name: demoState.buildingName,
+           code: demoState.buildingCode,
            plan: 'ORO',
            membership_status: 'ACTIVE',
            admin_email: email || 'admin@test.com'
@@ -380,17 +455,19 @@ const renderLogin = () => {
           return
       }
 
-      // Guardar estado mínimo ADMIN
-      const newState = {
-        buildingId: resolvedBuilding.id,
-        buildingName: resolvedBuilding.name,
-        buildingCode: resolvedBuilding.code,
-        plan: resolvedBuilding.plan || 'ORO',
-        membership_status: resolvedBuilding.membership_status || 'ACTIVE',
-        adminInfo: { email: resolvedBuilding.admin_email, registered: true },
-        levels: [], personnel: [], movements: []
+      // Si no es demo previa, guardar estado mínimo ADMIN
+      if (!localStorage.getItem('sloty_state')) {
+        const newState = {
+          buildingId: resolvedBuilding.id,
+          buildingName: resolvedBuilding.name,
+          buildingCode: resolvedBuilding.code,
+          plan: resolvedBuilding.plan || 'ORO',
+          membership_status: resolvedBuilding.membership_status || 'ACTIVE',
+          adminInfo: { email: resolvedBuilding.admin_email, registered: true },
+          levels: [], personnel: [], movements: []
+        }
+        localStorage.setItem('sloty_state', JSON.stringify(newState))
       }
-      localStorage.setItem('sloty_state', JSON.stringify(newState))
 
       // --- NUEVAS VALIDACIONES DE MEMBRESÍA ---
       
