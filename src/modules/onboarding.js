@@ -102,6 +102,35 @@ export const markOnboardingComplete = (state) => {
   }
 };
 
+export const generateBuildingCode = (name) => {
+  if (!name || typeof name !== 'string') return 'SLO-' + Math.floor(1000 + Math.random() * 9000);
+  
+  // Normalizar, remover acentos y caracteres especiales
+  const clean = name.trim().toUpperCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Z0-9\s]/g, '');
+
+  const words = clean.split(/\s+/).filter(Boolean);
+  const stopWords = ['DE', 'DEL', 'LA', 'LAS', 'LOS', 'EL', 'EN', 'Y', 'EDIFICIO', 'RESIDENCIAS', 'TORRE', 'CONDOMINIO', 'CENTRO', 'CC'];
+  const keyWords = words.filter(w => !stopWords.includes(w));
+
+  let prefix = '';
+  if (keyWords.length > 0) {
+    prefix = keyWords[0].slice(0, 4);
+  } else if (words.length > 0) {
+    prefix = words[0].slice(0, 4);
+  } else {
+    prefix = 'EDIF';
+  }
+
+  if (prefix.length < 3) {
+    prefix = (prefix + 'BLD').slice(0, 3);
+  }
+
+  const num = Math.floor(1000 + Math.random() * 9000);
+  return `${prefix}-${num}`;
+};
+
 // ================================================================
 // SLOT SVG MASCOTA
 // ================================================================
@@ -608,8 +637,8 @@ export const renderOnboardingWizard = (container, state, onComplete) => {
         const refNum = document.getElementById('proof-ref-num')?.value.trim() || 'EFECTIVO-' + Date.now().toString().slice(-6);
 
         try {
-          // 1. Create or resolve building in Supabase
-          const newCode = 'SLO-' + Math.floor(1000 + Math.random() * 9000);
+          // 1. Create or resolve building in Supabase with customized code from building name
+          const newCode = generateBuildingCode(wizard.buildingName);
           let newBuildingId = null;
 
           const { data: bldCreated } = await supabase
