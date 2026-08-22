@@ -9,8 +9,8 @@ export function setDevRole(role) {
 
 // AUTENTICACIÓN REAL CON SUPABASE AUTH
 export async function login(email, password) {
-  // Manejo de mock / bypass dev si se pasa correo de prueba especial
-  if (email === 'master' || email === 'nucita' || email === 'admin@test.com' || email === 'nucita.admin') {
+  // Manejo de mock / bypass dev si se pasa correo de prueba especial (SOLO en desarrollo local)
+  if (import.meta.env.DEV && (email === 'master' || email === 'nucita' || email === 'admin@test.com' || email === 'nucita.admin')) {
     const role = (email === 'master' || email === 'nucita') ? 'MASTER' : 'ADMIN'
     const session = { user: { id: role === 'MASTER' ? 'dev-master-id' : 'dev-admin-id', email } }
     localStorage.setItem('sloty_session', JSON.stringify(session))
@@ -98,7 +98,7 @@ export async function getSession() {
   try {
     const raw = localStorage.getItem('sloty_session')
     const localSession = raw ? JSON.parse(raw) : null
-    if (localSession?.user?.id === 'dev-master-id' || localSession?.user?.id === 'dev-admin-id') {
+    if (import.meta.env.DEV && (localSession?.user?.id === 'dev-master-id' || localSession?.user?.id === 'dev-admin-id')) {
       return localSession
     }
 
