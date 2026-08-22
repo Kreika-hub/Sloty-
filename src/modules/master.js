@@ -1370,15 +1370,42 @@ export const initMaster = (container) => {
       const name = btn.dataset.name || 'este edificio';
       showMasterConfirm({
         title: `¿Eliminar ${name}?`,
-        message: 'Esta acción es IRREVERSIBLE y borrará todos los datos asociados a este condominio.',
+        message: 'Esta acción es IRREVERSIBLE y borrará en cascada todos los datos asociados (residentes, abonos, pagos, comprobantes y garitas) de este condominio.',
         icon: '🗑️',
         confirmText: 'SÍ, ELIMINAR',
         isDestructive: true,
         onConfirm: async () => {
-          const { error } = await supabase.from('buildings').delete().eq('id', id);
-          if (error) { showMasterAlert('Error', 'Error al eliminar: ' + error.message, '❌'); return; }
-          showMasterAlert('Edificio Eliminado', `El edificio ${name} fue eliminado correctamente.`, '✅');
-          render();
+          try {
+            // 1. Desvincular perfiles asociados a este edificio
+            await supabase.from('profiles').update({ building_id: null }).eq('building_id', id);
+
+            // 2. Eliminar en cascada todas las tablas hijas vinculadas por Foreign Key
+            await Promise.allSettled([
+              supabase.from('subscriptions').delete().eq('building_id', id),
+              supabase.from('payments').delete().eq('building_id', id),
+              supabase.from('movements').delete().eq('building_id', id),
+              supabase.from('guard_shifts').delete().eq('building_id', id),
+              supabase.from('personnel').delete().eq('building_id', id),
+              supabase.from('building_payment_proofs').delete().eq('building_id', id),
+              supabase.from('sloty_memberships').delete().eq('building_id', id),
+              supabase.from('ads').delete().eq('building_id', id),
+              supabase.from('daily_closures').delete().eq('building_id', id),
+              supabase.from('audit_logs').delete().eq('building_id', id)
+            ]);
+
+            // 3. Eliminar el registro principal en buildings
+            const { error } = await supabase.from('buildings').delete().eq('id', id);
+            if (error) {
+              showMasterAlert('Error al eliminar', error.message, '❌');
+              return;
+            }
+
+            showMasterAlert('Edificio Eliminado', `El edificio ${name} y todos sus datos fueron eliminados correctamente.`, '✅');
+            render();
+          } catch (err) {
+            console.error('[Sloty Master] Error en eliminación en cascada:', err);
+            showMasterAlert('Error', 'Ocurrió un error inesperado al eliminar: ' + err.message, '❌');
+          }
         }
       });
     },
