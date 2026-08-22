@@ -641,7 +641,7 @@ export const renderOnboardingWizard = (container, state, onComplete) => {
           const newCode = generateBuildingCode(wizard.buildingName);
           let newBuildingId = null;
 
-          const { data: bldCreated } = await supabase
+          const { data: bldCreated, error: bldErr } = await supabase
             .from('buildings')
             .insert({
               name: wizard.buildingName,
@@ -649,7 +649,10 @@ export const renderOnboardingWizard = (container, state, onComplete) => {
               membership_status: 'PENDING_PROOF',
               plan: plan.id,
               monthly_rate: 20,
-              is_first_login: false
+              is_first_login: false,
+              phone: wizard.phone,
+              admin_email: wizard.email,
+              admin_name: wizard.name
             })
             .select()
             .single();
@@ -662,13 +665,17 @@ export const renderOnboardingWizard = (container, state, onComplete) => {
           let finalProofUrl = null;
           if (selectedFile && newBuildingId) {
             const fileName = `${newBuildingId}/${Date.now()}_${selectedFile.name.replace(/[^a-zA-Z0-9._-]/g, '')}`;
-            const { data: uploadData } = await supabase.storage
-              .from('payment-proofs')
-              .upload(fileName, selectedFile, { upsert: true });
-            
-            if (uploadData) {
-              const { data: pubUrl } = supabase.storage.from('payment-proofs').getPublicUrl(fileName);
-              finalProofUrl = pubUrl?.publicUrl;
+            try {
+              const { data: uploadData } = await supabase.storage
+                .from('payment-proofs')
+                .upload(fileName, selectedFile, { upsert: true });
+              
+              if (uploadData) {
+                const { data: pubUrl } = supabase.storage.from('payment-proofs').getPublicUrl(fileName);
+                finalProofUrl = pubUrl?.publicUrl;
+              }
+            } catch (storageErr) {
+              console.warn('[Sloty Storage] Storage upload warning:', storageErr);
             }
           }
 
@@ -682,7 +689,8 @@ export const renderOnboardingWizard = (container, state, onComplete) => {
               bank: bankName,
               reference: refNum,
               status: 'PENDING',
-              proof_url: finalProofUrl
+              proof_url: finalProofUrl,
+              proof_image: finalProofUrl
             });
           }
 
