@@ -712,7 +712,57 @@ export const renderOnboardingWizard = (container, state, onComplete) => {
             };
             state.personnel.push(newGuard);
 
-            // 3. Subir imagen de comprobante a Supabase Storage si se adjuntó
+            // 3. Crear edificio en DB si es un registro nuevo (sin buildingId previo)
+            if (!state.buildingId && !state.isBypass) {
+              try {
+                const bldCode = `SLO-${Math.floor(1000 + Math.random() * 9000)}`;
+                const { data: newBld, error: newBldErr } = await supabase.from('buildings').insert({
+                  name: wizardData.buildingName,
+                  code: bldCode,
+                  admin_name: `${wizardData.firstName} ${wizardData.lastName}`,
+                  admin_first_name: wizardData.firstName,
+                  admin_last_name: wizardData.lastName,
+                  admin_email: wizardData.email,
+                  admin_phone: wizardData.phone,
+                  phone: wizardData.phone,
+                  plan: plan.id,
+                  membership_status: 'PENDING_PROOF',
+                  monthly_rate: wizardData.monthlyRate,
+                  is_first_login: false,
+                  onboarding_completed: true
+                }).select().single();
+
+                if (newBld?.id) {
+                  state.buildingId = newBld.id;
+                  state.buildingCode = newBld.code;
+                  localStorage.setItem('sloty_building_id', newBld.id);
+                  localStorage.setItem('sloty_active_building', newBld.code);
+                }
+              } catch (err) {
+                console.warn('[Sloty Onboarding] Failed to create new building:', err);
+              }
+            } else if (state.buildingId && !state.isBypass) {
+              try {
+                await supabase.from('buildings').update({
+                  name: wizardData.buildingName,
+                  admin_name: `${wizardData.firstName} ${wizardData.lastName}`,
+                  admin_first_name: wizardData.firstName,
+                  admin_last_name: wizardData.lastName,
+                  admin_email: wizardData.email,
+                  admin_phone: wizardData.phone,
+                  phone: wizardData.phone,
+                  plan: plan.id,
+                  membership_status: 'PENDING_PROOF',
+                  monthly_rate: wizardData.monthlyRate,
+                  is_first_login: false,
+                  onboarding_completed: true
+                }).eq('id', state.buildingId);
+              } catch(e) {
+                console.warn('[Sloty Onboarding] Cloud sync failed:', e);
+              }
+            }
+
+            // 4. Subir imagen de comprobante a Supabase Storage si se adjuntó
             let proofUrl = '';
             if (wizardData.proofImageFile && state.buildingId) {
               try {
@@ -731,9 +781,9 @@ export const renderOnboardingWizard = (container, state, onComplete) => {
               }
             }
 
-            // 4. Insertar comprobante en building_payment_proofs (STATUS: PENDING)
+            // 5. Insertar comprobante en building_payment_proofs (STATUS: PENDING)
             const proofPayload = {
-              building_id: state.buildingId,
+              building_id: state.buildingId || null,
               plan_key: plan.id,
               amount: price,
               reference: `${wizardData.paymentMethod} - Ref: ${wizardData.transferRef}`,
@@ -748,44 +798,22 @@ export const renderOnboardingWizard = (container, state, onComplete) => {
               } catch(e) {
                 console.warn('[Sloty Onboarding] Failed to insert proof in Supabase:', e);
               }
+
+              // Insertar guardia en DB
+              await supabase.from('personnel').insert({
+                building_id: state.buildingId,
+                name: wizardData.guardName,
+                pin: wizardData.guardPin,
+                role: 'GUARDIA'
+              }).catch(() => {});
             }
 
-            // 5. Respaldo local de comprobante
+            // 6. Respaldo local de comprobante
             try {
               const localProofs = JSON.parse(localStorage.getItem('sloty_pending_proofs') || '[]')
               localProofs.push({ ...proofPayload, savedAt: new Date().toISOString() })
               localStorage.setItem('sloty_pending_proofs', JSON.stringify(localProofs))
             } catch(e) {}
-
-            // 6. Actualizar building en DB con estado PENDING_PROOF
-            if (state.buildingId && !state.isBypass) {
-              try {
-                await supabase.from('buildings').update({
-                  name: wizardData.buildingName,
-                  admin_name: `${wizardData.firstName} ${wizardData.lastName}`,
-                  admin_first_name: wizardData.firstName,
-                  admin_last_name: wizardData.lastName,
-                  admin_email: wizardData.email,
-                  admin_phone: wizardData.phone,
-                  phone: wizardData.phone,
-                  plan: plan.id,
-                  membership_status: 'PENDING_PROOF',
-                  monthly_rate: wizardData.monthlyRate,
-                  is_first_login: false,
-                  onboarding_completed: true
-                }).eq('id', state.buildingId);
-
-                // Insertar guardia en DB
-                await supabase.from('personnel').insert({
-                  building_id: state.buildingId,
-                  name: wizardData.guardName,
-                  pin: wizardData.guardPin,
-                  role: 'GUARDIA'
-                }).catch(() => {});
-              } catch(e) {
-                console.warn('[Sloty Onboarding] Cloud sync failed:', e);
-              }
-            }
 
             // 7. Enviar WhatsApp oficial a Master (584120770776)
             try {

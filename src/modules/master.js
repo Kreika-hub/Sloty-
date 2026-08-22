@@ -3,7 +3,7 @@ import { notifyMasterPayment, generateActivationCode, formatActivationWhatsAppMe
 import { escapeHTML } from '../utils/sanitize.js'
 
 export const initMaster = (container) => {
-  let activeTab = 'SYSTEM'
+  let activeTab = 'NOTIFICATIONS'
   let selectedBuilding = null
   let selectedBuildingData = null
   let buildingStats = null
@@ -2054,7 +2054,7 @@ export const initMaster = (container) => {
         </div>
         
         <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05); border-radius:16px; padding:20px; margin-bottom:24px;">
-           ${renderChart(Object.values(byMonth).reverse().slice(0, 6))}
+           ${makeAreaChart(byMonth, months)}
         </div>
 
         <div style="font-size:0.7rem; font-weight:900; color:#999;
@@ -2069,26 +2069,17 @@ export const initMaster = (container) => {
           </div>
           <div style="background:rgba(255,255,255,0.06); border-radius:14px; padding:16px; display:flex; align-items:center; gap:15px;">
             <div style="background:#cd7f32; color:white; font-size:0.6rem; font-weight:900; padding:6px 12px; border-radius:8px; min-width:60px; text-align:center;">BRONCE</div>
-            <div style="font-size:0.75rem; color:rgba(255,255,255,0.7); line-height:1.4;">Hasta 50 puestos • Control Caja Chica • Registro Ilimitado</div>
+            <div style="font-size:0.75rem; color:rgba(255,255,255,0.7); line-height:1.4;">Hasta 30 puestos • Control de estacionamiento • Residente y Abonos</div>
           </div>
           <div style="background:rgba(255,255,255,0.06); border-radius:14px; padding:16px; display:flex; align-items:center; gap:15px;">
             <div style="background:#aaa; color:white; font-size:0.6rem; font-weight:900; padding:6px 12px; border-radius:8px; min-width:60px; text-align:center;">PLATA</div>
-            <div style="font-size:0.75rem; color:rgba(255,255,255,0.7); line-height:1.4;">Hasta 150 puestos • Control de Deudores • Multi-Turno</div>
+            <div style="font-size:0.75rem; color:rgba(255,255,255,0.7); line-height:1.4;">Hasta 150 puestos • Multinivel • Visitantes frecuentes • Alertas WhatsApp</div>
           </div>
           <div style="background:rgba(245,197,24,0.1); border:1px solid #F5C518; border-radius:14px; padding:16px; display:flex; align-items:center; gap:15px;">
             <div style="background:#F5C518; color:#1a1a2e; font-size:0.6rem; font-weight:900; padding:6px 12px; border-radius:8px; min-width:60px; text-align:center;">ORO</div>
-            <div style="font-size:0.75rem; color:rgba(255,255,255,0.9); line-height:1.4;">Puestos Ilimitados • Absolutamente todos los módulos financieros • Soporte Técnico VIP</div>
+            <div style="font-size:0.75rem; color:rgba(255,255,255,0.9); line-height:1.4;">Puestos Ilimitados • Bitácora de Auditoría • Cartelera de Anuncios • Soporte VIP</div>
           </div>
         </div>
-
-      </div>
-
-          ${makeAreaChart(byMonth, months)}
-        </div>
-
-        <button data-action="EXPORT_PDF" style="width:100%; margin-bottom: 24px; padding:16px; background:var(--primary); color:white; border:none; border-radius:14px; font-weight:900; cursor:pointer; font-size:0.8rem; display:flex; align-items:center; justify-content:center; gap:8px;">
-          📄 EXPORTAR RESUMEN MENSUAL A PDF
-        </button>
 
         <div style="font-size:0.7rem; font-weight:900; color:#e63946;
                     letter-spacing:2px; text-transform:uppercase; margin-bottom:10px;">
@@ -2197,37 +2188,9 @@ export const initMaster = (container) => {
         })
         .subscribe()
     }
-    
-    let html = ''
-    if (activeTab === 'SYSTEM') {
-      let ecoData = {}
-      try {
-        const rpcRes = await supabase.rpc('get_global_stats')
-        if (!rpcRes.error) ecoData = rpcRes.data || {}
-      } catch(e) { console.warn('get_global_stats unavailable:', e) }
 
-      const [
-         { data: bld },
-         { data: mems }
-      ] = await Promise.all([
-         supabase.from('buildings').select('*'),
-         supabase.from('sloty_memberships').select('*').order('paid_at', { ascending: false })
-      ])
-      html = renderSystem(bld || [], mems || [], ecoData)
-      
-      // Mostrar tasa BCV actual
-      import('../db.js').then(({ getExchangeRate }) => {
-        getExchangeRate().then(bcv => {
-          const el = document.getElementById('bcv-current-display');
-          if (el && bcv?.rate) {
-            el.textContent = `Bs. ${Number(bcv.rate).toLocaleString('es-VE', {
-              minimumFractionDigits:2, maximumFractionDigits:2
-            })} · ${bcv.source === 'auto' ? 'Automática ✓' : 'Manual ⚠️'}`;
-          }
-        });
-      });
-    }
-    else if (activeTab === 'NOTIFICATIONS') {
+    let html = ''
+    if (activeTab === 'NOTIFICATIONS') {
       notifCount = 0  // reset badge
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
       const [
@@ -2276,7 +2239,6 @@ export const initMaster = (container) => {
       ])
       html = renderAds(ads || [], bld || [])
       
-      // Attach file input listener
       setTimeout(() => {
         const input = document.getElementById('ad-file-input')
         if(input) {
@@ -2289,25 +2251,42 @@ export const initMaster = (container) => {
       }, 100);
     }
     else if (activeTab === 'SYSTEM') {
-      const [
-        { data: bld }, 
-        { data: mems },
-        { count: resCount },
-        { count: persCount },
-        { count: movCount }
-      ] = await Promise.all([
-        supabase.from('buildings').select('*'),
-        supabase.from('sloty_memberships').select('amount, paid_at'),
-        supabase.from('subscriptions').select('*', { count: 'exact', head: true }),
-        supabase.from('personnel').select('*', { count: 'exact', head: true }),
-        supabase.from('access_logs').select('*', { count: 'exact', head: true })
-      ])
-      
-      html = renderSystem(bld || [], mems || [], {
+      let ecoData = {}
+      try {
+        const [
+          { data: bld }, 
+          { data: mems },
+          { count: resCount },
+          { count: persCount },
+          { count: movCount }
+        ] = await Promise.all([
+          supabase.from('buildings').select('*'),
+          supabase.from('sloty_memberships').select('amount, paid_at'),
+          supabase.from('subscriptions').select('*', { count: 'exact', head: true }),
+          supabase.from('personnel').select('*', { count: 'exact', head: true }),
+          supabase.from('access_logs').select('*', { count: 'exact', head: true })
+        ])
+        
+        ecoData = {
           residents: resCount || 0,
           personnel: persCount || 0,
           movements: movCount || 0
-      })
+        }
+        html = renderSystem(bld || [], mems || [], ecoData)
+      } catch (e) {
+        console.warn('Error loading system data:', e)
+        html = renderSystem([], [], {})
+      }
+      
+      // Mostrar tasa BCV actual
+      getExchangeRate().then(bcv => {
+        const el = document.getElementById('bcv-current-display');
+        if (el && bcv?.rate) {
+          el.textContent = `Bs. ${Number(bcv.rate).toLocaleString('es-VE', {
+            minimumFractionDigits:2, maximumFractionDigits:2
+          })} · ${bcv.source === 'auto' ? 'Automática ✓' : 'Manual ⚠️'}`;
+        }
+      }).catch(() => {});
     }
     
     elContent.innerHTML = html
