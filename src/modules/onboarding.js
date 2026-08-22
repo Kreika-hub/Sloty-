@@ -1,12 +1,11 @@
 /**
- * Onboarding Module v3 — Wizard Conversacional con Slot y Cotejo de Pagos Master
- * Planes oficiales Sloty Dossier: Bronce $180/mes | Plata $250/mes | Oro $380/mes
- * Métodos: Pago Móvil, Transferencia, Zelle, Efectivo USD, Binance Pay
- * Envío de Comprobante por WhatsApp a Master y activación mediante validación/cotejo
+ * Onboarding Module v3 — Conversational Chat Wizard with Slot Mascot
+ * Pure interactive chat interface with realistic typing indicators, sequential dialogue bubbles,
+ * plan selection cards, Venezuelan payment methods, and automatic Master proof dispatch.
  */
 
 import { escapeHTML } from '../utils/sanitize.js'
-import { supabase, saveParkingState, getExchangeRate } from '../db.js'
+import { supabase, saveParkingState, getExchangeRate, isUUID } from '../db.js'
 import { formatProofWhatsAppMessage } from '../utils/notifier.js'
 
 // ================================================================
@@ -81,7 +80,6 @@ export const PLANS = [
 // ================================================================
 // ESTADO Y UTILIDADES
 // ================================================================
-
 export const shouldShowOnboarding = (state) => {
   if (!state) return false;
   if (state.onboarding_completed) return false;
@@ -97,7 +95,7 @@ export const markOnboardingComplete = (state) => {
   localStorage.setItem(`sloty_first_login_${state.buildingId}`, 'false');
   saveParkingState(state);
 
-  if (state.buildingId && !state.isBypass) {
+  if (state.buildingId && !state.isBypass && isUUID(state.buildingId)) {
     supabase.from('buildings').update({ is_first_login: false }).eq('id', state.buildingId)
       .then(() => console.log('[Sloty Onboarding] Flag is_first_login updated in DB'))
       .catch(err => console.warn('[Sloty Onboarding] Failed to update is_first_login in DB:', err));
@@ -105,767 +103,627 @@ export const markOnboardingComplete = (state) => {
 };
 
 // ================================================================
-// SLOT MASCOTA — SVG Y EXPRESIONES
+// SLOT SVG MASCOTA
 // ================================================================
-
-const getSlotSVG = (expression = 'normal', message = '') => {
+const getSlotAvatarSVG = (expression = 'happy') => {
   const expressions = {
-    normal: `<circle cx="70" cy="55" r="5.5" fill="#1a1a2e"/><circle cx="72" cy="53" r="2" fill="white"/><circle cx="90" cy="55" r="5.5" fill="#1a1a2e"/><circle cx="92" cy="53" r="2" fill="white"/><path d="M 66 70 Q 80 80 94 70" stroke="#1a1a2e" stroke-width="3" fill="none" stroke-linecap="round"/>`,
-    happy: `<path d="M 64 58 Q 70 48 76 58" stroke="#1a1a2e" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M 84 58 Q 90 48 96 58" stroke="#1a1a2e" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M 64 68 Q 80 86 96 68" stroke="#1a1a2e" stroke-width="3" fill="none" stroke-linecap="round"/>`,
-    excited: `<path d="M 64 50 L 73 55 L 64 60" stroke="#1a1a2e" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M 96 50 L 87 55 L 96 60" stroke="#1a1a2e" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M 64 68 Q 80 88 96 68" stroke="#1a1a2e" stroke-width="3.5" fill="none" stroke-linecap="round"/>`,
-    talking: `<circle cx="70" cy="55" r="5.5" fill="#1a1a2e"/><circle cx="72" cy="53" r="2" fill="white"/><circle cx="90" cy="55" r="5.5" fill="#1a1a2e"/><circle cx="92" cy="53" r="2" fill="white"/><ellipse cx="80" cy="72" rx="7" ry="9" fill="#1a1a2e"/>`,
-    thinking: `<circle cx="70" cy="57" r="5.5" fill="#1a1a2e"/><circle cx="90" cy="57" r="5.5" fill="#1a1a2e"/><path d="M 68 72 Q 80 67 92 72" stroke="#1a1a2e" stroke-width="2.5" fill="none" stroke-linecap="round"/><circle cx="106" cy="42" r="7" fill="none" stroke="#1a1a2e" stroke-width="1.5" opacity="0.5"/><circle cx="116" cy="32" r="4.5" fill="none" stroke="#1a1a2e" stroke-width="1.5" opacity="0.3"/>`,
-    monocle: `<circle cx="70" cy="55" r="5.5" fill="#1a1a2e"/><circle cx="90" cy="55" r="9" fill="none" stroke="#1a1a2e" stroke-width="2" fill="rgba(255,255,255,0.15)"/><circle cx="90" cy="55" r="3.5" fill="#1a1a2e"/><path d="M 99 55 L 106 62" stroke="#1a1a2e" stroke-width="1.5"/><path d="M 66 72 Q 80 78 94 72" stroke="#1a1a2e" stroke-width="2.5" fill="none"/>`,
-    money: `<circle cx="70" cy="55" r="5.5" fill="#1a1a2e"/><circle cx="90" cy="55" r="5.5" fill="#1a1a2e"/><text x="80" y="77" text-anchor="middle" font-size="16" fill="#1a1a2e" font-weight="900">$</text>`
+    normal: `<circle cx="28" cy="22" r="2.5" fill="#1a1a2e"/><circle cx="36" cy="22" r="2.5" fill="#1a1a2e"/><path d="M 26 28 Q 32 32 38 28" stroke="#1a1a2e" stroke-width="1.5" fill="none" stroke-linecap="round"/>`,
+    happy: `<circle cx="28" cy="22" r="2.5" fill="#1a1a2e"/><circle cx="36" cy="22" r="2.5" fill="#1a1a2e"/><path d="M 25 27 Q 32 35 39 27" stroke="#1a1a2e" stroke-width="1.5" fill="none" stroke-linecap="round"/>`,
+    excited: `<circle cx="28" cy="22" r="2.5" fill="#1a1a2e"/><circle cx="36" cy="22" r="2.5" fill="#1a1a2e"/><path d="M 25 27 Q 32 35 39 27" stroke="#1a1a2e" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M 22 20 L 24 22 M 42 20 L 40 22" stroke="#1a1a2e" stroke-width="1.5" stroke-linecap="round"/>`,
+    talking: `<circle cx="28" cy="22" r="2.5" fill="#1a1a2e"/><circle cx="36" cy="22" r="2.5" fill="#1a1a2e"/><ellipse cx="32" cy="29" rx="3.5" ry="4.5" fill="#1a1a2e"/>`,
+    thinking: `<circle cx="28" cy="22" r="2.5" fill="#1a1a2e"/><circle cx="36" cy="22" r="2.5" fill="#1a1a2e"/><path d="M 28 29 Q 32 27 36 29" stroke="#1a1a2e" stroke-width="1.5" fill="none" stroke-linecap="round"/>`
   };
 
   return `
-    <div style="display:flex; flex-direction:column; align-items:center; gap:10px; margin-bottom:18px;">
-      <svg width="120" height="95" viewBox="0 0 160 115" style="animation: slotFloat 3.5s ease-in-out infinite;">
-        <defs>
-          <linearGradient id="slotGradV3" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" style="stop-color:#ffe066"/>
-            <stop offset="45%" style="stop-color:#F5C518"/>
-            <stop offset="100%" style="stop-color:#d4a017"/>
-          </linearGradient>
-          <filter id="slotGlowV3" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="6" result="blur" />
-            <feComposite in="SourceGraphic" in2="blur" operator="over" />
-          </filter>
-        </defs>
-        
-        <circle cx="80" cy="58" r="42" fill="url(#slotGradV3)" stroke="#1a1a2e" stroke-width="3" filter="url(#slotGlowV3)"/>
-        ${expressions[expression] || expressions.normal}
-
-        <circle cx="60" cy="62" r="5" fill="#f87171" opacity="0.35"/>
-        <circle cx="100" cy="62" r="5" fill="#f87171" opacity="0.35"/>
-      </svg>
-      
-      ${message ? `
-        <div style="background:#F5C518; color:#1a1a2e; padding:10px 18px; border-radius:18px; font-size:0.8rem; font-weight:800; max-width:320px; text-align:center; position:relative; box-shadow:0 6px 20px rgba(245,197,24,0.25);">
-          ${message}
-          <div style="position:absolute; top:-7px; left:50%; transform:translateX(-50%); width:0; height:0; border-left:7px solid transparent; border-right:7px solid transparent; border-bottom:7px solid #F5C518;"></div>
-        </div>` : ''}
-    </div>
-    <style>
-      @keyframes slotFloat {
-        0%, 100% { transform: translateY(0); }
-        50% { transform: translateY(-7px); }
-      }
-    </style>
+    <svg width="40" height="40" viewBox="0 0 64 48" style="flex-shrink:0;">
+      <defs>
+        <linearGradient id="slotAvatarGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#F5C518"/>
+          <stop offset="100%" style="stop-color:#e6a800"/>
+        </linearGradient>
+      </defs>
+      <rect x="14" y="8" width="36" height="30" rx="9" fill="url(#slotAvatarGrad)" stroke="#1a1a2e" stroke-width="1.5"/>
+      <line x1="32" y1="8" x2="32" y2="2" stroke="#1a1a2e" stroke-width="1.5" stroke-linecap="round"/>
+      <circle cx="32" cy="2" r="2" fill="#ff6b6b" stroke="#1a1a2e" stroke-width="1"/>
+      ${expressions[expression] || expressions.happy}
+    </svg>
   `;
 };
 
-const slotMessages = {
-  1: { expr: 'happy', text: '¡Hola! Soy Slot. Vamos a configurar tu condominio en minutos. Primero, indícame tus datos:' },
-  2: { expr: 'excited', text: '¡Excelente! Ahora elige el plan mensual para tu edificio:' },
-  3: { expr: 'thinking', text: '¡Gran elección! Configuremos el nombre del edificio, plantas y primer operador de guardia.' },
-  4: { expr: 'money', text: 'Listo. Envía tu comprobante de pago móvil, transferencia o Zelle para activar tu edificio.' },
-  5: { expr: 'excited', text: '¡Solicitud de activación enviada con éxito! Nuestro equipo Master validará tu pago.' }
+// ================================================================
+// INYECCIÓN DE ESTILOS CHAT
+// ================================================================
+const injectChatStyles = () => {
+  if (document.getElementById('sloty-chat-onboarding-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'sloty-chat-onboarding-styles';
+  style.textContent = `
+    @keyframes slotyFadeSlide {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes slotyPulseDot {
+      0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+      40% { transform: scale(1.1); opacity: 1; }
+    }
+    .sloty-chat-msg {
+      animation: slotyFadeSlide 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    .sloty-typing-dot {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      background: #F5C518;
+      border-radius: 50%;
+      margin: 0 2px;
+      animation: slotyPulseDot 1.2s infinite ease-in-out both;
+    }
+    .sloty-typing-dot:nth-child(1) { animation-delay: -0.32s; }
+    .sloty-typing-dot:nth-child(2) { animation-delay: -0.16s; }
+    .sloty-typing-dot:nth-child(3) { animation-delay: 0s; }
+    .sloty-chat-scroll::-webkit-scrollbar { width: 5px; }
+    .sloty-chat-scroll::-webkit-scrollbar-track { background: transparent; }
+    .sloty-chat-scroll::-webkit-scrollbar-thumb { background: rgba(245,197,24,0.2); border-radius: 10px; }
+  `;
+  document.head.appendChild(style);
 };
 
 // ================================================================
-// RENDER PRINCIPAL DEL WIZARD
+// CONVERSATIONAL CHAT WIZARD RENDERER
 // ================================================================
-
 export const renderOnboardingWizard = (container, state, onComplete) => {
-  let currentStep = 1;
-  let bcvRate = 40.0;
+  injectChatStyles();
 
-  getExchangeRate().then(b => {
-    if (b?.rate) bcvRate = Number(b.rate);
+  // Wizard conversational data
+  const wizard = {
+    step: 1,
+    name: '',
+    email: '',
+    phone: '',
+    buildingName: '',
+    floors: 1,
+    slots: 20,
+    selectedPlan: null,
+    paymentMethod: null,
+    bcvRate: 36.50
+  };
+
+  // Fetch live exchange rate
+  getExchangeRate().then(rate => {
+    if (rate && Number(rate) > 0) wizard.bcvRate = Number(rate);
   }).catch(() => {});
 
-  const wizardData = {
-    firstName: state.admin_first_name || (state.admin_name ? state.admin_name.split(' ')[0] : ''),
-    lastName: state.admin_last_name || (state.admin_name ? state.admin_name.split(' ').slice(1).join(' ') : ''),
-    email: state.admin_email || '',
-    phone: state.admin_phone || state.phone || '',
-    role: state.admin_role || 'admin',
-    selectedPlan: PLANS[1], // Plata default
-    buildingName: state.buildingName || state.name || '',
-    monthlyRate: state.monthly_rate || 20,
-    levelName: 'Nivel 1 / Planta Baja',
-    slotsCount: 15,
-    guardName: 'Guardia Principal',
-    guardPin: '1234',
-    paymentMethod: 'PAGO_MOVIL', // 'PAGO_MOVIL' | 'TRANSFERENCIA' | 'ZELLE' | 'EFECTIVO' | 'BINANCE'
-    transferBank: 'BANCO_VENEZUELA',
-    transferRef: '',
-    proofImageFile: null
+  // Mount chat viewport container
+  container.innerHTML = `
+    <div id="sloty-chat-container" style="position:fixed; top:0; left:0; width:100vw; height:100vh; background:#121324; display:flex; flex-direction:column; z-index:99999; font-family:'Montserrat',sans-serif; color:white; box-sizing:border-box;">
+      
+      <!-- Top Header -->
+      <div style="background:#1a1a2e; padding:16px 20px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid rgba(245,197,24,0.15); box-shadow:0 4px 20px rgba(0,0,0,0.3); z-index:10;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div style="position:relative;">
+            ${getSlotAvatarSVG('happy')}
+            <div style="position:absolute; bottom:2px; right:2px; width:9px; height:9px; background:#22c55e; border-radius:50%; border:2px solid #1a1a2e;"></div>
+          </div>
+          <div>
+            <div style="font-weight:900; font-size:1rem; color:#F5C518; letter-spacing:0.5px; display:flex; align-items:center; gap:6px;">
+              Slot <span style="background:rgba(245,197,24,0.15); color:#F5C518; font-size:0.6rem; padding:2px 6px; border-radius:6px; font-weight:800;">ASISTENTE VIRTUAL</span>
+            </div>
+            <div style="font-size:0.65rem; color:rgba(255,255,255,0.5);">Registro y Activación de Edificios</div>
+          </div>
+        </div>
+
+        <button id="sloty-chat-exit" style="background:rgba(255,255,255,0.06); border:none; color:rgba(255,255,255,0.7); font-size:0.75rem; font-weight:800; padding:8px 14px; border-radius:12px; cursor:pointer; transition:all 0.2s;">
+          ✕ Salir
+        </button>
+      </div>
+
+      <!-- Messages Stream -->
+      <div id="sloty-chat-messages" class="sloty-chat-scroll" style="flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:16px; max-width:680px; width:100%; margin:0 auto; box-sizing:border-box;">
+      </div>
+
+      <!-- Active Input / Action Bar -->
+      <div id="sloty-chat-input-bar" style="background:#1a1a2e; padding:16px 20px calc(env(safe-area-inset-bottom, 12px) + 12px); border-top:1px solid rgba(255,255,255,0.08); max-width:680px; width:100%; margin:0 auto; box-sizing:border-box;">
+      </div>
+
+    </div>
+  `;
+
+  const msgContainer = document.getElementById('sloty-chat-messages');
+  const inputBar = document.getElementById('sloty-chat-input-bar');
+  const exitBtn = document.getElementById('sloty-chat-exit');
+
+  if (exitBtn) {
+    exitBtn.onclick = () => {
+      if (confirm('¿Deseas salir del registro de edificio? Podrás volver cuando quieras.')) {
+        const root = document.getElementById('sloty-chat-container');
+        if (root) root.remove();
+        if (onComplete) onComplete();
+      }
+    };
+  }
+
+  const scrollToBottom = () => {
+    setTimeout(() => {
+      msgContainer.scrollTop = msgContainer.scrollHeight;
+    }, 50);
   };
 
-  const totalSteps = 5;
-
-  const getStepTitle = () => {
-    const titles = { 1: 'Tus Datos', 2: 'Elige tu Plan', 3: 'Tu Edificio', 4: 'Reportar Pago', 5: 'Verificación' };
-    return titles[currentStep] || '';
+  // Helper: Append User Message Bubble (Right)
+  const appendUserBubble = (text) => {
+    const bubble = document.createElement('div');
+    bubble.className = 'sloty-chat-msg';
+    bubble.style.cssText = 'align-self:flex-end; max-width:82%; display:flex; flex-direction:column; align-items:flex-end;';
+    bubble.innerHTML = `
+      <div style="background:#F5C518; color:#1a1a2e; font-weight:700; font-size:0.85rem; padding:12px 16px; border-radius:18px 18px 4px 18px; line-height:1.4; box-shadow:0 4px 15px rgba(245,197,24,0.2);">
+        ${escapeHTML(text)}
+      </div>
+      <span style="font-size:0.6rem; color:rgba(255,255,255,0.3); margin-top:4px; margin-right:4px;">Tú</span>
+    `;
+    msgContainer.appendChild(bubble);
+    scrollToBottom();
   };
 
-  // --- Render del paso de Planes (SOLO MENSUAL) ---
-  const renderPlanStep = () => {
-    const slotMsg = slotMessages[2];
-    let plansHTML = '';
+  // Helper: Append Slot Message Bubble with Typing Animation (Left)
+  const appendSlotBubble = (contentHTML, expression = 'happy', callback = null) => {
+    // 1. Show typing indicator
+    const typingId = 'typing-' + Date.now();
+    const typingBubble = document.createElement('div');
+    typingBubble.id = typingId;
+    typingBubble.className = 'sloty-chat-msg';
+    typingBubble.style.cssText = 'align-self:flex-start; display:flex; gap:10px; align-items:flex-end; max-width:85%;';
+    typingBubble.innerHTML = `
+      ${getSlotAvatarSVG('talking')}
+      <div style="background:rgba(255,255,255,0.06); padding:12px 18px; border-radius:18px 18px 18px 4px; display:flex; align-items:center; gap:4px;">
+        <span class="sloty-typing-dot"></span>
+        <span class="sloty-typing-dot"></span>
+        <span class="sloty-typing-dot"></span>
+      </div>
+    `;
+    msgContainer.appendChild(typingBubble);
+    scrollToBottom();
 
-    PLANS.forEach(plan => {
-      const isSelected = wizardData.selectedPlan?.id === plan.id;
-      const slotsText = typeof plan.maxSlots === 'number' ? `Hasta ${plan.maxSlots} puestos` : `${plan.maxSlots} puestos`;
+    // 2. Resolve typing indicator after delay
+    setTimeout(() => {
+      const elTyping = document.getElementById(typingId);
+      if (elTyping) elTyping.remove();
 
+      const bubble = document.createElement('div');
+      bubble.className = 'sloty-chat-msg';
+      bubble.style.cssText = 'align-self:flex-start; display:flex; gap:10px; align-items:flex-start; max-width:92%; width:100%;';
+      bubble.innerHTML = `
+        ${getSlotAvatarSVG(expression)}
+        <div style="flex:1; background:#1e2038; border:1px solid rgba(245,197,24,0.15); color:white; font-size:0.85rem; padding:14px 18px; border-radius:4px 18px 18px 18px; line-height:1.5; box-shadow:0 6px 25px rgba(0,0,0,0.3);">
+          ${contentHTML}
+        </div>
+      `;
+      msgContainer.appendChild(bubble);
+      scrollToBottom();
+      if (callback) callback(bubble);
+    }, 550);
+  };
+
+  // ==============================================================
+  // FLUJO CONVERSACIONAL PASO A PASO
+  // ==============================================================
+
+  // Paso 1: Saludo y Nombre
+  const startStep1 = () => {
+    appendSlotBubble(`
+      ¡Hola! 👋 Soy <b>Slot</b>, tu asistente inteligente para la gestión de estacionamientos.<br><br>
+      Te guiaré paso a paso para configurar tu edificio y activar tu cuenta en pocos minutos. 🚀<br><br>
+      Para comenzar, <b>¿cuál es tu nombre y apellido?</b>
+    `, 'happy');
+
+    inputBar.innerHTML = `
+      <form id="sloty-form-step1" style="display:flex; gap:10px;">
+        <input id="sloty-input-name" type="text" placeholder="Ej: María González" required autofocus
+          style="flex:1; padding:14px 16px; border-radius:14px; border:2px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.25); color:white; font-family:'Montserrat',sans-serif; font-size:0.9rem; font-weight:700; outline:none;" />
+        <button type="submit" style="padding:14px 22px; background:#F5C518; color:#1a1a2e; border:none; border-radius:14px; font-weight:900; font-size:0.9rem; cursor:pointer; flex-shrink:0;">
+          Enviar ➔
+        </button>
+      </form>
+    `;
+
+    document.getElementById('sloty-form-step1').onsubmit = (e) => {
+      e.preventDefault();
+      const name = document.getElementById('sloty-input-name').value.trim();
+      if (!name) return;
+      wizard.name = name;
+      appendUserBubble(name);
+      inputBar.innerHTML = '';
+      startStep2();
+    };
+  };
+
+  // Paso 2: Correo y Teléfono WhatsApp
+  const startStep2 = () => {
+    appendSlotBubble(`
+      ¡Mucho gusto, <b>${escapeHTML(wizard.name)}</b>! 🚗✨<br><br>
+      Para vincular tu usuario administrador y enviarte las credenciales oficiales de acceso, <b>¿cuál es tu correo y número de WhatsApp?</b>
+    `, 'excited');
+
+    inputBar.innerHTML = `
+      <form id="sloty-form-step2" style="display:flex; flex-direction:column; gap:10px;">
+        <div style="display:flex; gap:10px;">
+          <input id="sloty-input-email" type="email" placeholder="correo@ejemplo.com" required
+            style="flex:1; padding:12px 14px; border-radius:12px; border:2px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.25); color:white; font-family:'Montserrat',sans-serif; font-size:0.85rem; font-weight:700; outline:none;" />
+          <input id="sloty-input-phone" type="tel" placeholder="04121234567" required
+            style="flex:1; padding:12px 14px; border-radius:12px; border:2px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.25); color:white; font-family:'Montserrat',sans-serif; font-size:0.85rem; font-weight:700; outline:none;" />
+        </div>
+        <button type="submit" style="width:100%; padding:14px; background:#F5C518; color:#1a1a2e; border:none; border-radius:14px; font-weight:900; font-size:0.85rem; cursor:pointer;">
+          Continuar ➔
+        </button>
+      </form>
+    `;
+
+    document.getElementById('sloty-form-step2').onsubmit = (e) => {
+      e.preventDefault();
+      const email = document.getElementById('sloty-input-email').value.trim();
+      const phone = document.getElementById('sloty-input-phone').value.trim();
+      if (!email || !phone) return;
+      wizard.email = email;
+      wizard.phone = phone;
+      appendUserBubble(`${email} · ${phone}`);
+      inputBar.innerHTML = '';
+      startStep3();
+    };
+  };
+
+  // Paso 3: Nombre del Edificio y Estructura
+  const startStep3 = () => {
+    appendSlotBubble(`
+      ¡Excelente! 🏢 Ahora cuéntame sobre el condominio o estacionamiento.<br><br>
+      <b>¿Cómo se llama tu edificio y cuántos puestos de estacionamiento tiene?</b>
+    `, 'thinking');
+
+    inputBar.innerHTML = `
+      <form id="sloty-form-step3" style="display:flex; flex-direction:column; gap:10px;">
+        <input id="sloty-input-bld" type="text" placeholder="Ej: Residencias Los Rosales" required
+          style="width:100%; box-sizing:border-box; padding:12px 14px; border-radius:12px; border:2px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.25); color:white; font-family:'Montserrat',sans-serif; font-size:0.85rem; font-weight:700; outline:none;" />
+        
+        <div style="display:flex; gap:10px;">
+          <div style="flex:1;">
+            <label style="font-size:0.6rem; color:rgba(255,255,255,0.4); text-transform:uppercase; font-weight:800; display:block; margin-bottom:4px;">Niveles / Pisos</label>
+            <input id="sloty-input-floors" type="number" min="1" max="20" value="1" required
+              style="width:100%; box-sizing:border-box; padding:12px 14px; border-radius:12px; border:2px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.25); color:white; font-family:'Montserrat',sans-serif; font-size:0.85rem; font-weight:700; outline:none;" />
+          </div>
+          <div style="flex:1;">
+            <label style="font-size:0.6rem; color:rgba(255,255,255,0.4); text-transform:uppercase; font-weight:800; display:block; margin-bottom:4px;">Total Puestos</label>
+            <input id="sloty-input-slots" type="number" min="1" max="500" value="25" required
+              style="width:100%; box-sizing:border-box; padding:12px 14px; border-radius:12px; border:2px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.25); color:white; font-family:'Montserrat',sans-serif; font-size:0.85rem; font-weight:700; outline:none;" />
+          </div>
+        </div>
+
+        <button type="submit" style="width:100%; padding:14px; background:#F5C518; color:#1a1a2e; border:none; border-radius:14px; font-weight:900; font-size:0.85rem; cursor:pointer;">
+          Guardar y Ver Planes ➔
+        </button>
+      </form>
+    `;
+
+    document.getElementById('sloty-form-step3').onsubmit = (e) => {
+      e.preventDefault();
+      const bldName = document.getElementById('sloty-input-bld').value.trim();
+      const floors = parseInt(document.getElementById('sloty-input-floors').value) || 1;
+      const slots = parseInt(document.getElementById('sloty-input-slots').value) || 25;
+      if (!bldName) return;
+
+      wizard.buildingName = bldName;
+      wizard.floors = floors;
+      wizard.slots = slots;
+
+      appendUserBubble(`${bldName} (${floors} Piso(s) · ${slots} Puestos)`);
+      inputBar.innerHTML = '';
+      startStep4();
+    };
+  };
+
+  // Paso 4: Selección de Planes en el Chat
+  const startStep4 = () => {
+    let plansHTML = `
+      <div style="margin-bottom:12px;">
+        ¡Perfecto! 🎉 Según el tamaño de <b>${escapeHTML(wizard.buildingName)}</b>, aquí tienes los planes oficiales de Sloty (mensualidades fijas sin cargos ocultos):
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px; margin-top:14px;">
+    `;
+
+    PLANS.forEach(p => {
       plansHTML += `
-        <div class="plan-card ${isSelected ? 'plan-selected' : ''}" data-plan="${plan.id}" style="
-          background: ${isSelected ? 'rgba(245,197,24,0.12)' : 'rgba(255,255,255,0.03)'};
-          border: 2px solid ${isSelected ? plan.color : 'rgba(255,255,255,0.08)'};
-          border-radius: 20px;
-          padding: 22px 18px;
-          cursor: pointer;
-          transition: all 0.3s ease;
-          position: relative;
-          display: flex;
-          flex-direction: column;
-          ${plan.recommended ? 'box-shadow: 0 0 25px rgba(245,197,24,0.15);' : ''}
-        ">
-          ${plan.badge ? `<div style="position:absolute; top:-11px; left:50%; transform:translateX(-50%); background:${plan.color}; color:#1a1a2e; padding:4px 14px; border-radius:20px; font-size:0.65rem; font-weight:900; text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap;">★ ${plan.badge}</div>` : ''}
-          ${isSelected ? `<div style="position:absolute; top:14px; right:14px; width:26px; height:26px; background:${plan.color}; color:#1a1a2e; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.85rem; font-weight:900;">✓</div>` : ''}
-
-          <div style="font-size:2.2rem; margin-bottom:8px;">${plan.icon}</div>
-          <div style="font-size:0.75rem; font-weight:800; color:${plan.color}; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:4px;">Plan ${plan.name}</div>
-          <div style="font-size:1.1rem; font-weight:900; color:white; margin-bottom:4px;">${slotsText}</div>
-          <div style="font-size:0.72rem; color:rgba(255,255,255,0.5); margin-bottom:14px; line-height:1.4;">${plan.description}</div>
-
-          <div style="margin-bottom:16px; padding:10px 0; border-top:1px solid rgba(255,255,255,0.06); border-bottom:1px solid rgba(255,255,255,0.06);">
-            <span style="font-size:1.8rem; font-weight:900; color:${plan.color};">$${plan.price}</span>
-            <span style="font-size:0.8rem; color:rgba(255,255,255,0.4);">${plan.period}</span>
+        <div style="background:rgba(255,255,255,0.03); border:2px solid ${p.color}; border-radius:16px; padding:16px; position:relative; box-shadow:0 4px 15px rgba(0,0,0,0.2);">
+          ${p.badge ? `<div style="position:absolute; top:-10px; right:16px; background:${p.color}; color:#1a1a2e; padding:3px 10px; border-radius:12px; font-size:0.6rem; font-weight:900; text-transform:uppercase;">${p.badge}</div>` : ''}
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:1.4rem;">${p.icon}</span>
+              <div>
+                <div style="font-weight:900; font-size:0.95rem; color:${p.color};">Plan ${p.name}</div>
+                <div style="font-size:0.65rem; color:rgba(255,255,255,0.4);">${typeof p.maxSlots === 'number' ? `Hasta ${p.maxSlots} puestos` : p.maxSlots}</div>
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <span style="font-size:1.3rem; font-weight:900; color:white;">$${p.price}</span>
+              <span style="font-size:0.7rem; color:rgba(255,255,255,0.4);">${p.period}</span>
+            </div>
           </div>
-
-          <div style="margin-bottom:18px; flex:1;">
-            ${plan.features.map(f => `<div style="display:flex; align-items:flex-start; gap:8px; margin-bottom:7px; font-size:0.72rem; color:rgba(255,255,255,0.85); line-height:1.4;"><span style="color:#22c55e; flex-shrink:0; font-weight:900;">✓</span> ${escapeHTML(f)}</div>`).join('')}
-            ${plan.limitations.map(l => `<div style="display:flex; align-items:flex-start; gap:8px; margin-bottom:7px; font-size:0.72rem; color:rgba(255,255,255,0.3); line-height:1.4;"><span style="flex-shrink:0;">✕</span> ${escapeHTML(l)}</div>`).join('')}
+          <div style="font-size:0.7rem; color:rgba(255,255,255,0.7); margin-bottom:12px; line-height:1.4;">
+            ${p.description}
           </div>
-
-          <button type="button" style="width:100%; padding:12px; border-radius:12px; border:none; background:${isSelected ? plan.color : 'rgba(255,255,255,0.06)'}; color:${isSelected ? '#1a1a2e' : 'rgba(255,255,255,0.7)'}; font-weight:900; font-size:0.8rem; cursor:pointer; transition:all 0.2s;">
-            ${isSelected ? '✓ Seleccionado' : plan.cta}
+          <button data-plan-id="${p.id}" class="sloty-btn-select-plan" style="width:100%; padding:10px; background:${p.color}; color:#1a1a2e; border:none; border-radius:10px; font-weight:900; font-size:0.75rem; cursor:pointer; text-transform:uppercase; letter-spacing:0.5px;">
+            Elegir ${p.name} ($${p.price}/mes)
           </button>
         </div>
       `;
     });
 
-    return `
-      ${getSlotSVG(slotMsg.expr, slotMsg.text)}
+    plansHTML += `</div>`;
 
-      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:14px; margin-bottom:20px;">
-        ${plansHTML}
-      </div>
-
-      ${wizardData.selectedPlan ? `
-        <div style="background:rgba(245,197,24,0.08); border:1px solid rgba(245,197,24,0.2); border-radius:14px; padding:12px; margin-bottom:16px; text-align:center;">
-          <div style="font-size:0.8rem; color:rgba(255,255,255,0.85);">Has elegido: <b style="color:${wizardData.selectedPlan.color};">Plan ${wizardData.selectedPlan.name}</b> · $${wizardData.selectedPlan.price} USD / mes</div>
-        </div>
-      ` : ''}
-    `;
+    appendSlotBubble(plansHTML, 'excited', (bubble) => {
+      bubble.querySelectorAll('.sloty-btn-select-plan').forEach(btn => {
+        btn.onclick = () => {
+          const planId = btn.dataset.planId;
+          const chosenPlan = PLANS.find(p => p.id === planId);
+          if (!chosenPlan) return;
+          wizard.selectedPlan = chosenPlan;
+          appendUserBubble(`He seleccionado el Plan ${chosenPlan.name} ($${chosenPlan.price}/mes)`);
+          startStep5();
+        };
+      });
+    });
   };
 
-  // --- Render del Reporte de Pago (Pago Móvil / Transferencia / Zelle / Efectivo) ---
-  const renderCheckoutStep = () => {
-    const slotMsg = slotMessages[4];
-    const plan = wizardData.selectedPlan || PLANS[0];
-    const price = plan.price;
-    const amountBs = (price * bcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // Paso 5: Selección de Método de Pago y Formulario de Comprobante
+  const startStep5 = () => {
+    const plan = wizard.selectedPlan;
 
-    return `
-      ${getSlotSVG(slotMsg.expr, slotMsg.text)}
-
-      <!-- RESUMEN DE LA MEMBRESÍA -->
-      <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:18px; padding:18px; margin-bottom:18px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.08);">
-          <div style="display:flex; align-items:center; gap:10px;">
-            <span style="font-size:1.8rem;">${plan.icon}</span>
-            <div>
-              <div style="font-weight:900; color:white; font-size:0.95rem;">Sloty ${plan.name}</div>
-              <div style="font-size:0.7rem; color:rgba(255,255,255,0.45);">${typeof plan.maxSlots === 'number' ? `Hasta ${plan.maxSlots} puestos` : 'Puestos ilimitados'} · Mensual</div>
-            </div>
-          </div>
-          <div style="text-align:right;">
-            <div style="font-weight:900; color:#F5C518; font-size:1.25rem;">$${price} USD</div>
-            <div style="font-size:0.7rem; color:#999;">≈ Bs. ${amountBs}</div>
-          </div>
-        </div>
-        <div style="font-size:0.7rem; color:rgba(255,255,255,0.6); text-align:center;">
-          Tasa Oficial BCV: <b>Bs. ${bcvRate.toFixed(2)}</b> / USD
-        </div>
-      </div>
-
-      <!-- SELECTOR DE MÉTODO DE PAGO -->
-      <div style="margin-bottom:18px;">
-        <div style="font-size:0.7rem; font-weight:900; color:#F5C518; text-transform:uppercase; margin-bottom:10px; letter-spacing:1px;">Selecciona el Método Utilizado</div>
-
-        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:14px;">
-          <button type="button" id="pay-pm" style="padding:12px 6px; border-radius:12px; border:2px solid ${wizardData.paymentMethod === 'PAGO_MOVIL' ? '#F5C518' : 'rgba(255,255,255,0.08)'}; background:${wizardData.paymentMethod === 'PAGO_MOVIL' ? 'rgba(245,197,24,0.12)' : 'rgba(255,255,255,0.02)'}; color:white; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px;">
-            <span style="font-size:1.3rem;">📲</span>
-            <span style="font-size:0.7rem; font-weight:800;">Pago Móvil</span>
-          </button>
-          
-          <button type="button" id="pay-zelle" style="padding:12px 6px; border-radius:12px; border:2px solid ${wizardData.paymentMethod === 'ZELLE' ? '#F5C518' : 'rgba(255,255,255,0.08)'}; background:${wizardData.paymentMethod === 'ZELLE' ? 'rgba(245,197,24,0.12)' : 'rgba(255,255,255,0.02)'}; color:white; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px;">
-            <span style="font-size:1.3rem;">⚡</span>
-            <span style="font-size:0.7rem; font-weight:800;">Zelle USD</span>
-          </button>
-
-          <button type="button" id="pay-cash" style="padding:12px 6px; border-radius:12px; border:2px solid ${wizardData.paymentMethod === 'EFECTIVO' ? '#F5C518' : 'rgba(255,255,255,0.08)'}; background:${wizardData.paymentMethod === 'EFECTIVO' ? 'rgba(245,197,24,0.12)' : 'rgba(255,255,255,0.02)'}; color:white; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px;">
-            <span style="font-size:1.3rem;">💵</span>
-            <span style="font-size:0.7rem; font-weight:800;">Efectivo USD</span>
-          </button>
-        </div>
-
-        ${wizardData.paymentMethod === 'PAGO_MOVIL' ? `
-          <!-- DATOS PAGO MÓVIL / TRANSFERENCIA -->
-          <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:16px; padding:16px;">
-            <div style="background:rgba(0,0,0,0.3); border-radius:12px; padding:12px; font-size:0.72rem; color:rgba(255,255,255,0.85); line-height:1.7; border:1px solid rgba(255,255,255,0.06); margin-bottom:12px;">
-              <div style="display:flex; justify-content:space-between;"><span style="color:#999;">Banco:</span> <span style="font-weight:800;">Banco de Venezuela / Banesco</span></div>
-              <div style="display:flex; justify-content:space-between;"><span style="color:#999;">Pago Móvil:</span> <span style="font-weight:800; color:#F5C518;">0412-0770776 · V-27890123</span></div>
-              <div style="display:flex; justify-content:space-between;"><span style="color:#999;">Monto en Bolívares:</span> <span style="font-weight:800; color:#22c55e;">Bs. ${amountBs}</span></div>
-            </div>
-
-            <div style="display:flex; flex-direction:column; gap:10px;">
-              <div>
-                <label style="font-size:0.65rem; font-weight:800; color:#F5C518; display:block; margin-bottom:4px; text-transform:uppercase;">Número de Referencia Bancaria *</label>
-                <input id="ob-proof-ref" type="text" value="${escapeHTML(wizardData.transferRef)}" placeholder="Ej: 04928172" style="width:100%; box-sizing:border-box; padding:13px; border-radius:12px; border:2px solid rgba(255,255,255,0.08); background:rgba(0,0,0,0.2); color:white; font-weight:700; outline:none; font-family:'Montserrat'; font-size:0.85rem;">
-              </div>
-              
-              <div>
-                <label style="font-size:0.65rem; font-weight:800; color:#F5C518; display:block; margin-bottom:4px; text-transform:uppercase;">Foto del Comprobante (Opcional)</label>
-                <input id="ob-proof-file" type="file" accept="image/*" style="width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px dashed rgba(255,255,255,0.15); background:rgba(0,0,0,0.2); color:white; font-size:0.75rem;">
-              </div>
-            </div>
-          </div>
-        ` : wizardData.paymentMethod === 'ZELLE' ? `
-          <!-- ZELLE USD -->
-          <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:16px; padding:16px;">
-            <div style="background:rgba(0,0,0,0.3); border-radius:12px; padding:12px; font-size:0.72rem; color:rgba(255,255,255,0.85); line-height:1.7; border:1px solid rgba(255,255,255,0.06); margin-bottom:12px;">
-              <div style="display:flex; justify-content:space-between;"><span style="color:#999;">Email Zelle:</span> <span style="font-weight:800; color:#3b82f6;">pagos@slotyapp.com</span></div>
-              <div style="display:flex; justify-content:space-between;"><span style="color:#999;">Titular:</span> <span style="font-weight:800;">Sloty Group LLC</span></div>
-              <div style="display:flex; justify-content:space-between;"><span style="color:#999;">Monto a transferir:</span> <span style="font-weight:800; color:#22c55e;">$${price}.00 USD</span></div>
-            </div>
-
-            <div>
-              <label style="font-size:0.65rem; font-weight:800; color:#F5C518; display:block; margin-bottom:4px; text-transform:uppercase;">Nombre del Titular de la Cuenta Zelle *</label>
-              <input id="ob-proof-ref" type="text" value="${escapeHTML(wizardData.transferRef)}" placeholder="Ej: Carlos Pérez" style="width:100%; box-sizing:border-box; padding:13px; border-radius:12px; border:2px solid rgba(255,255,255,0.08); background:rgba(0,0,0,0.2); color:white; font-weight:700; outline:none; font-family:'Montserrat'; font-size:0.85rem;">
-            </div>
-          </div>
-        ` : `
-          <!-- EFECTIVO USD -->
-          <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:16px; padding:16px;">
-            <div style="background:rgba(0,0,0,0.3); border-radius:12px; padding:12px; font-size:0.72rem; color:rgba(255,255,255,0.85); line-height:1.7; border:1px solid rgba(255,255,255,0.06); margin-bottom:12px;">
-              <div style="display:flex; justify-content:space-between;"><span style="color:#999;">Monto en Efectivo:</span> <span style="font-weight:800; color:#22c55e;">$${price}.00 USD</span></div>
-              <div style="color:rgba(255,255,255,0.7); margin-top:4px;">El equipo Master coordinará la recepción de divisas directamente contigo por WhatsApp.</div>
-            </div>
-
-            <div>
-              <label style="font-size:0.65rem; font-weight:800; color:#F5C518; display:block; margin-bottom:4px; text-transform:uppercase;">Detalles / Persona que entrega</label>
-              <input id="ob-proof-ref" type="text" value="${escapeHTML(wizardData.transferRef)}" placeholder="Ej: Pago directo en administración" style="width:100%; box-sizing:border-box; padding:13px; border-radius:12px; border:2px solid rgba(255,255,255,0.08); background:rgba(0,0,0,0.2); color:white; font-weight:700; outline:none; font-family:'Montserrat'; font-size:0.85rem;">
-            </div>
-          </div>
-        `}
-      </div>
-    `;
-  };
-
-  // --- Render del paso de Verificación Master (Paso 5) ---
-  const renderSuccessStep = () => {
-    const slotMsg = slotMessages[5];
-    const plan = wizardData.selectedPlan || PLANS[0];
-
-    return `
-      ${getSlotSVG(slotMsg.expr, slotMsg.text)}
-
-      <div style="text-align:center; margin-bottom:20px;">
-        <div style="font-size:3.2rem; margin-bottom:8px;">⏳</div>
-        <h2 style="font-size:1.35rem; font-weight:900; color:white; margin:0 0 8px;">¡Solicitud Enviada a Master!</h2>
-        <p style="font-size:0.82rem; color:rgba(255,255,255,0.75); margin:0; line-height:1.6;">
-          Hemos recibido los datos de <b style="color:#F5C518;">${escapeHTML(wizardData.buildingName)}</b> para el <b style="color:${plan.color};">Plan ${plan.name} ($${plan.price}/mes)</b>.
-        </p>
-      </div>
-
-      <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:18px; padding:18px; margin-bottom:20px;">
-        <div style="font-size:0.7rem; font-weight:900; color:#F5C518; text-transform:uppercase; margin-bottom:12px; letter-spacing:1px;">Flujo de Activación</div>
-        <div style="display:flex; flex-direction:column; gap:10px;">
-          <div style="display:flex; align-items:center; gap:10px; font-size:0.78rem; color:rgba(255,255,255,0.9);">
-            <div style="width:24px; height:24px; background:#22c55e; color:#1a1a2e; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:900; font-size:0.75rem;">1</div>
-            <span>Comprobante recibido y registrado en el cotejo de Master.</span>
-          </div>
-          <div style="display:flex; align-items:center; gap:10px; font-size:0.78rem; color:rgba(255,255,255,0.9);">
-            <div style="width:24px; height:24px; background:#F5C518; color:#1a1a2e; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:900; font-size:0.75rem;">2</div>
-            <span>El equipo Master coteja el abono y activa tu edificio.</span>
-          </div>
-          <div style="display:flex; align-items:center; gap:10px; font-size:0.78rem; color:rgba(255,255,255,0.9);">
-            <div style="width:24px; height:24px; background:rgba(255,255,255,0.1); color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:900; font-size:0.75rem;">3</div>
-            <span>Recibirás un mensaje de WhatsApp con el acceso directo para iniciar.</span>
-          </div>
-        </div>
-      </div>
-    `;
-  };
-
-  // --- Render Principal ---
-  const renderStep = () => {
-    const slotMsg = slotMessages[currentStep] || slotMessages[1];
-
-    container.innerHTML = `
-      <div id="onboarding-layer" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(10,10,20,0.96); backdrop-filter:blur(20px); z-index:99999; display:flex; flex-direction:column; justify-content:center; align-items:center; padding:20px; font-family:'Montserrat',sans-serif; color:white; box-sizing:border-box; overflow-y:auto;">
-
-        <div style="width:100%; max-width:520px; margin-bottom:16px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-            <span style="font-size:0.7rem; font-weight:900; color:#F5C518; text-transform:uppercase; letter-spacing:1px;">
-              ${currentStep < 5 ? `Paso ${currentStep} de ${totalSteps - 1}` : '¡Solicitud Registrada!'} · ${getStepTitle()}
-            </span>
-            ${currentStep < 5 ? `<button type="button" id="onboarding-skip-btn" style="background:none; border:none; color:rgba(255,255,255,0.4); font-size:0.7rem; font-weight:700; cursor:pointer;">Saltar por ahora</button>` : ''}
-          </div>
-          <div style="width:100%; height:5px; background:rgba(255,255,255,0.06); border-radius:10px; overflow:hidden;">
-            <div style="width:${(currentStep / totalSteps) * 100}%; height:100%; background:#F5C518; transition:width 0.4s cubic-bezier(0.4, 0, 0.2, 1);"></div>
-          </div>
-        </div>
-
-        <div style="background:#16213e; width:100%; max-width:520px; border-radius:28px; padding:28px 24px; box-shadow:0 30px 80px rgba(0,0,0,0.7); border:1px solid rgba(255,255,255,0.06); box-sizing:border-box;">
-
-          ${currentStep === 1 ? `
-            ${getSlotSVG(slotMsg.expr, slotMsg.text)}
-
-            <div style="display:flex; flex-direction:column; gap:14px; margin-bottom:20px;">
-              <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-                <div>
-                  <label style="font-size:0.65rem; font-weight:800; color:#F5C518; display:block; margin-bottom:5px; text-transform:uppercase;">Nombre</label>
-                  <input id="ob-first-name" type="text" value="${escapeHTML(wizardData.firstName)}" placeholder="Tu nombre" style="width:100%; box-sizing:border-box; padding:13px; border-radius:12px; border:2px solid rgba(255,255,255,0.08); background:rgba(0,0,0,0.2); color:white; font-weight:700; outline:none; font-family:'Montserrat'; font-size:0.85rem;">
-                </div>
-                <div>
-                  <label style="font-size:0.65rem; font-weight:800; color:#F5C518; display:block; margin-bottom:5px; text-transform:uppercase;">Apellido</label>
-                  <input id="ob-last-name" type="text" value="${escapeHTML(wizardData.lastName)}" placeholder="Tu apellido" style="width:100%; box-sizing:border-box; padding:13px; border-radius:12px; border:2px solid rgba(255,255,255,0.08); background:rgba(0,0,0,0.2); color:white; font-weight:700; outline:none; font-family:'Montserrat'; font-size:0.85rem;">
-                </div>
-              </div>
-
-              <div>
-                <label style="font-size:0.65rem; font-weight:800; color:#F5C518; display:block; margin-bottom:5px; text-transform:uppercase;">Email Administrador</label>
-                <input id="ob-email" type="email" value="${escapeHTML(wizardData.email)}" placeholder="admin@edificio.com" style="width:100%; box-sizing:border-box; padding:13px; border-radius:12px; border:2px solid rgba(255,255,255,0.08); background:rgba(0,0,0,0.2); color:white; font-weight:700; outline:none; font-family:'Montserrat'; font-size:0.85rem;">
-              </div>
-
-              <div>
-                <label style="font-size:0.65rem; font-weight:800; color:#F5C518; display:block; margin-bottom:5px; text-transform:uppercase;">Teléfono (WhatsApp)</label>
-                <input id="ob-phone" type="tel" value="${escapeHTML(wizardData.phone)}" placeholder="+58 412 1234567" style="width:100%; box-sizing:border-box; padding:13px; border-radius:12px; border:2px solid rgba(255,255,255,0.08); background:rgba(0,0,0,0.2); color:white; font-weight:700; outline:none; font-family:'Montserrat'; font-size:0.85rem;">
-              </div>
-
-              <div>
-                <label style="font-size:0.65rem; font-weight:800; color:#F5C518; display:block; margin-bottom:5px; text-transform:uppercase;">Tu Rol en el Condominio</label>
-                <div style="display:flex; gap:8px;">
-                  <button type="button" class="role-btn ${wizardData.role === 'admin' ? 'role-active' : ''}" data-role="admin" style="flex:1; padding:12px; border-radius:12px; border:2px solid ${wizardData.role === 'admin' ? '#F5C518' : 'rgba(255,255,255,0.08)'}; background:${wizardData.role === 'admin' ? 'rgba(245,197,24,0.12)' : 'rgba(0,0,0,0.2)'}; color:white; font-weight:800; font-size:0.78rem; cursor:pointer;">👤 Administrador / Junta</button>
-                  <button type="button" class="role-btn ${wizardData.role === 'manager' ? 'role-active' : ''}" data-role="manager" style="flex:1; padding:12px; border-radius:12px; border:2px solid ${wizardData.role === 'manager' ? '#F5C518' : 'rgba(255,255,255,0.08)'}; background:${wizardData.role === 'manager' ? 'rgba(245,197,24,0.12)' : 'rgba(0,0,0,0.2)'}; color:white; font-weight:800; font-size:0.78rem; cursor:pointer;">🔧 Encargado / Técnico</button>
-                </div>
-              </div>
-            </div>
-          ` : ''}
-
-          ${currentStep === 2 ? renderPlanStep() : ''}
-
-          ${currentStep === 3 ? `
-            ${getSlotSVG(slotMsg.expr, slotMsg.text)}
-
-            <div style="display:flex; flex-direction:column; gap:14px; margin-bottom:20px;">
-              <div>
-                <label style="font-size:0.65rem; font-weight:800; color:#F5C518; display:block; margin-bottom:5px; text-transform:uppercase;">Nombre del Condominio / Edificio *</label>
-                <input id="ob-bld-name" type="text" value="${escapeHTML(wizardData.buildingName)}" placeholder="Ej: Residencias Las Danielas" style="width:100%; box-sizing:border-box; padding:13px; border-radius:12px; border:2px solid rgba(255,255,255,0.08); background:rgba(0,0,0,0.2); color:white; font-weight:700; outline:none; font-family:'Montserrat'; font-size:0.85rem;">
-              </div>
-
-              <div>
-                <label style="font-size:0.65rem; font-weight:800; color:#F5C518; display:block; margin-bottom:5px; text-transform:uppercase;">Tarifa Mensual Base ($ / mes)</label>
-                <input id="ob-monthly-rate" type="number" step="0.01" value="${wizardData.monthlyRate}" placeholder="20.00" style="width:100%; box-sizing:border-box; padding:13px; border-radius:12px; border:2px solid rgba(255,255,255,0.08); background:rgba(0,0,0,0.2); color:white; font-weight:700; outline:none; font-family:'Montserrat'; font-size:0.85rem;">
-              </div>
-
-              <div style="display:grid; grid-template-columns:1.4fr 1fr; gap:12px;">
-                <div>
-                  <label style="font-size:0.65rem; font-weight:800; color:#F5C518; display:block; margin-bottom:5px; text-transform:uppercase;">Nombre Primera Planta</label>
-                  <input id="ob-level-name" type="text" value="${escapeHTML(wizardData.levelName)}" placeholder="Ej: Nivel 1 / PB" style="width:100%; box-sizing:border-box; padding:13px; border-radius:12px; border:2px solid rgba(255,255,255,0.08); background:rgba(0,0,0,0.2); color:white; font-weight:700; outline:none; font-family:'Montserrat'; font-size:0.85rem;">
-                </div>
-                <div>
-                  <label style="font-size:0.65rem; font-weight:800; color:#F5C518; display:block; margin-bottom:5px; text-transform:uppercase;">Puestos Planta 1</label>
-                  <input id="ob-slots-count" type="number" min="1" max="500" value="${wizardData.slotsCount}" placeholder="15" style="width:100%; box-sizing:border-box; padding:13px; border-radius:12px; border:2px solid rgba(255,255,255,0.08); background:rgba(0,0,0,0.2); color:white; font-weight:700; outline:none; font-family:'Montserrat'; font-size:0.85rem; text-align:center;">
-                </div>
-              </div>
-
-              <div style="display:grid; grid-template-columns:1.4fr 1fr; gap:12px;">
-                <div>
-                  <label style="font-size:0.65rem; font-weight:800; color:#F5C518; display:block; margin-bottom:5px; text-transform:uppercase;">Nombre del Guardia</label>
-                  <input id="ob-guard-name" type="text" value="${escapeHTML(wizardData.guardName)}" placeholder="Ej: Carlos Mendoza" style="width:100%; box-sizing:border-box; padding:13px; border-radius:12px; border:2px solid rgba(255,255,255,0.08); background:rgba(0,0,0,0.2); color:white; font-weight:700; outline:none; font-family:'Montserrat'; font-size:0.85rem;">
-                </div>
-                <div>
-                  <label style="font-size:0.65rem; font-weight:800; color:#F5C518; display:block; margin-bottom:5px; text-transform:uppercase;">PIN Guardia (4 dígitos)</label>
-                  <input id="ob-guard-pin" type="password" maxlength="4" inputmode="numeric" value="${escapeHTML(wizardData.guardPin)}" placeholder="••••" style="width:100%; box-sizing:border-box; padding:13px; border-radius:12px; border:2px solid rgba(255,255,255,0.08); background:rgba(0,0,0,0.2); color:white; font-size:1.1rem; font-weight:900; text-align:center; outline:none; font-family:'Montserrat'; letter-spacing:4px;">
-                </div>
-              </div>
-            </div>
-          ` : ''}
-
-          ${currentStep === 4 ? renderCheckoutStep() : ''}
-
-          ${currentStep === 5 ? renderSuccessStep() : ''}
-
-          <!-- BOTONES DE ACCIÓN -->
-          <div style="display:flex; gap:10px;">
-            ${currentStep > 1 && currentStep < 5 ? `
-              <button type="button" id="ob-btn-prev" style="flex:1; padding:16px; background:rgba(255,255,255,0.06); color:white; border:none; border-radius:14px; font-weight:800; font-size:0.8rem; cursor:pointer;">
-                ← Atrás
-              </button>
-            ` : ''}
-            <button type="button" id="ob-btn-next" style="flex:${currentStep > 1 && currentStep < 5 ? '2' : '1'}; padding:16px; background:#F5C518; color:#1a1a2e; border:none; border-radius:14px; font-weight:900; font-size:0.85rem; cursor:pointer; text-transform:uppercase; letter-spacing:0.5px; box-shadow:0 4px 20px rgba(245,197,24,0.25);">
-              ${currentStep === 1 ? 'Continuar →' : currentStep === 2 ? 'Elegir este Plan →' : currentStep === 3 ? 'Ir a Pago →' : currentStep === 4 ? '📤 Enviar Comprobante a Master' : '✓ Entendido'}
+    appendSlotBubble(`
+      ¡Excelente elección! 🌟 El <b>Plan ${plan.name} ($${plan.price}/mes)</b> dejará tu condominio completamente operativo.<br><br>
+      <b>¿Por cuál método deseas realizar el pago para la activación?</b>
+    `, 'happy', (bubble) => {
+      inputBar.innerHTML = `
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
+            <button id="sloty-pay-pm" style="padding:12px 8px; border-radius:12px; border:1px solid #F5C518; background:rgba(245,197,24,0.1); color:white; font-weight:800; font-size:0.75rem; cursor:pointer; text-align:center;">
+              💳 Pago Móvil
+            </button>
+            <button id="sloty-pay-zelle" style="padding:12px 8px; border-radius:12px; border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.04); color:white; font-weight:800; font-size:0.75rem; cursor:pointer; text-align:center;">
+              🏦 Zelle USD
+            </button>
+            <button id="sloty-pay-cash" style="padding:12px 8px; border-radius:12px; border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.04); color:white; font-weight:800; font-size:0.75rem; cursor:pointer; text-align:center;">
+              💵 Efectivo USD
             </button>
           </div>
-
         </div>
-      </div>
-    `;
+      `;
 
-    hookEvents();
+      document.getElementById('sloty-pay-pm').onclick = () => renderPaymentDetails('PAGO_MOVIL');
+      document.getElementById('sloty-pay-zelle').onclick = () => renderPaymentDetails('ZELLE');
+      document.getElementById('sloty-pay-cash').onclick = () => renderPaymentDetails('CASH');
+    });
   };
 
-  // --- Controladores de Eventos ---
-  const hookEvents = () => {
-    const skipBtn = document.getElementById('onboarding-skip-btn');
-    if (skipBtn) {
-      skipBtn.onclick = () => {
-        markOnboardingComplete(state);
-        const layer = document.getElementById('onboarding-layer');
-        if (layer) layer.remove();
-        if (onComplete) onComplete();
-      };
+  // Render Detalle del Método y Envío de Comprobante
+  const renderPaymentDetails = (method) => {
+    wizard.paymentMethod = method;
+    inputBar.innerHTML = '';
+
+    const plan = wizard.selectedPlan;
+    const amountBs = (plan.price * wizard.bcvRate).toFixed(2);
+
+    let paymentDetailsHTML = '';
+    if (method === 'PAGO_MOVIL') {
+      appendUserBubble('Pago Móvil (Bolívares)');
+      paymentDetailsHTML = `
+        <div style="font-size:0.8rem; line-height:1.5;">
+          Aquí tienes los datos oficiales de <b>Pago Móvil Sloty</b> a tasa BCV (<b>${wizard.bcvRate.toFixed(2)} Bs/$</b>):<br><br>
+          <div style="background:#0f1127; border:1px solid rgba(245,197,24,0.3); border-radius:14px; padding:14px; margin-bottom:12px;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Banco:</span> <b>Banco Exterior (0115)</b></div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Cédula:</span> <b>V-27031049</b></div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Teléfono:</span> <b>04129135799</b></div>
+            <div style="display:flex; justify-content:space-between; color:#F5C518; font-weight:900; padding-top:6px; border-top:1px solid rgba(255,255,255,0.1);">
+              <span>Monto a transferir:</span> <span>Bs. ${amountBs} ($${plan.price} USD)</span>
+            </div>
+          </div>
+          Ingresa los datos de tu transferencia para enviarlos a <b>Master</b>:
+        </div>
+      `;
+    } else if (method === 'ZELLE') {
+      appendUserBubble('Zelle USD');
+      paymentDetailsHTML = `
+        <div style="font-size:0.8rem; line-height:1.5;">
+          Datos oficiales para transferencia por <b>Zelle</b>:<br><br>
+          <div style="background:#0f1127; border:1px solid rgba(245,197,24,0.3); border-radius:14px; padding:14px; margin-bottom:12px;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Titular:</span> <b>Sloty Technologies</b></div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Correo Zelle:</span> <b>pagos@slotyapp.com</b></div>
+            <div style="display:flex; justify-content:space-between; color:#F5C518; font-weight:900; padding-top:6px; border-top:1px solid rgba(255,255,255,0.1);">
+              <span>Monto Total:</span> <span>$${plan.price} USD</span>
+            </div>
+          </div>
+          Ingresa el nombre del titular o correo emisor y la referencia:
+        </div>
+      `;
+    } else {
+      appendUserBubble('Efectivo USD');
+      paymentDetailsHTML = `
+        <div style="font-size:0.8rem; line-height:1.5;">
+          Has seleccionado <b>Efectivo USD ($${plan.price})</b>.<br><br>
+          Un ejecutivo de Sloty coordinará la entrega y validación de tu recibo para activar tu cuenta de inmediato.
+        </div>
+      `;
     }
 
-    const prevBtn = document.getElementById('ob-btn-prev');
-    if (prevBtn) {
-      prevBtn.onclick = () => {
-        currentStep--;
-        renderStep();
-      };
-    }
+    appendSlotBubble(paymentDetailsHTML, 'talking', (bubble) => {
+      inputBar.innerHTML = `
+        <form id="sloty-form-proof" style="display:flex; flex-direction:column; gap:10px;">
+          ${method !== 'CASH' ? `
+            <div style="display:flex; gap:10px;">
+              <input id="proof-bank-name" type="text" placeholder="${method === 'ZELLE' ? 'Titular / Correo Zelle' : 'Banco emisor (Ej: Banesco)'}" required
+                style="flex:1; padding:12px 14px; border-radius:12px; border:2px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.25); color:white; font-family:'Montserrat',sans-serif; font-size:0.85rem; font-weight:700; outline:none;" />
+              <input id="proof-ref-num" type="text" placeholder="Número de Referencia" required
+                style="flex:1; padding:12px 14px; border-radius:12px; border:2px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.25); color:white; font-family:'Montserrat',sans-serif; font-size:0.85rem; font-weight:700; outline:none;" />
+            </div>
+            
+            <div>
+              <input type="file" id="proof-file-input" accept="image/*,.pdf" style="display:none;" />
+              <button id="proof-attach-btn" type="button" style="width:100%; padding:10px; border-radius:12px; border:1px dashed rgba(245,197,24,0.4); background:rgba(245,197,24,0.05); color:#F5C518; font-weight:700; font-size:0.75rem; cursor:pointer;">
+                📎 Adjuntar Captura / Comprobante (opcional)
+              </button>
+              <div id="proof-file-label" style="font-size:0.7rem; color:#22c55e; margin-top:4px; text-align:center; display:none;"></div>
+            </div>
+          ` : ''}
 
-    document.querySelectorAll('.role-btn').forEach(btn => {
-      btn.onclick = () => {
-        wizardData.role = btn.dataset.role;
-        renderStep();
-      };
-    });
+          <div style="display:flex; align-items:center; gap:8px;">
+            <input type="checkbox" id="proof-agree-terms" checked required style="accent-color:#F5C518; width:16px; height:16px;" />
+            <label for="proof-agree-terms" style="font-size:0.65rem; color:rgba(255,255,255,0.6);">Acepto los términos de activación del servicio Sloty</label>
+          </div>
 
-    document.querySelectorAll('.plan-card').forEach(card => {
-      card.onclick = () => {
-        const planId = card.dataset.plan;
-        wizardData.selectedPlan = PLANS.find(p => p.id === planId) || PLANS[0];
-        renderStep();
-      };
-    });
+          <button id="proof-submit-btn" type="submit" style="width:100%; padding:14px; background:#F5C518; color:#1a1a2e; border:none; border-radius:14px; font-weight:900; font-size:0.85rem; cursor:pointer; text-transform:uppercase; letter-spacing:0.5px;">
+            ${method === 'CASH' ? 'Confirmar Solicitud en Efectivo ➔' : 'Enviar Comprobante a Master ➔'}
+          </button>
+          <div id="proof-error-msg" style="color:#ef4444; font-size:0.75rem; text-align:center; display:none;"></div>
+        </form>
+      `;
 
-    const payPm = document.getElementById('pay-pm');
-    const payZelle = document.getElementById('pay-zelle');
-    const payCash = document.getElementById('pay-cash');
-    if (payPm) {
-      payPm.onclick = () => { wizardData.paymentMethod = 'PAGO_MOVIL'; renderStep(); };
-    }
-    if (payZelle) {
-      payZelle.onclick = () => { wizardData.paymentMethod = 'ZELLE'; renderStep(); };
-    }
-    if (payCash) {
-      payCash.onclick = () => { wizardData.paymentMethod = 'EFECTIVO'; renderStep(); };
-    }
+      let selectedFile = null;
+      const fileInput = document.getElementById('proof-file-input');
+      const attachBtn = document.getElementById('proof-attach-btn');
+      const fileLabel = document.getElementById('proof-file-label');
 
-    const proofFile = document.getElementById('ob-proof-file');
-    if (proofFile) {
-      proofFile.onchange = (e) => {
-        if (e.target.files && e.target.files[0]) {
-          wizardData.proofImageFile = e.target.files[0];
-        }
-      };
-    }
+      if (attachBtn && fileInput) {
+        attachBtn.onclick = () => fileInput.click();
+        fileInput.onchange = (e) => {
+          if (e.target.files && e.target.files[0]) {
+            selectedFile = e.target.files[0];
+            fileLabel.textContent = `✓ Archivo adjunto: ${selectedFile.name}`;
+            fileLabel.style.display = 'block';
+          }
+        };
+      }
 
-    const nextBtn = document.getElementById('ob-btn-next');
-    if (nextBtn) {
-      nextBtn.onclick = async () => {
-        if (currentStep === 1) {
-          const firstName = document.getElementById('ob-first-name').value.trim();
-          const lastName = document.getElementById('ob-last-name').value.trim();
-          const email = document.getElementById('ob-email').value.trim();
-          const phone = document.getElementById('ob-phone').value.trim();
+      document.getElementById('sloty-form-proof').onsubmit = async (e) => {
+        e.preventDefault();
+        const submitBtn = document.getElementById('proof-submit-btn');
+        const errMsg = document.getElementById('proof-error-msg');
+        submitBtn.disabled = true;
+        submitBtn.textContent = '⏳ Enviando a Master...';
 
-          if (!firstName || !lastName) { alert('Por favor, ingresa tu nombre y apellido'); return; }
-          if (!email || !email.includes('@')) { alert('Por favor, ingresa un email válido'); return; }
-          if (!phone) { alert('Por favor, ingresa tu teléfono WhatsApp'); return; }
+        const bankName = document.getElementById('proof-bank-name')?.value.trim() || (method === 'CASH' ? 'Efectivo USD' : 'Zelle');
+        const refNum = document.getElementById('proof-ref-num')?.value.trim() || 'EFECTIVO-' + Date.now().toString().slice(-6);
 
-          wizardData.firstName = firstName;
-          wizardData.lastName = lastName;
-          wizardData.email = email;
-          wizardData.phone = phone;
+        try {
+          // 1. Create or resolve building in Supabase
+          const newCode = 'SLO-' + Math.floor(1000 + Math.random() * 9000);
+          let newBuildingId = null;
 
-          state.admin_first_name = firstName;
-          state.admin_last_name = lastName;
-          state.admin_name = `${firstName} ${lastName}`;
-          state.admin_email = email;
-          state.admin_phone = phone;
-          state.phone = phone;
-          state.admin_role = wizardData.role;
+          const { data: bldCreated } = await supabase
+            .from('buildings')
+            .insert({
+              name: wizard.buildingName,
+              code: newCode,
+              membership_status: 'PENDING_PROOF',
+              plan: plan.id,
+              monthly_rate: 20,
+              is_first_login: false
+            })
+            .select()
+            .single();
 
-          currentStep = 2;
-          renderStep();
-          return;
-        }
-
-        if (currentStep === 2) {
-          if (!wizardData.selectedPlan) {
-            alert('Por favor, selecciona un plan para continuar');
-            return;
+          if (bldCreated) {
+            newBuildingId = bldCreated.id;
           }
 
-          state.plan = wizardData.selectedPlan.id;
-          state.plan_id = wizardData.selectedPlan.id;
-          state.plan_name = wizardData.selectedPlan.name;
-          state.plan_price = wizardData.selectedPlan.price;
-
-          currentStep = 3;
-          renderStep();
-          return;
-        }
-
-        if (currentStep === 3) {
-          const bName = document.getElementById('ob-bld-name').value.trim();
-          const mRate = parseFloat(document.getElementById('ob-monthly-rate').value) || 20;
-          const lName = document.getElementById('ob-level-name').value.trim();
-          const sCount = parseInt(document.getElementById('ob-slots-count').value) || 15;
-          const gName = document.getElementById('ob-guard-name').value.trim();
-          const gPin = document.getElementById('ob-guard-pin').value.trim();
-
-          if (!bName) { alert('Por favor, ingresa el nombre del condominio'); return; }
-          if (!lName) { alert('Por favor, ingresa el nombre del primer nivel'); return; }
-          if (sCount < 1) { alert('Debes tener al menos 1 puesto'); return; }
-
-          if (wizardData.selectedPlan && typeof wizardData.selectedPlan.maxSlots === 'number' && sCount > wizardData.selectedPlan.maxSlots) {
-            alert(`El plan ${wizardData.selectedPlan.name} permite un máximo de ${wizardData.selectedPlan.maxSlots} puestos.`);
-            return;
+          // 2. Upload proof if file provided
+          let finalProofUrl = null;
+          if (selectedFile && newBuildingId) {
+            const fileName = `${newBuildingId}/${Date.now()}_${selectedFile.name.replace(/[^a-zA-Z0-9._-]/g, '')}`;
+            const { data: uploadData } = await supabase.storage
+              .from('payment-proofs')
+              .upload(fileName, selectedFile, { upsert: true });
+            
+            if (uploadData) {
+              const { data: pubUrl } = supabase.storage.from('payment-proofs').getPublicUrl(fileName);
+              finalProofUrl = pubUrl?.publicUrl;
+            }
           }
 
-          if (!gName) { alert('Por favor, ingresa el nombre del guardia'); return; }
-          if (!gPin || gPin.length !== 4) { alert('El PIN de guardia debe tener 4 dígitos'); return; }
-
-          wizardData.buildingName = bName;
-          wizardData.monthlyRate = mRate;
-          wizardData.levelName = lName;
-          wizardData.slotsCount = sCount;
-          wizardData.guardName = gName;
-          wizardData.guardPin = gPin;
-
-          state.buildingName = bName;
-          state.monthly_rate = mRate;
-
-          currentStep = 4;
-          renderStep();
-          return;
-        }
-
-        if (currentStep === 4) {
-          const plan = wizardData.selectedPlan || PLANS[0];
-          const price = plan.price;
-          const refVal = document.getElementById('ob-proof-ref')?.value.trim();
-
-          if (!refVal && wizardData.paymentMethod !== 'EFECTIVO') {
-            alert('Por favor, ingresa el número de referencia del pago o titular');
-            return;
-          }
-          wizardData.transferRef = refVal || 'EFECTIVO';
-
-          nextBtn.innerHTML = '⏳ Enviando a Master...';
-          nextBtn.disabled = true;
-
-          try {
-            // 1. Crear Planta 1 y puestos si no existen
-            if (!state.levels || state.levels.length === 0) {
-              const slots = [];
-              for (let i = 1; i <= wizardData.slotsCount; i++) {
-                slots.push({
-                  id: `s-${Date.now()}-${i}`,
-                  label: `${i}`,
-                  status: 'FREE',
-                  category: 'VISITANTE',
-                  plate: '',
-                  entryTime: null,
-                  metadata: {}
-                });
-              }
-              state.levels = [{
-                id: `lvl-${Date.now()}`,
-                name: wizardData.levelName,
-                color: '#3a86ff',
-                slots: slots
-              }];
-            }
-
-            // 2. Personal / Guardia inicial
-            state.personnel = state.personnel || [];
-            const newGuard = {
-              id: `g-${Date.now()}`,
-              name: wizardData.guardName,
-              pin: wizardData.guardPin,
-              phone: '',
-              role: 'GUARDIA',
-              active: true,
-              photo_url: ''
-            };
-            state.personnel.push(newGuard);
-
-            // 3. Crear edificio en DB si es un registro nuevo (sin buildingId previo)
-            if (!state.buildingId && !state.isBypass) {
-              try {
-                const bldCode = `SLO-${Math.floor(1000 + Math.random() * 9000)}`;
-                const { data: newBld, error: newBldErr } = await supabase.from('buildings').insert({
-                  name: wizardData.buildingName,
-                  code: bldCode,
-                  admin_name: `${wizardData.firstName} ${wizardData.lastName}`,
-                  admin_first_name: wizardData.firstName,
-                  admin_last_name: wizardData.lastName,
-                  admin_email: wizardData.email,
-                  admin_phone: wizardData.phone,
-                  phone: wizardData.phone,
-                  plan: plan.id,
-                  membership_status: 'PENDING_PROOF',
-                  monthly_rate: wizardData.monthlyRate,
-                  is_first_login: false,
-                  onboarding_completed: true
-                }).select().single();
-
-                if (newBld?.id) {
-                  state.buildingId = newBld.id;
-                  state.buildingCode = newBld.code;
-                  localStorage.setItem('sloty_building_id', newBld.id);
-                  localStorage.setItem('sloty_active_building', newBld.code);
-                }
-              } catch (err) {
-                console.warn('[Sloty Onboarding] Failed to create new building:', err);
-              }
-            } else if (state.buildingId && !state.isBypass) {
-              try {
-                await supabase.from('buildings').update({
-                  name: wizardData.buildingName,
-                  admin_name: `${wizardData.firstName} ${wizardData.lastName}`,
-                  admin_first_name: wizardData.firstName,
-                  admin_last_name: wizardData.lastName,
-                  admin_email: wizardData.email,
-                  admin_phone: wizardData.phone,
-                  phone: wizardData.phone,
-                  plan: plan.id,
-                  membership_status: 'PENDING_PROOF',
-                  monthly_rate: wizardData.monthlyRate,
-                  is_first_login: false,
-                  onboarding_completed: true
-                }).eq('id', state.buildingId);
-              } catch(e) {
-                console.warn('[Sloty Onboarding] Cloud sync failed:', e);
-              }
-            }
-
-            // 4. Subir imagen de comprobante a Supabase Storage si se adjuntó
-            let proofUrl = '';
-            if (wizardData.proofImageFile && state.buildingId) {
-              try {
-                const fileExt = wizardData.proofImageFile.name.split('.').pop() || 'jpg';
-                const filePath = `${state.buildingId}/onboarding-${Date.now()}.${fileExt}`;
-                const { data: uploadData, error: upErr } = await supabase.storage
-                  .from('proofs')
-                  .upload(filePath, wizardData.proofImageFile, { upsert: true });
-
-                if (!upErr && uploadData?.path) {
-                  const { data: pubUrl } = supabase.storage.from('proofs').getPublicUrl(uploadData.path);
-                  proofUrl = pubUrl?.publicUrl || '';
-                }
-              } catch(e) {
-                console.warn('[Sloty Onboarding] Storage upload error:', e);
-              }
-            }
-
-            // 5. Insertar comprobante en building_payment_proofs (STATUS: PENDING)
-            const proofPayload = {
-              building_id: state.buildingId || null,
+          // 3. Register payment proof in Supabase table
+          if (newBuildingId) {
+            await supabase.from('building_payment_proofs').insert({
+              building_id: newBuildingId,
               plan_key: plan.id,
-              amount: price,
-              reference: `${wizardData.paymentMethod} - Ref: ${wizardData.transferRef}`,
-              payment_date: new Date().toISOString().slice(0, 10),
-              proof_image: proofUrl || null,
-              status: 'PENDING'
-            };
-
-            if (state.buildingId) {
-              try {
-                await supabase.from('building_payment_proofs').insert(proofPayload);
-              } catch(e) {
-                console.warn('[Sloty Onboarding] Failed to insert proof in Supabase:', e);
-              }
-
-              // Insertar guardia en DB
-              await supabase.from('personnel').insert({
-                building_id: state.buildingId,
-                name: wizardData.guardName,
-                pin: wizardData.guardPin,
-                role: 'GUARDIA'
-              }).catch(() => {});
-            }
-
-            // 6. Respaldo local de comprobante
-            try {
-              const localProofs = JSON.parse(localStorage.getItem('sloty_pending_proofs') || '[]')
-              localProofs.push({ ...proofPayload, savedAt: new Date().toISOString() })
-              localStorage.setItem('sloty_pending_proofs', JSON.stringify(localProofs))
-            } catch(e) {}
-
-            // 7. Enviar WhatsApp oficial a Master (584120770776)
-            try {
-              const waData = formatProofWhatsAppMessage({
-                buildingName: wizardData.buildingName,
-                buildingCode: state.buildingId || 'SLO-NEW',
-                adminName: `${wizardData.firstName} ${wizardData.lastName}`,
-                planLabel: plan.name,
-                amountUsd: price,
-                amountBs: price * bcvRate,
-                bcvRate: bcvRate,
-                bank: wizardData.paymentMethod,
-                reference: wizardData.transferRef,
-                proofUrl: proofUrl || 'Registrado en sistema'
-              });
-              if (waData?.whatsappUrl) {
-                window.open(waData.whatsappUrl, '_blank');
-              }
-            } catch(e) {
-              console.warn('[Sloty Onboarding] WhatsApp trigger error:', e);
-            }
-
-            saveParkingState(state);
-
-            currentStep = 5;
-            renderStep();
-          } catch(err) {
-            console.error('Error durante el envío a Master:', err);
-            alert('Hubo un inconveniente al registrar. Por favor, intenta nuevamente.');
-            nextBtn.innerHTML = '📤 Enviar Comprobante a Master';
-            nextBtn.disabled = false;
+              amount: plan.price,
+              payment_method: method,
+              bank: bankName,
+              reference: refNum,
+              status: 'PENDING',
+              proof_url: finalProofUrl
+            });
           }
-          return;
-        }
 
-        if (currentStep === 5) {
-          markOnboardingComplete(state);
-          const layer = document.getElementById('onboarding-layer');
-          if (layer) layer.remove();
-          if (onComplete) onComplete();
-          return;
+          // 4. Update local storage state
+          state.buildingId = newBuildingId || 'test-building-id';
+          state.buildingName = wizard.buildingName;
+          state.buildingCode = newCode;
+          state.plan = plan.id;
+          saveParkingState(state);
+
+          // 5. Generate WhatsApp direct message link
+          const waData = formatProofWhatsAppMessage({
+            buildingName: wizard.buildingName,
+            buildingCode: newCode,
+            adminName: wizard.name,
+            planLabel: plan.name,
+            amountUsd: plan.price,
+            amountBs: Number(amountBs),
+            bcvRate: wizard.bcvRate,
+            bank: bankName,
+            reference: refNum,
+            proofUrl: finalProofUrl || (selectedFile ? `Archivo: ${selectedFile.name}` : 'Enviado por la plataforma'),
+            masterPhone: '584120770776'
+          });
+
+          inputBar.innerHTML = '';
+          appendUserBubble(`Comprobante enviado (Ref: ${refNum})`);
+
+          // Final Success Celebration in Chat
+          appendSlotBubble(`
+            <div style="text-align:center; padding:10px 0;">
+              <div style="font-size:3rem; margin-bottom:8px; animation:slotyPulseDot 1s infinite alternate;">🎉</div>
+              <h3 style="color:#F5C518; font-size:1.1rem; font-weight:900; margin-bottom:6px;">¡SOLICITUD RECIBIDA CON ÉXITO!</h3>
+              <p style="font-size:0.8rem; color:rgba(255,255,255,0.7); line-height:1.5; margin-bottom:14px;">
+                Hemos registrado a <b>${escapeHTML(wizard.buildingName)}</b> (Código: <b style="color:#F5C518;">${newCode}</b>).<br>
+                El equipo <b>Master</b> verificará tu pago y activará tu cuenta de inmediato.
+              </p>
+              
+              <a href="${waData.whatsappUrl}" target="_blank" style="display:block; width:100%; box-sizing:border-box; padding:14px; background:#25D366; color:white; border-radius:14px; font-weight:900; font-size:0.85rem; text-decoration:none; margin-bottom:10px; box-shadow:0 4px 15px rgba(37,211,102,0.3);">
+                📲 ABRIR WHATSAPP Y NOTIFICAR A MASTER
+              </a>
+
+              <button id="sloty-finish-btn" style="width:100%; padding:12px; background:rgba(255,255,255,0.06); color:white; border:none; border-radius:12px; font-weight:700; font-size:0.75rem; cursor:pointer;">
+                Ir al Inicio
+              </button>
+            </div>
+          `, 'excited', (bubble) => {
+            const finishBtn = bubble.querySelector('#sloty-finish-btn');
+            if (finishBtn) {
+              finishBtn.onclick = () => {
+                const root = document.getElementById('sloty-chat-container');
+                if (root) root.remove();
+                if (onComplete) onComplete();
+              };
+            }
+          });
+
+        } catch (err) {
+          console.error('[Sloty Chat] Error enviando comprobante:', err);
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Reintentar Envío';
+          errMsg.textContent = 'Hubo un inconveniente al guardar. Puedes abrir WhatsApp directamente con el botón.';
+          errMsg.style.display = 'block';
         }
       };
-    }
+    });
   };
 
-  renderStep();
+  // Launch initial conversational step
+  startStep1();
 };
 
-export default {
-  PLANS,
-  shouldShowOnboarding,
-  markOnboardingComplete,
-  renderOnboardingWizard
-};
+export { PLANS as defaultPlans };
