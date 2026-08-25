@@ -1,17 +1,39 @@
 /**
- * Onboarding Module v3 — Conversational Chat Wizard with Slot Mascot
- * Pure interactive chat interface with realistic typing indicators, sequential dialogue bubbles,
- * plan selection cards, Venezuelan payment methods, and automatic Master proof dispatch.
+ * Onboarding Module v4 — Conversational Chat Wizard with Slot Mascot
+ * Sloty | Renovación Comercial: Captura de Datos, Geolocalización,
+ * Transparencia Cambiaria BCV (TTL 6h), Validación Estricta y Despacho a Bóveda Master.
  */
 
 import { escapeHTML } from '../utils/sanitize.js'
 import { supabase, saveParkingState, getExchangeRate, isUUID } from '../db.js'
-import { formatProofWhatsAppMessage } from '../utils/notifier.js'
+import { formatProofWhatsAppMessage, notifyMasterPayment, showTermsModal, sanitizePhoneNumber } from '../utils/notifier.js'
 
 // ================================================================
-// CONFIGURACIÓN DE PLANES (MENSUALES DIRECTOS — SIN IVA)
+// CONSTANTES Y CONFIGURACIÓN DE PLANES (SIN IVA)
 // ================================================================
 export const PLANS = [
+  {
+    id: 'TRIAL',
+    name: 'Prueba Gratuita',
+    price: 0,
+    period: '/14 días',
+    description: 'Prueba las funciones esenciales en tu condominio sin costo',
+    icon: '✨',
+    color: '#888',
+    maxSlots: 15,
+    features: [
+      'Control básico de estacionamiento',
+      'Panel guardia esencial',
+      'Hasta 15 puestos registrados',
+      'Prueba de 14 días sin compromiso'
+    ],
+    limitations: [
+      'Sin módulos multinivel ni WhatsApp',
+      'Sin bitácora de auditoría'
+    ],
+    recommended: false,
+    cta: 'Elegir Prueba Gratis'
+  },
   {
     id: 'BRONCE',
     name: 'Bronce',
@@ -22,7 +44,7 @@ export const PLANS = [
     color: '#cd7f32',
     maxSlots: 30,
     features: [
-      'Control de estacionamiento',
+      'Control de estacionamiento completo',
       'Panel guardia offline resiliente',
       'Panel residente y abonos',
       'Reporte financiero y control de deudas'
@@ -50,7 +72,7 @@ export const PLANS = [
       'Alertas automatizadas por WhatsApp'
     ],
     limitations: [
-      'Sin bitácora de auditoría ni cartelera de anuncios'
+      'Sin bitácora de auditoría ni cartelera'
     ],
     recommended: true,
     cta: 'Elegir Plata',
@@ -78,7 +100,111 @@ export const PLANS = [
 ];
 
 // ================================================================
-// ESTADO Y UTILIDADES
+// RESILIENCIA DE TASA BCV (CACHE TTL 6 HORAS)
+// ================================================================
+const BCV_CACHE_KEY = 'sloty_bcv_rate_cache';
+const BCV_CACHE_TTL = 6 * 60 * 60 * 1000; // 6 horas
+
+export async function getExchangeRateWithFallback() {
+  try {
+    const rawRate = await getExchangeRate();
+    const rate = typeof rawRate === 'object' ? Number(rawRate?.rate || 40.0) : Number(rawRate || 40.0);
+    
+    if (rate && !isNaN(rate) && rate > 0) {
+      localStorage.setItem(BCV_CACHE_KEY, JSON.stringify({
+        rate,
+        timestamp: Date.now()
+      }));
+      return { rate, cached: false, warning: false };
+    }
+  } catch (err) {
+    console.warn('[Sloty BCV] Error cargando tasa en vivo, usando cache:', err);
+  }
+
+  // Fallback 1: Cache local válido (< 6h)
+  try {
+    const cached = localStorage.getItem(BCV_CACHE_KEY);
+    if (cached) {
+      const { rate, timestamp } = JSON.parse(cached);
+      const age = Date.now() - timestamp;
+      if (rate && !isNaN(rate) && age < BCV_CACHE_TTL) {
+        return { rate, cached: true, warning: false, cacheAgeHours: Math.round(age / 3600000) };
+      }
+      if (rate && !isNaN(rate)) {
+        return { rate, cached: true, warning: true, cacheAgeHours: Math.round(age / 3600000) };
+      }
+    }
+  } catch (e) {
+    console.warn('[Sloty BCV] Error leyendo cache:', e);
+  }
+
+  // Fallback 2: Tasa fija de contingencia
+  return { rate: 40.0, cached: true, warning: true, fallback: true };
+}
+
+// ================================================================
+// VALIDACIONES DE ENTRADA Y RATE LIMITING
+// ================================================================
+export function validateEmail(email) {
+  const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return regex.test(String(email || '').trim());
+}
+
+export function validateVenezuelanPhone(phone) {
+  const clean = String(phone || '').replace(/[\s\-()]/g, '');
+  // Formatos válidos: 0412..., +58412..., 58412..., 412...
+  const regex = /^(\+?58)?0?4(12|14|16|24|26)[0-9]{7}$/;
+  return regex.test(clean);
+}
+
+export function validateReceiptFile(file) {
+  const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+  const MAX_SIZE_MB = 5;
+  const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
+
+  if (!file) {
+    return { valid: false, error: 'El comprobante de pago es obligatorio.' };
+  }
+  if (!ALLOWED_TYPES.includes(file.type)) {
+    return { valid: false, error: 'Tipo de archivo no permitido. Solo imágenes (JPG, PNG, WebP) o documentos PDF.' };
+  }
+  if (file.size > MAX_SIZE_BYTES) {
+    return { valid: false, error: `El archivo supera el límite permitido de ${MAX_SIZE_MB}MB.` };
+  }
+  return { valid: true };
+}
+
+/**
+ * Rate limiting en cliente (Máximo 3 intentos cada 10 minutos).
+ * [DEUDA TÉCNICA DOCUMENTADA]: Este control en cliente es burlable borrando localStorage.
+ * Para producción estricta se incorpora el campo `ip_address` en subscription_requests
+ * para rate-limiting en Edge Functions de backend.
+ */
+function checkClientRateLimit() {
+  const KEY = 'sloty_submission_attempts';
+  const WINDOW_MS = 10 * 60 * 1000;
+  const MAX_ATTEMPTS = 3;
+
+  try {
+    const raw = localStorage.getItem(KEY);
+    const now = Date.now();
+    let history = raw ? JSON.parse(raw) : [];
+    history = history.filter(ts => now - ts < WINDOW_MS);
+
+    if (history.length >= MAX_ATTEMPTS) {
+      return { allowed: false, remainingMins: Math.ceil((WINDOW_MS - (now - history[0])) / 60000) };
+    }
+
+    history.push(now);
+    localStorage.setItem(KEY, JSON.stringify(history));
+    return { allowed: true };
+  } catch (e) {
+    return { allowed: true };
+  }
+}
+
+// ================================================================
+// ESTADO Y UTILIDADES DEL ONBOARDING
 // ================================================================
 export const shouldShowOnboarding = (state) => {
   if (!state) return false;
@@ -105,7 +231,6 @@ export const markOnboardingComplete = (state) => {
 export const generateBuildingCode = (name) => {
   if (!name || typeof name !== 'string') return 'SLO-' + Math.floor(1000 + Math.random() * 9000);
   
-  // Normalizar, remover acentos y caracteres especiales
   const clean = name.trim().toUpperCase()
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .replace(/[^A-Z0-9\s]/g, '');
@@ -178,32 +303,30 @@ const injectChatStyles = () => {
     .sloty-chat-msg {
       animation: slotyFadeSlide 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }
-    .sloty-typing-dot {
-      display: inline-block;
-      width: 7px;
-      height: 7px;
-      background: #F5C518;
-      border-radius: 50%;
-      margin: 0 2px;
-      animation: slotyPulseDot 1.2s infinite ease-in-out both;
+    .sloty-plan-card {
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      cursor: pointer;
     }
-    .sloty-typing-dot:nth-child(1) { animation-delay: -0.32s; }
-    .sloty-typing-dot:nth-child(2) { animation-delay: -0.16s; }
-    .sloty-typing-dot:nth-child(3) { animation-delay: 0s; }
-    .sloty-chat-scroll::-webkit-scrollbar { width: 5px; }
-    .sloty-chat-scroll::-webkit-scrollbar-track { background: transparent; }
-    .sloty-chat-scroll::-webkit-scrollbar-thumb { background: rgba(245,197,24,0.2); border-radius: 10px; }
+    .sloty-plan-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 25px rgba(245,197,24,0.15);
+    }
+    .sloty-plan-card.selected {
+      border: 2px solid #F5C518 !important;
+      background: rgba(245,197,24,0.08) !important;
+    }
   `;
   document.head.appendChild(style);
 };
 
 // ================================================================
-// CONVERSATIONAL CHAT WIZARD RENDERER
+// WIZARD CONVERSACIONAL PRINCIPAL
 // ================================================================
-export const renderOnboardingWizard = (container, state, onComplete) => {
+export const renderOnboardingWizard = async (container, state, onComplete) => {
   injectChatStyles();
+  container.innerHTML = '';
 
-  // Wizard conversational data
+  // Estado del Wizard
   const wizard = {
     step: 1,
     name: '',
@@ -211,338 +334,456 @@ export const renderOnboardingWizard = (container, state, onComplete) => {
     phone: '',
     buildingName: '',
     floors: 1,
-    slots: 20,
-    selectedPlan: null,
-    paymentMethod: null,
-    bcvRate: 36.50
+    slots: 30,
+    lat: null,
+    lng: null,
+    city: '',
+    address: '',
+    selectedPlan: PLANS[2], // Plata por defecto ($250)
+    paymentMethod: 'PAGO_MOVIL',
+    bcvRate: 40.0,
+    bcvWarning: false,
+    proofFile: null,
+    proofUrl: null
   };
 
-  // Fetch live exchange rate
-  getExchangeRate().then(rate => {
-    if (rate && Number(rate) > 0) wizard.bcvRate = Number(rate);
-  }).catch(() => {});
+  // Cargar Tasa BCV con Fallback y Cache TTL de 6h
+  const bcvData = await getExchangeRateWithFallback();
+  wizard.bcvRate = bcvData.rate;
+  wizard.bcvWarning = Boolean(bcvData.warning);
 
-  // Mount chat viewport container
-  container.innerHTML = `
-    <div id="sloty-chat-container" style="position:fixed; top:0; left:0; width:100vw; height:100vh; background:#121324; display:flex; flex-direction:column; z-index:99999; font-family:'Montserrat',sans-serif; color:white; box-sizing:border-box;">
-      
-      <!-- Top Header -->
-      <div style="background:#1a1a2e; padding:16px 20px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid rgba(245,197,24,0.15); box-shadow:0 4px 20px rgba(0,0,0,0.3); z-index:10;">
-        <div style="display:flex; align-items:center; gap:12px;">
-          <div style="position:relative;">
-            ${getSlotAvatarSVG('happy')}
-            <div style="position:absolute; bottom:2px; right:2px; width:9px; height:9px; background:#22c55e; border-radius:50%; border:2px solid #1a1a2e;"></div>
+  const wrapper = document.createElement('div');
+  wrapper.id = 'sloty-chat-container';
+  wrapper.style.cssText = `
+    position: fixed; inset: 0; background: #1a1a2e; z-index: 9999;
+    display: flex; flex-direction: column; font-family: 'Montserrat', sans-serif;
+    color: white; overflow: hidden;
+  `;
+
+  wrapper.innerHTML = `
+    <!-- HEADER -->
+    <div style="padding: 16px 20px; background: rgba(0,0,0,0.3); border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <img src="/sloty-logo-v2.png" alt="Sloty" style="height: 28px; width: auto;" />
+        <div>
+          <div style="font-size: 0.85rem; font-weight: 900; color: white; display: flex; align-items: center; gap: 6px;">
+            <span>Slot Asistente</span>
+            <span style="width: 8px; height: 8px; background: #22c55e; border-radius: 50%; display: inline-block;"></span>
           </div>
-          <div>
-            <div style="font-weight:900; font-size:1rem; color:#F5C518; letter-spacing:0.5px; display:flex; align-items:center; gap:6px;">
-              Slot <span style="background:rgba(245,197,24,0.15); color:#F5C518; font-size:0.6rem; padding:2px 6px; border-radius:6px; font-weight:800;">ASISTENTE VIRTUAL</span>
-            </div>
-            <div style="font-size:0.65rem; color:rgba(255,255,255,0.5);">Registro y Activación de Edificios</div>
+          <div style="font-size: 0.65rem; color: #F5C518; font-weight: 700;">
+            Tasa Oficial BCV: <b>Bs. ${wizard.bcvRate.toFixed(2)}</b> / USD
+            ${wizard.bcvWarning ? '<span style="color:#f59e0b; margin-left:4px;">(Referencial)</span>' : ''}
           </div>
         </div>
-
-        <button id="sloty-chat-exit" style="background:rgba(255,255,255,0.06); border:none; color:rgba(255,255,255,0.7); font-size:0.75rem; font-weight:800; padding:8px 14px; border-radius:12px; cursor:pointer; transition:all 0.2s;">
-          ✕ Salir
-        </button>
       </div>
+      <button id="btn-close-onboarding" style="background: rgba(255,255,255,0.08); border: none; color: #aaa; width: 32px; height: 32px; border-radius: 50%; font-weight: 900; cursor: pointer;">✕</button>
+    </div>
 
-      <!-- Messages Stream -->
-      <div id="sloty-chat-messages" class="sloty-chat-scroll" style="flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:16px; max-width:680px; width:100%; margin:0 auto; box-sizing:border-box;">
-      </div>
+    <!-- AREA DE MENSAJES -->
+    <div id="sloty-chat-timeline" style="flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+      <!-- Mensajes dinámicos aquí -->
+    </div>
 
-      <!-- Active Input / Action Bar -->
-      <div id="sloty-chat-input-bar" style="background:#1a1a2e; padding:16px 20px calc(env(safe-area-inset-bottom, 12px) + 12px); border-top:1px solid rgba(255,255,255,0.08); max-width:680px; width:100%; margin:0 auto; box-sizing:border-box;">
-      </div>
-
+    <!-- AREA DE ENTRADA Y ACCIONES -->
+    <div id="sloty-chat-input-bar" style="padding: 16px 20px; background: #0f1127; border-top: 1px solid rgba(255,255,255,0.08); flex-shrink: 0;">
+      <!-- Controles dinámicos -->
     </div>
   `;
 
-  const msgContainer = document.getElementById('sloty-chat-messages');
-  const inputBar = document.getElementById('sloty-chat-input-bar');
-  const exitBtn = document.getElementById('sloty-chat-exit');
+  container.appendChild(wrapper);
 
-  if (exitBtn) {
-    exitBtn.onclick = () => {
-      if (confirm('¿Deseas salir del registro de edificio? Podrás volver cuando quieras.')) {
-        const root = document.getElementById('sloty-chat-container');
-        if (root) root.remove();
-        if (onComplete) onComplete();
-      }
-    };
-  }
+  const timeline = wrapper.querySelector('#sloty-chat-timeline');
+  const inputBar = wrapper.querySelector('#sloty-chat-input-bar');
+
+  wrapper.querySelector('#btn-close-onboarding').onclick = () => {
+    if (confirm('¿Deseas salir del asistente de registro?')) {
+      wrapper.remove();
+      if (onComplete) onComplete();
+    }
+  };
 
   const scrollToBottom = () => {
     setTimeout(() => {
-      msgContainer.scrollTop = msgContainer.scrollHeight;
+      timeline.scrollTop = timeline.scrollHeight;
     }, 50);
   };
 
-  // Helper: Append User Message Bubble (Right)
-  const appendUserBubble = (text) => {
-    const bubble = document.createElement('div');
-    bubble.className = 'sloty-chat-msg';
-    bubble.style.cssText = 'align-self:flex-end; max-width:82%; display:flex; flex-direction:column; align-items:flex-end;';
-    bubble.innerHTML = `
-      <div style="background:#F5C518; color:#1a1a2e; font-weight:700; font-size:0.85rem; padding:12px 16px; border-radius:18px 18px 4px 18px; line-height:1.4; box-shadow:0 4px 15px rgba(245,197,24,0.2);">
-        ${escapeHTML(text)}
-      </div>
-      <span style="font-size:0.6rem; color:rgba(255,255,255,0.3); margin-top:4px; margin-right:4px;">Tú</span>
-    `;
-    msgContainer.appendChild(bubble);
-    scrollToBottom();
-  };
-
-  // Helper: Append Slot Message Bubble with Typing Animation (Left)
-  const appendSlotBubble = (contentHTML, expression = 'happy', callback = null) => {
-    // 1. Show typing indicator
-    const typingId = 'typing-' + Date.now();
-    const typingBubble = document.createElement('div');
-    typingBubble.id = typingId;
-    typingBubble.className = 'sloty-chat-msg';
-    typingBubble.style.cssText = 'align-self:flex-start; display:flex; gap:10px; align-items:flex-end; max-width:85%;';
-    typingBubble.innerHTML = `
-      ${getSlotAvatarSVG('talking')}
-      <div style="background:rgba(255,255,255,0.06); padding:12px 18px; border-radius:18px 18px 18px 4px; display:flex; align-items:center; gap:4px;">
-        <span class="sloty-typing-dot"></span>
-        <span class="sloty-typing-dot"></span>
-        <span class="sloty-typing-dot"></span>
+  // Helper para burbuja de Slot con indicador de escritura
+  const appendSlotBubble = (htmlContent, expression = 'happy', callback = null) => {
+    const typingId = 'sloty-typing-' + Date.now();
+    const typingEl = document.createElement('div');
+    typingEl.id = typingId;
+    typingEl.className = 'sloty-chat-msg';
+    typingEl.style.cssText = 'display: flex; gap: 12px; align-items: flex-start; max-width: 85%;';
+    typingEl.innerHTML = `
+      ${getSlotAvatarSVG(expression)}
+      <div style="background: rgba(255,255,255,0.08); border-radius: 18px 18px 18px 4px; padding: 14px 18px; border: 1px solid rgba(255,255,255,0.05); display: flex; gap: 4px; align-items: center;">
+        <span style="width: 6px; height: 6px; background: #F5C518; border-radius: 50%; animation: slotyPulseDot 1.4s infinite 0.1s;"></span>
+        <span style="width: 6px; height: 6px; background: #F5C518; border-radius: 50%; animation: slotyPulseDot 1.4s infinite 0.3s;"></span>
+        <span style="width: 6px; height: 6px; background: #F5C518; border-radius: 50%; animation: slotyPulseDot 1.4s infinite 0.5s;"></span>
       </div>
     `;
-    msgContainer.appendChild(typingBubble);
+    timeline.appendChild(typingEl);
     scrollToBottom();
 
-    // 2. Resolve typing indicator after delay
     setTimeout(() => {
-      const elTyping = document.getElementById(typingId);
-      if (elTyping) elTyping.remove();
-
-      const bubble = document.createElement('div');
-      bubble.className = 'sloty-chat-msg';
-      bubble.style.cssText = 'align-self:flex-start; display:flex; gap:10px; align-items:flex-start; max-width:92%; width:100%;';
-      bubble.innerHTML = `
+      typingEl.remove();
+      const msgEl = document.createElement('div');
+      msgEl.className = 'sloty-chat-msg';
+      msgEl.style.cssText = 'display: flex; gap: 12px; align-items: flex-start; max-width: 88%;';
+      msgEl.innerHTML = `
         ${getSlotAvatarSVG(expression)}
-        <div style="flex:1; background:#1e2038; border:1px solid rgba(245,197,24,0.15); color:white; font-size:0.85rem; padding:14px 18px; border-radius:4px 18px 18px 18px; line-height:1.5; box-shadow:0 6px 25px rgba(0,0,0,0.3);">
-          ${contentHTML}
+        <div style="background: rgba(255,255,255,0.08); border-radius: 18px 18px 18px 4px; padding: 14px 18px; border: 1px solid rgba(255,255,255,0.06); font-size: 0.85rem; line-height: 1.5; color: white;">
+          ${htmlContent}
         </div>
       `;
-      msgContainer.appendChild(bubble);
+      timeline.appendChild(msgEl);
       scrollToBottom();
-      if (callback) callback(bubble);
-    }, 550);
+      if (callback) callback(msgEl);
+    }, 450);
   };
 
-  // ==============================================================
-  // FLUJO CONVERSACIONAL PASO A PASO
-  // ==============================================================
+  // Helper para respuesta del usuario
+  const appendUserBubble = (text) => {
+    const msgEl = document.createElement('div');
+    msgEl.className = 'sloty-chat-msg';
+    msgEl.style.cssText = 'display: flex; justify-content: flex-end; margin-left: auto; max-width: 80%;';
+    msgEl.innerHTML = `
+      <div style="background: #F5C518; color: #1a1a2e; border-radius: 18px 18px 4px 18px; padding: 12px 18px; font-weight: 700; font-size: 0.85rem; line-height: 1.4; box-shadow: 0 4px 12px rgba(245,197,24,0.2);">
+        ${escapeHTML(text)}
+      </div>
+    `;
+    timeline.appendChild(msgEl);
+    scrollToBottom();
+  };
 
-  // Paso 1: Saludo y Nombre
+  // ================================================================
+  // PASOS CONVERSACIONALES
+  // ================================================================
+
+  // PASO 1: Bienvenida y Nombre del Administrador
   const startStep1 = () => {
     appendSlotBubble(`
-      ¡Hola! 👋 Soy <b>Slot</b>, tu asistente inteligente para la gestión de estacionamientos.<br><br>
-      Te guiaré paso a paso para configurar tu edificio y activar tu cuenta en pocos minutos. 🚀<br><br>
-      Para comenzar, <b>¿cuál es tu nombre y apellido?</b>
-    `, 'happy');
-
-    inputBar.innerHTML = `
-      <form id="sloty-form-step1" style="display:flex; gap:10px;">
-        <input id="sloty-input-name" type="text" placeholder="Ej: María González" required autofocus
-          style="flex:1; padding:14px 16px; border-radius:14px; border:2px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.25); color:white; font-family:'Montserrat',sans-serif; font-size:0.9rem; font-weight:700; outline:none;" />
-        <button type="submit" style="padding:14px 22px; background:#F5C518; color:#1a1a2e; border:none; border-radius:14px; font-weight:900; font-size:0.9rem; cursor:pointer; flex-shrink:0;">
-          Enviar ➔
-        </button>
-      </form>
-    `;
-
-    document.getElementById('sloty-form-step1').onsubmit = (e) => {
-      e.preventDefault();
-      const name = document.getElementById('sloty-input-name').value.trim();
-      if (!name) return;
-      wizard.name = name;
-      appendUserBubble(name);
-      inputBar.innerHTML = '';
-      startStep2();
-    };
+      ¡Hola! 👋 Soy <b>Slot</b>, tu asistente de bienvenida en Sloty.<br><br>
+      Configuraremos el estacionamiento de tu condominio en unos sencillos pasos.<br>
+      <b>¿Cuál es tu nombre y apellido?</b>
+    `, 'happy', () => {
+      inputBar.innerHTML = `
+        <form id="sloty-form-step1" style="display: flex; gap: 8px;">
+          <input id="sloty-input-name" type="text" placeholder="Ej: Carlos Mendoza" required autocomplete="name"
+            style="flex: 1; padding: 14px 16px; border-radius: 14px; border: 2px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.25); color: white; font-family: 'Montserrat', sans-serif; font-size: 0.9rem; font-weight: 700; outline: none;" />
+          <button type="submit" style="padding: 14px 20px; background: #F5C518; color: #1a1a2e; border: none; border-radius: 14px; font-weight: 900; font-size: 0.9rem; cursor: pointer;">
+            ➔
+          </button>
+        </form>
+      `;
+      const input = document.getElementById('sloty-input-name');
+      input.focus();
+      document.getElementById('sloty-form-step1').onsubmit = (e) => {
+        e.preventDefault();
+        const val = input.value.trim();
+        if (!val || val.length < 3) return;
+        wizard.name = val;
+        appendUserBubble(val);
+        startStep2();
+      };
+    });
   };
 
-  // Paso 2: Correo y Teléfono WhatsApp
+  // PASO 2: Correo Electrónico y Teléfono WhatsApp
   const startStep2 = () => {
     appendSlotBubble(`
-      ¡Mucho gusto, <b>${escapeHTML(wizard.name)}</b>! 🚗✨<br><br>
-      Para vincular tu usuario administrador y enviarte las credenciales oficiales de acceso, <b>¿cuál es tu correo y número de WhatsApp?</b>
-    `, 'excited');
+      ¡Mucho gusto, <b>${escapeHTML(wizard.name)}</b>! 🤝<br><br>
+      Necesito tus datos de contacto directo para entregarte el acceso y las alertas del sistema:<br>
+      <b>Correo Electrónico y Teléfono WhatsApp</b>
+    `, 'talking', () => {
+      inputBar.innerHTML = `
+        <form id="sloty-form-step2" style="display: flex; flex-direction: column; gap: 10px;">
+          <input id="sloty-input-email" type="email" placeholder="Correo electrónico (Ej: admin@condominio.com)" required autocomplete="email"
+            style="padding: 14px 16px; border-radius: 14px; border: 2px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.25); color: white; font-family: 'Montserrat', sans-serif; font-size: 0.85rem; font-weight: 700; outline: none;" />
+          <div style="display: flex; gap: 8px;">
+            <input id="sloty-input-phone" type="tel" placeholder="WhatsApp (Ej: 04121234567)" required autocomplete="tel"
+              style="flex: 1; padding: 14px 16px; border-radius: 14px; border: 2px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.25); color: white; font-family: 'Montserrat', sans-serif; font-size: 0.85rem; font-weight: 700; outline: none;" />
+            <button type="submit" style="padding: 14px 20px; background: #F5C518; color: #1a1a2e; border: none; border-radius: 14px; font-weight: 900; font-size: 0.9rem; cursor: pointer;">
+              ➔
+            </button>
+          </div>
+          <div id="step2-error" style="color: #ef4444; font-size: 0.75rem; font-weight: 700; display: none;"></div>
+        </form>
+      `;
+      const emailInput = document.getElementById('sloty-input-email');
+      const phoneInput = document.getElementById('sloty-input-phone');
+      const errEl = document.getElementById('step2-error');
+      emailInput.focus();
 
-    inputBar.innerHTML = `
-      <form id="sloty-form-step2" style="display:flex; flex-direction:column; gap:10px;">
-        <div style="display:flex; gap:10px;">
-          <input id="sloty-input-email" type="email" placeholder="correo@ejemplo.com" required
-            style="flex:1; padding:12px 14px; border-radius:12px; border:2px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.25); color:white; font-family:'Montserrat',sans-serif; font-size:0.85rem; font-weight:700; outline:none;" />
-          <input id="sloty-input-phone" type="tel" placeholder="04121234567" required
-            style="flex:1; padding:12px 14px; border-radius:12px; border:2px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.25); color:white; font-family:'Montserrat',sans-serif; font-size:0.85rem; font-weight:700; outline:none;" />
-        </div>
-        <button type="submit" style="width:100%; padding:14px; background:#F5C518; color:#1a1a2e; border:none; border-radius:14px; font-weight:900; font-size:0.85rem; cursor:pointer;">
-          Continuar ➔
-        </button>
-      </form>
-    `;
+      document.getElementById('sloty-form-step2').onsubmit = (e) => {
+        e.preventDefault();
+        const em = emailInput.value.trim();
+        const ph = phoneInput.value.trim();
 
-    document.getElementById('sloty-form-step2').onsubmit = (e) => {
-      e.preventDefault();
-      const email = document.getElementById('sloty-input-email').value.trim();
-      const phone = document.getElementById('sloty-input-phone').value.trim();
-      if (!email || !phone) return;
-      wizard.email = email;
-      wizard.phone = phone;
-      appendUserBubble(`${email} · ${phone}`);
-      inputBar.innerHTML = '';
-      startStep3();
-    };
+        if (!validateEmail(em)) {
+          errEl.textContent = 'Por favor ingresa un correo electrónico válido.';
+          errEl.style.display = 'block';
+          emailInput.focus();
+          return;
+        }
+
+        if (!validateVenezuelanPhone(ph)) {
+          errEl.textContent = 'Ingresa un número telefónico venezolano válido (Ej: 04121234567).';
+          errEl.style.display = 'block';
+          phoneInput.focus();
+          return;
+        }
+
+        errEl.style.display = 'none';
+        wizard.email = em;
+        wizard.phone = sanitizePhoneNumber(ph);
+        appendUserBubble(`${em} · ${ph}`);
+        startStep3();
+      };
+    });
   };
 
-  // Paso 3: Nombre del Edificio y Estructura
+  // PASO 3: Nombre del Edificio y Capacidad
   const startStep3 = () => {
     appendSlotBubble(`
-      ¡Excelente! 🏢 Ahora cuéntame sobre el condominio o estacionamiento.<br><br>
-      <b>¿Cómo se llama tu edificio y cuántos puestos de estacionamiento tiene?</b>
-    `, 'thinking');
-
-    inputBar.innerHTML = `
-      <form id="sloty-form-step3" style="display:flex; flex-direction:column; gap:10px;">
-        <input id="sloty-input-bld" type="text" placeholder="Ej: Residencias Los Rosales" required
-          style="width:100%; box-sizing:border-box; padding:12px 14px; border-radius:12px; border:2px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.25); color:white; font-family:'Montserrat',sans-serif; font-size:0.85rem; font-weight:700; outline:none;" />
-        
-        <div style="display:flex; gap:10px;">
-          <div style="flex:1;">
-            <label style="font-size:0.6rem; color:rgba(255,255,255,0.4); text-transform:uppercase; font-weight:800; display:block; margin-bottom:4px;">Niveles / Pisos</label>
-            <input id="sloty-input-floors" type="number" min="1" max="20" value="1" required
-              style="width:100%; box-sizing:border-box; padding:12px 14px; border-radius:12px; border:2px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.25); color:white; font-family:'Montserrat',sans-serif; font-size:0.85rem; font-weight:700; outline:none;" />
+      Excelente. Ahora cuéntame los detalles del inmueble 🏢:<br><br>
+      <b>¿Cómo se llama el edificio/condominio y cuántos puestos de estacionamiento tiene?</b>
+    `, 'thinking', () => {
+      inputBar.innerHTML = `
+        <form id="sloty-form-step3" style="display: flex; flex-direction: column; gap: 10px;">
+          <input id="sloty-input-bld-name" type="text" placeholder="Nombre del Edificio (Ej: Residencias Los Rosales)" required
+            style="padding: 14px 16px; border-radius: 14px; border: 2px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.25); color: white; font-family: 'Montserrat', sans-serif; font-size: 0.85rem; font-weight: 700; outline: none;" />
+          <div style="display: flex; gap: 8px;">
+            <input id="sloty-input-bld-floors" type="number" min="1" max="10" value="1" placeholder="Niveles" title="Niveles"
+              style="width: 80px; padding: 14px 12px; border-radius: 14px; border: 2px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.25); color: white; font-family: 'Montserrat', sans-serif; font-size: 0.85rem; font-weight: 700; outline: none; text-align: center;" />
+            <input id="sloty-input-bld-slots" type="number" min="1" max="2000" value="30" placeholder="Puestos" title="Puestos"
+              style="flex: 1; padding: 14px 16px; border-radius: 14px; border: 2px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.25); color: white; font-family: 'Montserrat', sans-serif; font-size: 0.85rem; font-weight: 700; outline: none;" />
+            <button type="submit" style="padding: 14px 20px; background: #F5C518; color: #1a1a2e; border: none; border-radius: 14px; font-weight: 900; font-size: 0.9rem; cursor: pointer;">
+              ➔
+            </button>
           </div>
-          <div style="flex:1;">
-            <label style="font-size:0.6rem; color:rgba(255,255,255,0.4); text-transform:uppercase; font-weight:800; display:block; margin-bottom:4px;">Total Puestos</label>
-            <input id="sloty-input-slots" type="number" min="1" max="500" value="25" required
-              style="width:100%; box-sizing:border-box; padding:12px 14px; border-radius:12px; border:2px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.25); color:white; font-family:'Montserrat',sans-serif; font-size:0.85rem; font-weight:700; outline:none;" />
-          </div>
-        </div>
+        </form>
+      `;
+      const nameInput = document.getElementById('sloty-input-bld-name');
+      const floorsInput = document.getElementById('sloty-input-bld-floors');
+      const slotsInput = document.getElementById('sloty-input-bld-slots');
+      nameInput.focus();
 
-        <button type="submit" style="width:100%; padding:14px; background:#F5C518; color:#1a1a2e; border:none; border-radius:14px; font-weight:900; font-size:0.85rem; cursor:pointer;">
-          Guardar y Ver Planes ➔
-        </button>
-      </form>
-    `;
-
-    document.getElementById('sloty-form-step3').onsubmit = (e) => {
-      e.preventDefault();
-      const bldName = document.getElementById('sloty-input-bld').value.trim();
-      const floors = parseInt(document.getElementById('sloty-input-floors').value) || 1;
-      const slots = parseInt(document.getElementById('sloty-input-slots').value) || 25;
-      if (!bldName) return;
-
-      wizard.buildingName = bldName;
-      wizard.floors = floors;
-      wizard.slots = slots;
-
-      appendUserBubble(`${bldName} (${floors} Piso(s) · ${slots} Puestos)`);
-      inputBar.innerHTML = '';
-      startStep4();
-    };
+      document.getElementById('sloty-form-step3').onsubmit = (e) => {
+        e.preventDefault();
+        const bName = nameInput.value.trim();
+        if (!bName || bName.length < 3) return;
+        wizard.buildingName = bName;
+        wizard.floors = parseInt(floorsInput.value) || 1;
+        wizard.slots = parseInt(slotsInput.value) || 30;
+        appendUserBubble(`${bName} (${wizard.floors} nivel(es), ~${wizard.slots} puestos)`);
+        startStep4Location();
+      };
+    });
   };
 
-  // Paso 4: Selección de Planes en el Chat
-  const startStep4 = () => {
-    let plansHTML = `
-      <div style="margin-bottom:12px;">
-        ¡Perfecto! 🎉 Según el tamaño de <b>${escapeHTML(wizard.buildingName)}</b>, aquí tienes los planes oficiales de Sloty (mensualidades fijas sin cargos ocultos):
-      </div>
-      <div style="display:flex; flex-direction:column; gap:12px; margin-top:14px;">
-    `;
+  // PASO 4: Geolocalización GPS con Fallback Suave
+  const startStep4Location = () => {
+    appendSlotBubble(`
+      Para brindarte soporte en sitio y georreferenciar tu garita de control 📍:<br><br>
+      <b>¿Deseas compartir la ubicación GPS del condominio o ingresarla manualmente?</b>
+    `, 'happy', () => {
+      inputBar.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <button id="btn-gps-auto" style="padding: 14px 10px; background: #F5C518; color: #1a1a2e; border: none; border-radius: 14px; font-weight: 900; font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
+              📍 Detectar GPS
+            </button>
+            <button id="btn-gps-manual" style="padding: 14px 10px; background: rgba(255,255,255,0.08); color: white; border: 1px solid rgba(255,255,255,0.15); border-radius: 14px; font-weight: 800; font-size: 0.8rem; cursor: pointer;">
+              ✏️ Ingresar Manual
+            </button>
+          </div>
+          <div id="gps-status" style="font-size: 0.7rem; color: #F5C518; text-align: center; display: none;"></div>
+        </div>
+      `;
 
-    PLANS.forEach(p => {
-      plansHTML += `
-        <div style="background:rgba(255,255,255,0.03); border:2px solid ${p.color}; border-radius:16px; padding:16px; position:relative; box-shadow:0 4px 15px rgba(0,0,0,0.2);">
-          ${p.badge ? `<div style="position:absolute; top:-10px; right:16px; background:${p.color}; color:#1a1a2e; padding:3px 10px; border-radius:12px; font-size:0.6rem; font-weight:900; text-transform:uppercase;">${p.badge}</div>` : ''}
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-            <div style="display:flex; align-items:center; gap:8px;">
-              <span style="font-size:1.4rem;">${p.icon}</span>
-              <div>
-                <div style="font-weight:900; font-size:0.95rem; color:${p.color};">Plan ${p.name}</div>
-                <div style="font-size:0.65rem; color:rgba(255,255,255,0.4);">${typeof p.maxSlots === 'number' ? `Hasta ${p.maxSlots} puestos` : p.maxSlots}</div>
-              </div>
-            </div>
-            <div style="text-align:right;">
-              <span style="font-size:1.3rem; font-weight:900; color:white;">$${p.price}</span>
-              <span style="font-size:0.7rem; color:rgba(255,255,255,0.4);">${p.period}</span>
+      const gpsStatus = document.getElementById('gps-status');
+
+      document.getElementById('btn-gps-auto').onclick = () => {
+        if (!navigator.geolocation) {
+          renderManualLocation('Geolocalización no soportada por el navegador.');
+          return;
+        }
+
+        gpsStatus.textContent = '⏳ Obteniendo coordenadas satelitales...';
+        gpsStatus.style.display = 'block';
+
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            wizard.lat = pos.coords.latitude;
+            wizard.lng = pos.coords.longitude;
+            appendUserBubble(`📍 GPS Detectado: (${wizard.lat.toFixed(4)}, ${wizard.lng.toFixed(4)})`);
+            startStep5PlanSelection();
+          },
+          (err) => {
+            console.warn('[Sloty GPS] Error o permiso denegado:', err);
+            renderManualLocation('Permiso GPS no concedido.');
+          },
+          { timeout: 8000, enableHighAccuracy: true }
+        );
+      };
+
+      document.getElementById('btn-gps-manual').onclick = () => {
+        renderManualLocation();
+      };
+    });
+  };
+
+  const renderManualLocation = (notice = null) => {
+    appendSlotBubble(`
+      ${notice ? `<span style="color:#F5C518;">${notice}</span><br>` : ''}
+      Indica la <b>Ciudad / Municipio</b> y una <b>Dirección de referencia</b>:
+    `, 'normal', () => {
+      inputBar.innerHTML = `
+        <form id="sloty-form-manual-loc" style="display: flex; flex-direction: column; gap: 8px;">
+          <input id="input-city" type="text" placeholder="Ciudad / Municipio (Ej: Caracas - Chacao)" required
+            style="padding: 12px 14px; border-radius: 12px; border: 2px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.25); color: white; font-family: 'Montserrat', sans-serif; font-size: 0.85rem; font-weight: 700; outline: none;" />
+          <div style="display: flex; gap: 8px;">
+            <input id="input-address" type="text" placeholder="Dirección / Calle / Sector" required
+              style="flex: 1; padding: 12px 14px; border-radius: 12px; border: 2px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.25); color: white; font-family: 'Montserrat', sans-serif; font-size: 0.85rem; font-weight: 700; outline: none;" />
+            <button type="submit" style="padding: 12px 18px; background: #F5C518; color: #1a1a2e; border: none; border-radius: 12px; font-weight: 900; cursor: pointer;">
+              ➔
+            </button>
+          </div>
+        </form>
+      `;
+
+      const cityInp = document.getElementById('input-city');
+      const addrInp = document.getElementById('input-address');
+      cityInp.focus();
+
+      document.getElementById('sloty-form-manual-loc').onsubmit = (e) => {
+        e.preventDefault();
+        wizard.city = cityInp.value.trim();
+        wizard.address = addrInp.value.trim();
+        appendUserBubble(`📍 ${wizard.city} - ${wizard.address}`);
+        startStep5PlanSelection();
+      };
+    });
+  };
+
+  // PASO 5: Selector Dinámico de Planes con Conversión BCV en Vivo
+  const startStep5PlanSelection = () => {
+    const plansHTML = PLANS.map(p => {
+      const isSelected = p.id === wizard.selectedPlan.id;
+      const amountBs = (p.price * wizard.bcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return `
+        <div class="sloty-plan-card ${isSelected ? 'selected' : ''}" data-plan-id="${p.id}"
+          style="background: ${isSelected ? 'rgba(245,197,24,0.08)' : 'rgba(255,255,255,0.04)'}; border: 1.5px solid ${isSelected ? '#F5C518' : 'rgba(255,255,255,0.08)'}; border-radius: 16px; padding: 14px; margin-bottom: 10px; position: relative;">
+          ${p.badge ? `<span style="position: absolute; top: -8px; right: 14px; background: #F5C518; color: #1a1a2e; font-size: 0.6rem; font-weight: 900; padding: 2px 8px; border-radius: 6px; text-transform: uppercase;">${p.badge}</span>` : ''}
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <div style="font-weight: 900; font-size: 1rem; color: ${p.color};">${p.icon} Plan ${p.name}</div>
+            <div style="text-align: right;">
+              <span style="font-weight: 900; font-size: 1.1rem; color: white;">$${p.price}</span>
+              <span style="font-size: 0.65rem; color: #888;">${p.period}</span>
             </div>
           </div>
-          <div style="font-size:0.7rem; color:rgba(255,255,255,0.7); margin-bottom:12px; line-height:1.4;">
-            ${p.description}
+          <div style="font-size: 0.7rem; color: #F5C518; font-weight: 700; margin-bottom: 6px;">
+            Equivalente: <b>Bs. ${amountBs}</b> (Tasa BCV: ${wizard.bcvRate.toFixed(2)})
           </div>
-          <button data-plan-id="${p.id}" class="sloty-btn-select-plan" style="width:100%; padding:10px; background:${p.color}; color:#1a1a2e; border:none; border-radius:10px; font-weight:900; font-size:0.75rem; cursor:pointer; text-transform:uppercase; letter-spacing:0.5px;">
-            Elegir ${p.name} ($${p.price}/mes)
+          <p style="font-size: 0.75rem; color: rgba(255,255,255,0.7); margin: 0 0 8px 0; line-height: 1.3;">${p.description}</p>
+          <div style="display: flex; flex-direction: column; gap: 3px; font-size: 0.7rem; color: rgba(255,255,255,0.85);">
+            ${p.features.slice(0, 3).map(f => `<div>✓ ${f}</div>`).join('')}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    appendSlotBubble(`
+      Elige el plan ideal para <b>${escapeHTML(wizard.buildingName)}</b>.<br>
+      Puedes cambiar de plan libremente antes de pagar:
+      <div id="plans-container" style="margin-top: 12px;">
+        ${plansHTML}
+      </div>
+    `, 'happy', (bubble) => {
+      // Eventos de selección de tarjetas
+      bubble.querySelectorAll('.sloty-plan-card').forEach(card => {
+        card.onclick = () => {
+          const planId = card.dataset.planId;
+          const found = PLANS.find(p => p.id === planId);
+          if (found) {
+            wizard.selectedPlan = found;
+            bubble.querySelectorAll('.sloty-plan-card').forEach(c => c.classList.remove('selected'));
+            card.classList.add('selected');
+            updateInputBarForPlan();
+          }
+        };
+      });
+
+      const updateInputBarForPlan = () => {
+        const plan = wizard.selectedPlan;
+        const bsFormatted = (plan.price * wizard.bcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2 });
+        inputBar.innerHTML = `
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: #aaa;">
+              <span>Plan seleccionado: <b style="color:white;">Plan ${plan.name}</b></span>
+              <span style="color:#F5C518; font-weight:900;">$${plan.price} USD / Bs. ${bsFormatted}</span>
+            </div>
+            <button id="btn-confirm-plan" style="width: 100%; padding: 14px; background: #F5C518; color: #1a1a2e; border: none; border-radius: 14px; font-weight: 900; font-size: 0.85rem; cursor: pointer; text-transform: uppercase;">
+              ${plan.id === 'TRIAL' ? 'Activar Prueba Gratuita ➔' : `Continuar al Pago ($${plan.price} USD) ➔`}
+            </button>
+          </div>
+        `;
+
+        document.getElementById('btn-confirm-plan').onclick = () => {
+          appendUserBubble(`Seleccioné el Plan ${plan.name} ($${plan.price})`);
+          if (plan.id === 'TRIAL') {
+            submitOnboardingRequest('TRIAL', 'N/A', 'N/A', null);
+          } else {
+            startStep6Payment();
+          }
+        };
+      };
+
+      updateInputBarForPlan();
+    });
+  };
+
+  // PASO 6: Métodos de Pago y Carga de Comprobante
+  const startStep6Payment = () => {
+    const plan = wizard.selectedPlan;
+
+    appendSlotBubble(`
+      <b>¿Por cuál método deseas realizar el pago de $${plan.price} USD?</b>
+    `, 'happy', () => {
+      inputBar.innerHTML = `
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+          <button id="pay-pm" style="padding: 12px 6px; border-radius: 12px; border: 1px solid #F5C518; background: rgba(245,197,24,0.1); color: white; font-weight: 800; font-size: 0.75rem; cursor: pointer; text-align: center;">
+            💳 Pago Móvil
+          </button>
+          <button id="pay-zelle" style="padding: 12px 6px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); color: white; font-weight: 800; font-size: 0.75rem; cursor: pointer; text-align: center;">
+            🏦 Zelle USD
+          </button>
+          <button id="pay-cash" style="padding: 12px 6px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); color: white; font-weight: 800; font-size: 0.75rem; cursor: pointer; text-align: center;">
+            💵 Efectivo USD
           </button>
         </div>
       `;
-    });
 
-    plansHTML += `</div>`;
-
-    appendSlotBubble(plansHTML, 'excited', (bubble) => {
-      bubble.querySelectorAll('.sloty-btn-select-plan').forEach(btn => {
-        btn.onclick = () => {
-          const planId = btn.dataset.planId;
-          const chosenPlan = PLANS.find(p => p.id === planId);
-          if (!chosenPlan) return;
-          wizard.selectedPlan = chosenPlan;
-          appendUserBubble(`He seleccionado el Plan ${chosenPlan.name} ($${chosenPlan.price}/mes)`);
-          startStep5();
-        };
-      });
+      document.getElementById('pay-pm').onclick = () => renderPaymentForm('PAGO_MOVIL');
+      document.getElementById('pay-zelle').onclick = () => renderPaymentForm('ZELLE');
+      document.getElementById('pay-cash').onclick = () => renderPaymentForm('CASH');
     });
   };
 
-  // Paso 5: Selección de Método de Pago y Formulario de Comprobante
-  const startStep5 = () => {
-    const plan = wizard.selectedPlan;
-
-    appendSlotBubble(`
-      ¡Excelente elección! 🌟 El <b>Plan ${plan.name} ($${plan.price}/mes)</b> dejará tu condominio completamente operativo.<br><br>
-      <b>¿Por cuál método deseas realizar el pago para la activación?</b>
-    `, 'happy', (bubble) => {
-      inputBar.innerHTML = `
-        <div style="display:flex; flex-direction:column; gap:8px;">
-          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
-            <button id="sloty-pay-pm" style="padding:12px 8px; border-radius:12px; border:1px solid #F5C518; background:rgba(245,197,24,0.1); color:white; font-weight:800; font-size:0.75rem; cursor:pointer; text-align:center;">
-              💳 Pago Móvil
-            </button>
-            <button id="sloty-pay-zelle" style="padding:12px 8px; border-radius:12px; border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.04); color:white; font-weight:800; font-size:0.75rem; cursor:pointer; text-align:center;">
-              🏦 Zelle USD
-            </button>
-            <button id="sloty-pay-cash" style="padding:12px 8px; border-radius:12px; border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.04); color:white; font-weight:800; font-size:0.75rem; cursor:pointer; text-align:center;">
-              💵 Efectivo USD
-            </button>
-          </div>
-        </div>
-      `;
-
-      document.getElementById('sloty-pay-pm').onclick = () => renderPaymentDetails('PAGO_MOVIL');
-      document.getElementById('sloty-pay-zelle').onclick = () => renderPaymentDetails('ZELLE');
-      document.getElementById('sloty-pay-cash').onclick = () => renderPaymentDetails('CASH');
-    });
-  };
-
-  // Render Detalle del Método y Envío de Comprobante
-  const renderPaymentDetails = (method) => {
+  const renderPaymentForm = (method) => {
     wizard.paymentMethod = method;
-    inputBar.innerHTML = '';
-
     const plan = wizard.selectedPlan;
-    const amountBs = (plan.price * wizard.bcvRate).toFixed(2);
+    const amountBs = (plan.price * wizard.bcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2 });
 
-    let paymentDetailsHTML = '';
+    let detailsHTML = '';
     if (method === 'PAGO_MOVIL') {
       appendUserBubble('Pago Móvil (Bolívares)');
-      paymentDetailsHTML = `
+      detailsHTML = `
         <div style="font-size:0.8rem; line-height:1.5;">
-          Aquí tienes los datos oficiales de <b>Pago Móvil Sloty</b> a tasa BCV (<b>${wizard.bcvRate.toFixed(2)} Bs/$</b>):<br><br>
-          <div style="background:#0f1127; border:1px solid rgba(245,197,24,0.3); border-radius:14px; padding:14px; margin-bottom:12px;">
+          Datos oficiales de <b>Pago Móvil Sloty</b> a tasa BCV (<b>${wizard.bcvRate.toFixed(2)} Bs/$</b>):<br><br>
+          <div style="background:#0f1127; border:1px solid rgba(245,197,24,0.3); border-radius:14px; padding:14px; margin-bottom:10px;">
             <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Banco:</span> <b>Banco Exterior (0115)</b></div>
             <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Cédula:</span> <b>V-27031049</b></div>
             <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Teléfono:</span> <b>04129135799</b></div>
@@ -550,27 +791,27 @@ export const renderOnboardingWizard = (container, state, onComplete) => {
               <span>Monto a transferir:</span> <span>Bs. ${amountBs} ($${plan.price} USD)</span>
             </div>
           </div>
-          Ingresa los datos de tu transferencia para enviarlos a <b>Master</b>:
+          Adjunta tu comprobante y referencia bancaria:
         </div>
       `;
     } else if (method === 'ZELLE') {
       appendUserBubble('Zelle USD');
-      paymentDetailsHTML = `
+      detailsHTML = `
         <div style="font-size:0.8rem; line-height:1.5;">
           Datos oficiales para transferencia por <b>Zelle</b>:<br><br>
-          <div style="background:#0f1127; border:1px solid rgba(245,197,24,0.3); border-radius:14px; padding:14px; margin-bottom:12px;">
+          <div style="background:#0f1127; border:1px solid rgba(245,197,24,0.3); border-radius:14px; padding:14px; margin-bottom:10px;">
             <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Titular:</span> <b>Sloty Technologies</b></div>
             <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Correo Zelle:</span> <b>pagos@slotyapp.com</b></div>
             <div style="display:flex; justify-content:space-between; color:#F5C518; font-weight:900; padding-top:6px; border-top:1px solid rgba(255,255,255,0.1);">
               <span>Monto Total:</span> <span>$${plan.price} USD</span>
             </div>
           </div>
-          Ingresa el nombre del titular o correo emisor y la referencia:
+          Adjunta tu captura de pantalla de Zelle y correo/titular emisor:
         </div>
       `;
     } else {
       appendUserBubble('Efectivo USD');
-      paymentDetailsHTML = `
+      detailsHTML = `
         <div style="font-size:0.8rem; line-height:1.5;">
           Has seleccionado <b>Efectivo USD ($${plan.price})</b>.<br><br>
           Un ejecutivo de Sloty coordinará la entrega y validación de tu recibo para activar tu cuenta de inmediato.
@@ -578,35 +819,37 @@ export const renderOnboardingWizard = (container, state, onComplete) => {
       `;
     }
 
-    appendSlotBubble(paymentDetailsHTML, 'talking', (bubble) => {
+    appendSlotBubble(detailsHTML, 'talking', () => {
       inputBar.innerHTML = `
         <form id="sloty-form-proof" style="display:flex; flex-direction:column; gap:10px;">
           ${method !== 'CASH' ? `
-            <div style="display:flex; gap:10px;">
-              <input id="proof-bank-name" type="text" placeholder="${method === 'ZELLE' ? 'Titular / Correo Zelle' : 'Banco emisor (Ej: Banesco)'}" required
+            <div style="display:flex; gap:8px;">
+              <input id="proof-bank-name" type="text" placeholder="${method === 'ZELLE' ? 'Titular / Correo Zelle' : 'Banco emisor'}" required
                 style="flex:1; padding:12px 14px; border-radius:12px; border:2px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.25); color:white; font-family:'Montserrat',sans-serif; font-size:0.85rem; font-weight:700; outline:none;" />
-              <input id="proof-ref-num" type="text" placeholder="Número de Referencia" required
+              <input id="proof-ref-num" type="text" placeholder="Nº Referencia" required
                 style="flex:1; padding:12px 14px; border-radius:12px; border:2px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.25); color:white; font-family:'Montserrat',sans-serif; font-size:0.85rem; font-weight:700; outline:none;" />
             </div>
             
             <div>
-              <input type="file" id="proof-file-input" accept="image/*,.pdf" style="display:none;" />
-              <button id="proof-attach-btn" type="button" style="width:100%; padding:10px; border-radius:12px; border:1px dashed rgba(245,197,24,0.4); background:rgba(245,197,24,0.05); color:#F5C518; font-weight:700; font-size:0.75rem; cursor:pointer;">
-                📎 Adjuntar Captura / Comprobante (opcional)
+              <input type="file" id="proof-file-input" accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none;" />
+              <button id="proof-attach-btn" type="button" style="width:100%; padding:10px; border-radius:12px; border:1px dashed #F5C518; background:rgba(245,197,24,0.06); color:#F5C518; font-weight:800; font-size:0.75rem; cursor:pointer;">
+                📎 Adjuntar Comprobante (Obligatorio: JPG, PNG, PDF &lt; 5MB)
               </button>
               <div id="proof-file-label" style="font-size:0.7rem; color:#22c55e; margin-top:4px; text-align:center; display:none;"></div>
             </div>
           ` : ''}
 
-          <div style="display:flex; align-items:center; gap:8px;">
-            <input type="checkbox" id="proof-agree-terms" checked required style="accent-color:#F5C518; width:16px; height:16px;" />
-            <label for="proof-agree-terms" style="font-size:0.65rem; color:rgba(255,255,255,0.6);">Acepto los términos de activación del servicio Sloty</label>
+          <div style="display:flex; align-items:center; gap:8px; margin-top:2px;">
+            <input type="checkbox" id="proof-agree-terms" required style="accent-color:#F5C518; width:16px; height:16px;" />
+            <label for="proof-agree-terms" style="font-size:0.7rem; color:rgba(255,255,255,0.7);">
+              Acepto los <a href="#" id="link-terms-modal" style="color:#F5C518; text-decoration:underline;">Términos y Condiciones</a> de Sloty
+            </label>
           </div>
 
-          <button id="proof-submit-btn" type="submit" style="width:100%; padding:14px; background:#F5C518; color:#1a1a2e; border:none; border-radius:14px; font-weight:900; font-size:0.85rem; cursor:pointer; text-transform:uppercase; letter-spacing:0.5px;">
-            ${method === 'CASH' ? 'Confirmar Solicitud en Efectivo ➔' : 'Enviar Comprobante a Master ➔'}
+          <button id="proof-submit-btn" type="submit" style="width:100%; padding:14px; background:#F5C518; color:#1a1a2e; border:none; border-radius:14px; font-weight:900; font-size:0.85rem; cursor:pointer; text-transform:uppercase;">
+            ${method === 'CASH' ? 'Confirmar Solicitud en Efectivo ➔' : 'Enviar Solicitud a Master ➔'}
           </button>
-          <div id="proof-error-msg" style="color:#ef4444; font-size:0.75rem; text-align:center; display:none;"></div>
+          <div id="proof-error-msg" style="color:#ef4444; font-size:0.75rem; text-align:center; display:none; font-weight:700;"></div>
         </form>
       `;
 
@@ -614,13 +857,31 @@ export const renderOnboardingWizard = (container, state, onComplete) => {
       const fileInput = document.getElementById('proof-file-input');
       const attachBtn = document.getElementById('proof-attach-btn');
       const fileLabel = document.getElementById('proof-file-label');
+      const termsLink = document.getElementById('link-terms-modal');
+
+      if (termsLink) {
+        termsLink.onclick = (e) => {
+          e.preventDefault();
+          showTermsModal(() => {
+            const cb = document.getElementById('proof-agree-terms');
+            if (cb) cb.checked = true;
+          });
+        };
+      }
 
       if (attachBtn && fileInput) {
         attachBtn.onclick = () => fileInput.click();
         fileInput.onchange = (e) => {
           if (e.target.files && e.target.files[0]) {
-            selectedFile = e.target.files[0];
-            fileLabel.textContent = `✓ Archivo adjunto: ${selectedFile.name}`;
+            const f = e.target.files[0];
+            const check = validateReceiptFile(f);
+            if (!check.valid) {
+              alert(check.error);
+              fileInput.value = '';
+              return;
+            }
+            selectedFile = f;
+            fileLabel.textContent = `✓ Archivo adjunto: ${f.name} (${(f.size / 1024 / 1024).toFixed(2)} MB)`;
             fileLabel.style.display = 'block';
           }
         };
@@ -630,136 +891,231 @@ export const renderOnboardingWizard = (container, state, onComplete) => {
         e.preventDefault();
         const submitBtn = document.getElementById('proof-submit-btn');
         const errMsg = document.getElementById('proof-error-msg');
-        submitBtn.disabled = true;
-        submitBtn.textContent = '⏳ Enviando a Master...';
+
+        if (method !== 'CASH' && !selectedFile) {
+          errMsg.textContent = 'Debes adjuntar la foto o PDF del comprobante de pago.';
+          errMsg.style.display = 'block';
+          return;
+        }
 
         const bankName = document.getElementById('proof-bank-name')?.value.trim() || (method === 'CASH' ? 'Efectivo USD' : 'Zelle');
         const refNum = document.getElementById('proof-ref-num')?.value.trim() || 'EFECTIVO-' + Date.now().toString().slice(-6);
 
-        try {
-          // 1. Create or resolve building in Supabase with customized code from building name
-          const newCode = generateBuildingCode(wizard.buildingName);
-          let newBuildingId = null;
+        submitBtn.disabled = true;
+        submitBtn.textContent = '⏳ Enviando a Bóveda Master...';
 
-          const { data: bldCreated, error: bldErr } = await supabase
-            .from('buildings')
-            .insert({
-              name: wizard.buildingName,
-              code: newCode,
-              membership_status: 'PENDING_PROOF',
-              plan: plan.id,
-              monthly_rate: 20,
-              is_first_login: false,
-              phone: wizard.phone,
-              admin_email: wizard.email,
-              admin_name: wizard.name
-            })
-            .select()
-            .single();
-
-          if (bldCreated) {
-            newBuildingId = bldCreated.id;
-          }
-
-          // 2. Upload proof if file provided
-          let finalProofUrl = null;
-          if (selectedFile && newBuildingId) {
-            const fileName = `${newBuildingId}/${Date.now()}_${selectedFile.name.replace(/[^a-zA-Z0-9._-]/g, '')}`;
-            try {
-              const { data: uploadData } = await supabase.storage
-                .from('payment-proofs')
-                .upload(fileName, selectedFile, { upsert: true });
-              
-              if (uploadData) {
-                const { data: pubUrl } = supabase.storage.from('payment-proofs').getPublicUrl(fileName);
-                finalProofUrl = pubUrl?.publicUrl;
-              }
-            } catch (storageErr) {
-              console.warn('[Sloty Storage] Storage upload warning:', storageErr);
-            }
-          }
-
-          // 3. Register payment proof in Supabase table
-          if (newBuildingId) {
-            await supabase.from('building_payment_proofs').insert({
-              building_id: newBuildingId,
-              plan_key: plan.id,
-              amount: plan.price,
-              payment_method: method,
-              bank: bankName,
-              reference: refNum,
-              status: 'PENDING',
-              proof_url: finalProofUrl,
-              proof_image: finalProofUrl
-            });
-          }
-
-          // 4. Update local storage state
-          state.buildingId = newBuildingId || 'test-building-id';
-          state.buildingName = wizard.buildingName;
-          state.buildingCode = newCode;
-          state.plan = plan.id;
-          saveParkingState(state);
-
-          // 5. Generate WhatsApp direct message link
-          const waData = formatProofWhatsAppMessage({
-            buildingName: wizard.buildingName,
-            buildingCode: newCode,
-            adminName: wizard.name,
-            planLabel: plan.name,
-            amountUsd: plan.price,
-            amountBs: Number(amountBs),
-            bcvRate: wizard.bcvRate,
-            bank: bankName,
-            reference: refNum,
-            proofUrl: finalProofUrl || (selectedFile ? `Archivo: ${selectedFile.name}` : 'Enviado por la plataforma'),
-            masterPhone: '584120770776'
-          });
-
-          inputBar.innerHTML = '';
-          appendUserBubble(`Comprobante enviado (Ref: ${refNum})`);
-
-          // Final Success Celebration in Chat
-          appendSlotBubble(`
-            <div style="text-align:center; padding:10px 0;">
-              <div style="font-size:3rem; margin-bottom:8px; animation:slotyPulseDot 1s infinite alternate;">🎉</div>
-              <h3 style="color:#F5C518; font-size:1.1rem; font-weight:900; margin-bottom:6px;">¡SOLICITUD RECIBIDA CON ÉXITO!</h3>
-              <p style="font-size:0.8rem; color:rgba(255,255,255,0.7); line-height:1.5; margin-bottom:14px;">
-                Hemos registrado a <b>${escapeHTML(wizard.buildingName)}</b> (Código: <b style="color:#F5C518;">${newCode}</b>).<br>
-                El equipo <b>Master</b> verificará tu pago y activará tu cuenta de inmediato.
-              </p>
-              
-              <a href="${waData.whatsappUrl}" target="_blank" style="display:block; width:100%; box-sizing:border-box; padding:14px; background:#25D366; color:white; border-radius:14px; font-weight:900; font-size:0.85rem; text-decoration:none; margin-bottom:10px; box-shadow:0 4px 15px rgba(37,211,102,0.3);">
-                📲 ABRIR WHATSAPP Y NOTIFICAR A MASTER
-              </a>
-
-              <button id="sloty-finish-btn" style="width:100%; padding:12px; background:rgba(255,255,255,0.06); color:white; border:none; border-radius:12px; font-weight:700; font-size:0.75rem; cursor:pointer;">
-                Ir al Inicio
-              </button>
-            </div>
-          `, 'excited', (bubble) => {
-            const finishBtn = bubble.querySelector('#sloty-finish-btn');
-            if (finishBtn) {
-              finishBtn.onclick = () => {
-                const root = document.getElementById('sloty-chat-container');
-                if (root) root.remove();
-                if (onComplete) onComplete();
-              };
-            }
-          });
-
-        } catch (err) {
-          console.error('[Sloty Chat] Error enviando comprobante:', err);
-          submitBtn.disabled = false;
-          submitBtn.textContent = 'Reintentar Envío';
-          errMsg.textContent = 'Hubo un inconveniente al guardar. Puedes abrir WhatsApp directamente con el botón.';
-          errMsg.style.display = 'block';
-        }
+        await submitOnboardingRequest(method, bankName, refNum, selectedFile);
       };
     });
   };
 
-  // Launch initial conversational step
+  // ================================================================
+  // ENVÍO DE SOLICITUD A BASE DE DATOS Y NOTIFICACIONES
+  // ================================================================
+  const submitOnboardingRequest = async (method, bankName, refNum, file) => {
+    const submitBtn = document.getElementById('proof-submit-btn');
+    const errMsg = document.getElementById('proof-error-msg');
+
+    // 1. Validar Rate Limiting
+    const rateCheck = checkClientRateLimit();
+    if (!rateCheck.allowed) {
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Reintentar'; }
+      if (errMsg) {
+        errMsg.textContent = `Límite de solicitudes alcanzado. Por favor espera ${rateCheck.remainingMins} minuto(s) antes de reintentar.`;
+        errMsg.style.display = 'block';
+      }
+      return;
+    }
+
+    try {
+      const plan = wizard.selectedPlan;
+      const amountUsd = plan.price;
+      const amountBs = Number((plan.price * wizard.bcvRate).toFixed(2));
+      let finalReceiptUrl = null;
+
+      // 2. Subida segura de Comprobante con UUID
+      if (file) {
+        const ext = file.name.split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+        const safeFileName = `${crypto.randomUUID()}.${ext}`;
+        const filePath = `receipts/${Date.now()}_${safeFileName}`;
+
+        try {
+          const { data: uploadData } = await supabase.storage
+            .from('payment-proofs')
+            .upload(filePath, file, { contentType: file.type, upsert: false });
+
+          if (uploadData) {
+            const { data: pubUrl } = supabase.storage.from('payment-proofs').getPublicUrl(filePath);
+            finalReceiptUrl = pubUrl?.publicUrl;
+          }
+        } catch (storageErr) {
+          console.warn('[Sloty Storage] Upload notice:', storageErr);
+        }
+      }
+
+      // 3. Inserción en subscription_requests
+      const requestPayload = {
+        building_name: wizard.buildingName,
+        admin_name: wizard.name,
+        phone: wizard.phone,
+        email: wizard.email,
+        plan_id: plan.id,
+        amount_usd: amountUsd,
+        amount_bs: amountBs,
+        bcv_rate_used: wizard.bcvRate,
+        payment_method: method,
+        payment_reference: refNum,
+        receipt_url: finalReceiptUrl,
+        lat: wizard.lat,
+        lng: wizard.lng,
+        city: wizard.city || null,
+        address: wizard.address || null,
+        status: 'PENDING_APPROVAL'
+      };
+
+      const { data: reqCreated, error: reqErr } = await supabase
+        .from('subscription_requests')
+        .insert(requestPayload)
+        .select()
+        .maybeSingle();
+
+      if (reqErr) {
+        console.warn('[Sloty Onboarding] Warning insertando en subscription_requests (posible fallback):', reqErr);
+      }
+
+      // 4. Fallback de contingencia: Inserción compatible con building_payment_proofs
+      let tempCode = generateBuildingCode(wizard.buildingName);
+      try {
+        const { data: bldCreated } = await supabase
+          .from('buildings')
+          .insert({
+            name: wizard.buildingName,
+            code: tempCode,
+            membership_status: 'PENDING_PROOF',
+            plan: plan.id,
+            phone: wizard.phone,
+            admin_email: wizard.email,
+            admin_name: wizard.name,
+            lat: wizard.lat,
+            lng: wizard.lng,
+            city: wizard.city || null,
+            address: wizard.address || null,
+            is_first_login: false
+          })
+          .select()
+          .single();
+
+        if (bldCreated) {
+          await supabase.from('building_payment_proofs').insert({
+            building_id: bldCreated.id,
+            plan_key: plan.id,
+            amount: amountUsd,
+            payment_method: method,
+            bank: bankName,
+            reference: refNum,
+            status: 'PENDING',
+            proof_url: finalReceiptUrl,
+            proof_image: finalReceiptUrl
+          });
+        }
+      } catch (legacyErr) {
+        console.warn('[Sloty Onboarding] Legacy backup insert skipped:', legacyErr);
+      }
+
+      // 5. Notificar a Master (Telegram / WhatsApp)
+      await notifyMasterPayment({
+        buildingName: wizard.buildingName,
+        adminName: wizard.name,
+        phone: wizard.phone,
+        email: wizard.email,
+        plan: plan.id,
+        amountUsd,
+        amountBs,
+        bcvRate: wizard.bcvRate,
+        method,
+        reference: refNum,
+        lat: wizard.lat,
+        lng: wizard.lng,
+        city: wizard.city,
+        address: wizard.address
+      });
+
+      const waData = formatProofWhatsAppMessage({
+        buildingName: wizard.buildingName,
+        buildingCode: tempCode,
+        adminName: wizard.name,
+        phone: wizard.phone,
+        email: wizard.email,
+        planLabel: plan.name,
+        amountUsd,
+        amountBs,
+        bcvRate: wizard.bcvRate,
+        bank: bankName,
+        reference: refNum,
+        proofUrl: finalReceiptUrl || 'Adjunto en sistema',
+        lat: wizard.lat,
+        lng: wizard.lng,
+        city: wizard.city,
+        address: wizard.address,
+        masterPhone: '584120770776'
+      });
+
+      inputBar.innerHTML = '';
+      appendUserBubble(`Solicitud enviada exitosamente (Ref: ${refNum})`);
+
+      // 6. Mensaje de Despedida Personalizado
+      appendSlotBubble(`
+        <div style="text-align:center; padding:10px 0;">
+          <div style="font-size:3rem; margin-bottom:8px; animation:slotyPulseDot 1s infinite alternate;">🎉</div>
+          <h3 style="color:#F5C518; font-size:1.15rem; font-weight:900; margin-bottom:6px; text-transform:uppercase;">
+            ¡Muchas Gracias, ${escapeHTML(wizard.name)}!
+          </h3>
+          <p style="font-size:0.8rem; color:rgba(255,255,255,0.8); line-height:1.5; margin-bottom:12px;">
+            Hemos recibido con éxito la solicitud de registro para <b>${escapeHTML(wizard.buildingName)}</b>.<br>
+            Agradecemos tu confianza en <b>Sloty</b> para transformar tu estacionamiento.
+          </p>
+
+          <div style="background:#0f1127; border:1px solid rgba(245,197,24,0.3); border-radius:14px; padding:12px; margin-bottom:14px; text-align:left; font-size:0.75rem; line-height:1.4;">
+            <div style="color:#F5C518; font-weight:900; margin-bottom:4px;">📋 Resumen de Activación:</div>
+            <div>💎 <b>Plan:</b> Plan ${escapeHTML(plan.name)}</div>
+            <div>💵 <b>Monto Registrado:</b> $${amountUsd} USD (Bs. ${amountBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })})</div>
+            <div>📊 <b>Tasa BCV del día:</b> Bs. ${wizard.bcvRate.toFixed(2)} / USD</div>
+            <div>📝 <b>Referencia:</b> ${escapeHTML(refNum)}</div>
+          </div>
+
+          <p style="font-size:0.75rem; color:#22c55e; font-weight:700; margin-bottom:14px;">
+            El equipo Master verificará los datos y se comunicará a tu teléfono <b>${escapeHTML(wizard.phone)}</b> para entregarte las credenciales de acceso.
+          </p>
+
+          <a href="${waData.whatsappUrl}" target="_blank" style="display:block; width:100%; box-sizing:border-box; padding:14px; background:#25D366; color:white; border-radius:14px; font-weight:900; font-size:0.85rem; text-decoration:none; margin-bottom:10px; box-shadow:0 4px 15px rgba(37,211,102,0.3);">
+            📲 ABRIR WHATSAPP CON MASTER
+          </a>
+
+          <button id="sloty-finish-btn" style="width:100%; padding:12px; background:rgba(255,255,255,0.06); color:white; border:none; border-radius:12px; font-weight:700; font-size:0.75rem; cursor:pointer;">
+            Finalizar y Volver al Inicio
+          </button>
+        </div>
+      `, 'excited', (bubble) => {
+        const finishBtn = bubble.querySelector('#sloty-finish-btn');
+        if (finishBtn) {
+          finishBtn.onclick = () => {
+            wrapper.remove();
+            if (onComplete) onComplete();
+          };
+        }
+      });
+
+    } catch (err) {
+      console.error('[Sloty Onboarding] Error finalizando solicitud:', err);
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Reintentar Envío'; }
+      if (errMsg) {
+        errMsg.textContent = 'Ocurrió un inconveniente al enviar. Puedes comunicarte directamente por WhatsApp con el equipo Master.';
+        errMsg.style.display = 'block';
+      }
+    }
+  };
+
+  // Iniciar flujo conversacional
   startStep1();
 };
 

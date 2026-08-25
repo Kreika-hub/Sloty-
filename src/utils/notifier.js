@@ -1,6 +1,6 @@
 /**
  * Notifier Utility — Dispatch free alerts to Sloty Master (Telegram Bot API / WhatsApp)
- * Formats clean payment, upgrade, and activation notifications.
+ * Formats clean payment, upgrade, activation, and rejection notifications.
  */
 
 export const sanitizePhoneNumber = (phone, defaultCountryCode = '58') => {
@@ -33,6 +33,8 @@ export const formatProofWhatsAppMessage = ({
   buildingName,
   buildingCode,
   adminName,
+  phone,
+  email,
   planLabel,
   amountUsd,
   amountBs,
@@ -40,6 +42,10 @@ export const formatProofWhatsAppMessage = ({
   bank,
   reference,
   proofUrl,
+  lat,
+  lng,
+  city,
+  address,
   masterPhone = '584120770776'
 }) => {
   const usd = Number(amountUsd || 0).toFixed(2);
@@ -47,16 +53,26 @@ export const formatProofWhatsAppMessage = ({
   const rate = Number(bcvRate || 40.0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const cleanPhone = sanitizePhoneNumber(masterPhone);
 
-  const messageText = `🔔 *COMPROBANTE DE PAGO - SLOTY* 🚗\n\n` +
+  let locationText = '';
+  if (lat && lng) {
+    locationText = `📍 *Ubicación GPS:* https://maps.google.com/?q=${lat},${lng}\n`;
+  } else if (city || address) {
+    locationText = `📍 *Ubicación:* ${[city, address].filter(Boolean).join(' - ')}\n`;
+  }
+
+  const messageText = `🔔 *NUEVA SOLICITUD DE CONDIMINIO - SLOTY* 🚗\n\n` +
     `🏢 *Edificio:* ${buildingName || 'Edificio'} (${buildingCode || 'N/A'})\n` +
     `👤 *Administrador:* ${adminName || 'Admin'}\n` +
-    `💎 *Plan:* Plan ${planLabel || 'BRONCE'}\n\n` +
-    `💵 *Monto:* $${usd} USD\n` +
+    `📱 *Teléfono:* ${phone || 'N/A'}\n` +
+    `✉️ *Correo:* ${email || 'N/A'}\n` +
+    locationText +
+    `💎 *Plan Solicitado:* Plan ${planLabel || 'BRONCE'}\n\n` +
+    `💵 *Monto USD:* $${usd} USD\n` +
     `🇻🇪 *Equivalente Bs:* Bs. ${bs} (Tasa BCV: Bs. ${rate})\n` +
-    `🏦 *Banco:* ${bank || 'Transferencia'}\n` +
+    `🏦 *Banco/Método:* ${bank || 'Transferencia'}\n` +
     `📝 *Referencia:* ${reference || 'N/A'}\n` +
     `📎 *Comprobante:* ${proofUrl || 'Adjunto en sistema'}\n\n` +
-    `_Notificación automática enviada desde Sloty Web App._`;
+    `_Notificación automática enviada desde Sloty Onboarding._`;
 
   const whatsappUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(messageText)}`;
   return { success: true, whatsappUrl, messageText, cleanPhone };
@@ -86,26 +102,58 @@ export const formatActivationWhatsAppMessage = ({
   return { success: true, whatsappUrl, messageText, cleanPhone, activationCode };
 };
 
+export const formatRejectionWhatsAppMessage = ({
+  buildingName,
+  adminName,
+  adminPhone,
+  planLabel,
+  reason
+}) => {
+  const cleanPhone = sanitizePhoneNumber(adminPhone);
+  const messageText = `Hola ${adminName || ''} 👋, te contactamos del equipo de verificación de *Sloty*.\n\n` +
+    `Revisamos la solicitud de activación para el condominio *${buildingName || 'tu edificio'}* (Plan ${planLabel || 'BRONCE'}).\n\n` +
+    `⚠️ *Estado:* Requiere corrección\n` +
+    `📝 *Motivo indicado:* ${reason || 'Comprobante no coincide con los registros bancarios o datos incompletos.'}\n\n` +
+    `Por favor, responde a este mensaje para coordinar la verificación y activar tu cuenta a la brevedad. ¡Estamos a tu orden! 🚗`;
+
+  const whatsappUrl = cleanPhone ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(messageText)}` : '';
+  return { success: true, whatsappUrl, messageText, cleanPhone };
+};
+
 export const notifyMasterPayment = async ({
   buildingName,
   adminName,
   phone,
+  email,
   plan,
   amountUsd,
   amountBs,
   bcvRate,
   method,
-  reference
+  reference,
+  lat,
+  lng,
+  city,
+  address
 }) => {
   const dateStr = new Date().toLocaleString('es-VE');
   const usd = Number(amountUsd || 0).toFixed(2);
   const bs = Number(amountBs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 });
   const rate = Number(bcvRate || 40.0).toFixed(2);
 
-  const messageText = `🔔 *¡PAGO DE PLAN REGISTRADO!* 🚀\n\n` +
+  let locationText = '';
+  if (lat && lng) {
+    locationText = `📍 *GPS:* https://maps.google.com/?q=${lat},${lng}\n`;
+  } else if (city || address) {
+    locationText = `📍 *Ubicación:* ${[city, address].filter(Boolean).join(' - ')}\n`;
+  }
+
+  const messageText = `🔔 *¡NUEVA SOLICITUD DE REGISTRO!* 🚀\n\n` +
     `🏢 *Condominio:* ${buildingName || 'Sin nombre'}\n` +
     `👤 *Administrador:* ${adminName || 'Admin'}\n` +
     `📱 *Contacto:* ${phone || 'N/A'}\n` +
+    `✉️ *Correo:* ${email || 'N/A'}\n` +
+    locationText +
     `💎 *Plan:* Plan ${plan || 'TRIAL'}\n\n` +
     `💵 *Monto USD:* $${usd}\n` +
     `🇻🇪 *Monto Bs:* Bs. ${bs}\n` +
@@ -117,7 +165,7 @@ export const notifyMasterPayment = async ({
 
   console.log('[Sloty Notifier] Alert payload:\n', messageText);
 
-  // 1. Enviar a Telegram si existe configuración en variables de entorno o localStorage (sin valores hardcodeados)
+  // 1. Enviar a Telegram si existe configuración en variables de entorno o localStorage
   try {
     const botToken = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_TELEGRAM_BOT_TOKEN) || (typeof localStorage !== 'undefined' && localStorage.getItem('sloty_telegram_bot_token'));
     const chatId = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_TELEGRAM_CHAT_ID) || (typeof localStorage !== 'undefined' && localStorage.getItem('sloty_telegram_chat_id'));

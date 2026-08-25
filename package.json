@@ -10,7 +10,8 @@
     "gen-icons": "pwa-assets-generator --preset minimal public/icons/pwa-512x512.png",
     "read": "node read_sections.js",
     "modify": "node modify_guard.js",
-    "test-sanitize": "node src/utils/sanitize.test.manual.js"
+    "test-sanitize": "node src/utils/sanitize.test.manual.js",
+    "test-onboarding": "node tests/test-onboarding-logic.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.0.0",

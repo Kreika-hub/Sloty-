@@ -1,5 +1,6 @@
 import { getParkingState, saveParkingState, logAudit, supabase, getExchangeRate } from '../db.js'
-import { notifyMasterPayment, generateActivationCode, formatActivationWhatsAppMessage, sanitizePhoneNumber } from '../utils/notifier.js'
+import { notifyMasterPayment, generateActivationCode, formatActivationWhatsAppMessage, formatRejectionWhatsAppMessage, sanitizePhoneNumber } from '../utils/notifier.js'
+import { generateBuildingCode } from './onboarding.js'
 import { escapeHTML } from '../utils/sanitize.js'
 
 export const initMaster = (container) => {
@@ -27,8 +28,8 @@ export const initMaster = (container) => {
     { key: 'multi_level',            label: 'Multinivel / Pisos',        icon: '🏢' },
   ]
   const PLANS = [
-    { key: 'TRIAL',  label: 'Trial',  maxSlots: 10,  color: '#888' },
-    { key: 'BRONCE', label: 'Bronce', maxSlots: 50,  color: '#cd7f32' },
+    { key: 'TRIAL',  label: 'Trial',  maxSlots: 15,  color: '#888' },
+    { key: 'BRONCE', label: 'Bronce', maxSlots: 30,  color: '#cd7f32' },
     { key: 'PLATA',  label: 'Plata',  maxSlots: 150, color: '#aaa'    },
     { key: 'ORO',    label: 'Oro',    maxSlots: 999, color: '#F5C518' },
   ]
@@ -80,6 +81,52 @@ export const initMaster = (container) => {
     };
 
     modal.querySelector('#btn-close-activation-modal').onclick = () => modal.remove();
+  };
+
+  const showRejectionModal = ({ buildingName, planLabel, rejectionReason, whatsappUrl, messageText, phone }) => {
+    const existing = document.getElementById('rejection-modal-overlay');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'rejection-modal-overlay';
+    modal.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.85); backdrop-filter:blur(8px); display:flex; align-items:center; justify-content:center; z-index:10001; padding:20px; font-family:Montserrat,sans-serif;';
+    modal.innerHTML = `
+      <div style="background:#1a1a2e; border:1.5px solid rgba(230,57,70,0.4); border-radius:28px; width:100%; max-width:440px; padding:30px; box-sizing:border-box; color:white; text-align:center; box-shadow:0 25px 60px rgba(0,0,0,0.5);">
+        <div style="font-size:3rem; margin-bottom:12px;">⚠️</div>
+        <div style="font-size:1.2rem; font-weight:900; color:#e63946; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Solicitud Rechazada</div>
+        <div style="font-size:0.8rem; color:#bbb; margin-bottom:16px;">Edificio: <strong style="color:white;">${escapeHTML(buildingName)}</strong> · Plan <strong style="color:#F5C518;">${escapeHTML(planLabel)}</strong></div>
+        
+        <div style="background:rgba(230,57,70,0.08); border:1px solid rgba(230,57,70,0.3); border-radius:14px; padding:14px; margin-bottom:20px; font-size:0.8rem; text-align:left; color:#ffccd5; line-height:1.4;">
+          <b>Motivo de rechazo registrado:</b><br>${escapeHTML(rejectionReason)}
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <button id="btn-copy-rejection-msg" style="width:100%; padding:14px; background:rgba(255,255,255,0.1); color:white; border:1px solid rgba(255,255,255,0.2); border-radius:14px; font-weight:800; font-size:0.8rem; cursor:pointer;">
+            📋 Copiar mensaje para WhatsApp
+          </button>
+          ${whatsappUrl ? `
+            <a href="${whatsappUrl}" target="_blank" style="width:100%; padding:14px; background:#25D366; color:white; border-radius:14px; font-weight:900; font-size:0.85rem; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:8px; box-sizing:border-box;">
+              💬 Notificar al Administrador por WhatsApp (${phone || ''})
+            </a>
+          ` : ''}
+          <button id="btn-close-rejection-modal" style="width:100%; padding:10px; background:none; color:#888; border:none; font-weight:700; font-size:0.75rem; cursor:pointer;">
+            Cerrar
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    modal.querySelector('#btn-copy-rejection-msg').onclick = () => {
+      navigator.clipboard.writeText(messageText).then(() => {
+        const btn = modal.querySelector('#btn-copy-rejection-msg');
+        btn.innerHTML = '✅ ¡Mensaje copiado al portapapeles!';
+        setTimeout(() => { btn.innerHTML = '📋 Copiar mensaje para WhatsApp'; }, 2000);
+      });
+    };
+
+    modal.querySelector('#btn-close-rejection-modal').onclick = () => modal.remove();
   };
 
   // ─── SISTEMA DE MODALES NATIVOS ESTILIZADOS PARA MASTER ───────
@@ -564,6 +611,194 @@ export const initMaster = (container) => {
       });
     },
       
+
+    APPROVE_SUBSCRIPTION_REQUEST: async (btn) => {
+      const requestId = typeof btn === 'string' ? btn : (btn.dataset?.id || btn);
+      if (!requestId) return;
+
+      const { data: { user } } = await supabase.auth.getUser();
+      const currentUserId = user?.id || null;
+
+      if (btn.tagName) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Aprobando...';
+      }
+
+      try {
+        // 1. Intentar llamar a la RPC atómica de PostgreSQL (approve_subscription_request)
+        const { data: rpcRes, error: rpcErr } = await supabase.rpc('approve_subscription_request', {
+          p_request_id: requestId,
+          p_reviewed_by: currentUserId
+        });
+
+        if (rpcErr || !rpcRes?.success) {
+          console.warn('[Sloty Master] RPC falló o no está instalada, ejecutando fallback transaccional:', rpcErr || rpcRes?.error);
+          
+          // Fallback en cliente consistente
+          const { data: req } = await supabase.from('subscription_requests').select('*').eq('id', requestId).single();
+          if (!req) throw new Error('Solicitud no encontrada');
+
+          const buildingCode = generateBuildingCode(req.building_name);
+          const activationCode = generateActivationCode(6);
+          const expiry = new Date();
+          expiry.setDate(expiry.getDate() + 30);
+
+          const { data: bldCreated, error: bldErr } = await supabase.from('buildings').insert({
+            name: req.building_name,
+            code: buildingCode,
+            admin_name: req.admin_name,
+            phone: req.phone,
+            admin_email: req.email,
+            plan: req.plan_id || 'BRONCE',
+            membership_status: 'ACTIVE',
+            membership_expiry: expiry.toISOString(),
+            lat: req.lat,
+            lng: req.lng,
+            city: req.city,
+            address: req.address,
+            is_first_login: false,
+            monthly_rate: 20
+          }).select().single();
+
+          if (bldErr) throw bldErr;
+
+          await supabase.from('sloty_memberships').insert({
+            building_id: bldCreated.id,
+            plan_key: req.plan_id || 'BRONCE',
+            activation_code: activationCode,
+            status: 'CONFIRMED',
+            paid_at: new Date().toISOString(),
+            expiry_date: expiry.toISOString()
+          });
+
+          await supabase.from('subscription_requests').update({
+            status: 'APPROVED',
+            building_id: bldCreated.id,
+            reviewed_at: new Date().toISOString(),
+            reviewed_by: currentUserId
+          }).eq('id', requestId);
+
+          logAudit(`Master aprobó solicitud de condominio: ${req.building_name} (Plan: ${req.plan_id}, Código: ${buildingCode})`);
+
+          const waData = formatActivationWhatsAppMessage({
+            buildingName: req.building_name,
+            buildingCode,
+            planLabel: req.plan_id,
+            expiryDate: expiry.toISOString(),
+            activationCode,
+            adminPhone: req.phone
+          });
+
+          showActivationModal({
+            buildingName: req.building_name,
+            planLabel: req.plan_id,
+            activationCode,
+            expiryDate: expiry,
+            whatsappUrl: waData.whatsappUrl,
+            messageText: waData.messageText,
+            phone: waData.cleanPhone
+          });
+        } else {
+          // Éxito por RPC
+          const res = rpcRes;
+          logAudit(`Master aprobó solicitud por RPC: ${res.building_code} (Plan: ${res.plan_id})`);
+
+          const waData = formatActivationWhatsAppMessage({
+            buildingName: res.building_code,
+            buildingCode: res.building_code,
+            planLabel: res.plan_id,
+            expiryDate: res.expiry_date,
+            activationCode: res.activation_code,
+            adminPhone: res.admin_phone
+          });
+
+          showActivationModal({
+            buildingName: res.building_code,
+            planLabel: res.plan_id,
+            activationCode: res.activation_code,
+            expiryDate: res.expiry_date,
+            whatsappUrl: waData.whatsappUrl,
+            messageText: waData.messageText,
+            phone: waData.cleanPhone
+          });
+        }
+
+        render();
+      } catch (err) {
+        console.error('[Sloty Master] Error en aprobación:', err);
+        showMasterAlert('Error al Aprobar', 'No se pudo aprobar la solicitud: ' + err.message, '❌');
+        if (btn.tagName) {
+          btn.disabled = false;
+          btn.textContent = '✓ APROBAR Y CREAR CONDOMINIO';
+        }
+      }
+    },
+
+    REJECT_SUBSCRIPTION_REQUEST: async (btn) => {
+      const requestId = typeof btn === 'string' ? btn : (btn.dataset?.id || btn);
+      if (!requestId) return;
+
+      const { data: { user } } = await supabase.auth.getUser();
+      const currentUserId = user?.id || null;
+
+      showMasterPrompt({
+        title: 'Rechazar Solicitud de Registro',
+        message: 'Ingresa el motivo del rechazo para notificar al administrador:',
+        placeholder: 'Ej: Comprobante no coincide con registros bancarios o datos incompletos',
+        icon: '⚠️',
+        confirmText: 'RECHAZAR SOLICITUD',
+        onConfirm: async (reason) => {
+          if (!reason || reason.trim().length < 4) {
+            showMasterAlert('Motivo Requerido', 'Debes indicar un motivo de rechazo válido.', '⚠️');
+            return;
+          }
+
+          try {
+            const { data: req } = await supabase.from('subscription_requests').select('*').eq('id', requestId).single();
+
+            // Llamar RPC de rechazo o fallback
+            const { data: rpcRes, error: rpcErr } = await supabase.rpc('reject_subscription_request', {
+              p_request_id: requestId,
+              p_reviewed_by: currentUserId,
+              p_rejection_reason: reason.trim()
+            });
+
+            if (rpcErr || !rpcRes?.success) {
+              await supabase.from('subscription_requests').update({
+                status: 'REJECTED',
+                reviewed_at: new Date().toISOString(),
+                reviewed_by: currentUserId,
+                rejection_reason: reason.trim()
+              }).eq('id', requestId);
+            }
+
+            logAudit(`Master rechazó solicitud: ${req?.building_name || requestId} (${reason})`);
+
+            const waData = formatRejectionWhatsAppMessage({
+              buildingName: req?.building_name,
+              adminName: req?.admin_name,
+              adminPhone: req?.phone,
+              planLabel: req?.plan_id,
+              reason: reason.trim()
+            });
+
+            showRejectionModal({
+              buildingName: req?.building_name || 'Edificio',
+              planLabel: req?.plan_id || 'BRONCE',
+              rejectionReason: reason.trim(),
+              whatsappUrl: waData.whatsappUrl,
+              messageText: waData.messageText,
+              phone: waData.cleanPhone
+            });
+
+            render();
+          } catch (err) {
+            console.error('[Sloty Master] Error rechazando solicitud:', err);
+            showMasterAlert('Error', 'No se pudo rechazar la solicitud: ' + err.message, '❌');
+          }
+        }
+      });
+    },
 
     APPROVE_PROOF: async (raw) => {
       // Support both old object call and new pipe-string call from dossier
@@ -1497,19 +1732,32 @@ export const initMaster = (container) => {
         </div>`).join('')}
     </div>`
 
-  const renderNotifications = (proofs = [], newBuildings = []) => {
-    const planColors = { TRIAL:'#888', BRONCE:'#cd7f32', PLATA:'#aaa', ORO:'#F5C518' }
-    const planPrices = { TRIAL:'Gratis', BRONCE:'$29/mes', PLATA:'$59/mes', ORO:'$99/mes' }
+  const renderNotifications = (subscriptionRequests = [], proofs = [], newBuildings = []) => {
+    const planColors = { TRIAL:'#888', BRONCE:'#cd7f32', PLATA:'#F5C518', ORO:'#ffd700' };
+    const planPrices = { TRIAL:'Gratis', BRONCE:'$180/mes', PLATA:'$250/mes', ORO:'$380/mes' };
 
+    // Filtrar solicitudes de suscripción
+    const filteredRequests = subscriptionRequests.filter(r => {
+      if (masterNotifyFilter === 'ALL') return true;
+      if (masterNotifyFilter === 'PENDING') return !r.status || r.status === 'PENDING_APPROVAL';
+      if (masterNotifyFilter === 'CONFIRMED') return r.status === 'APPROVED';
+      return r.status === masterNotifyFilter;
+    });
+
+    // Filtrar comprobantes de edificios existentes
     const filteredProofs = proofs.filter(p => {
       if (masterNotifyFilter === 'ALL') return true;
       if (masterNotifyFilter === 'PENDING') return !p.status || p.status === 'PENDING';
       return p.status === masterNotifyFilter;
     });
 
-    const pendingCount = proofs.filter(p => !p.status || p.status === 'PENDING').length;
-    const approvedCount = proofs.filter(p => p.status === 'CONFIRMED').length;
-    const rejectedCount = proofs.filter(p => p.status === 'REJECTED').length;
+    const pendingCount = subscriptionRequests.filter(r => !r.status || r.status === 'PENDING_APPROVAL').length
+                       + proofs.filter(p => !p.status || p.status === 'PENDING').length;
+    const approvedCount = subscriptionRequests.filter(r => r.status === 'APPROVED').length
+                        + proofs.filter(p => p.status === 'CONFIRMED').length;
+    const rejectedCount = subscriptionRequests.filter(r => r.status === 'REJECTED').length
+                        + proofs.filter(p => p.status === 'REJECTED').length;
+    const totalCount = subscriptionRequests.length + proofs.length;
 
     // Filters UI
     const filterHtml = `
@@ -1518,7 +1766,7 @@ export const initMaster = (container) => {
           {id:'PENDING', label:'Pendientes', count:pendingCount},
           {id:'CONFIRMED', label:'Aprobados', count:approvedCount},
           {id:'REJECTED', label:'Rechazados', count:rejectedCount},
-          {id:'ALL', label:'Todos', count:proofs.length}
+          {id:'ALL', label:'Todos', count:totalCount}
         ].map(f => `
           <button onclick="window.handleMasterAction('SET_NOTIFY_FILTER','${f.id}')"
             style="padding:10px 16px; border-radius:12px; border:none; font-weight:900; font-size:0.7rem; white-space:nowrap; cursor:pointer;
@@ -1531,30 +1779,180 @@ export const initMaster = (container) => {
       </div>
     `;
 
-    if (proofs.length === 0) return `
+    if (filteredRequests.length === 0 && filteredProofs.length === 0) return `
       <div style="padding:40px 20px; text-align:center;">
-        <div style="font-size:3rem; margin-bottom:12px;">📭</div>
+        ${filterHtml}
+        <div style="font-size:3rem; margin-bottom:12px; margin-top:20px;">📭</div>
         <div style="font-size:0.8rem; font-weight:900; color:rgba(255,255,255,0.4);
                     text-transform:uppercase; letter-spacing:2px;">
-          Sin solicitudes recientes
+          Sin solicitudes recientes para este filtro
         </div>
       </div>`;
 
     let html = `<div style="padding:16px; padding-bottom:100px;">
       ${filterHtml}
-      ${filteredProofs.length > 0 ? filteredProofs.map(p => {
-        const isPending = !p.status || p.status === 'PENDING';
-        return renderProofCard(p, isPending);
-      }).join('') : `
-        <div style="padding:60px 20px; text-align:center; background:rgba(255,255,255,0.02); border-radius:24px;">
-          <div style="font-size:2rem; margin-bottom:10px;">🔍</div>
-          <div style="font-size:0.75rem; font-weight:900; color:rgba(255,255,255,0.3); text-transform:uppercase;">Sin resultados para este filtro</div>
+
+      <!-- SECCIÓN 1: BÓVEDA DE SOLICITUDES DE REGISTRO (NUEVOS CONDOMINIOS) -->
+      ${filteredRequests.length > 0 ? `
+        <div style="margin-bottom:24px;">
+          <div style="font-size:0.75rem; font-weight:900; color:#F5C518; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+            <span>📥 Solicitudes de Registro (Nuevos Condominios)</span>
+            <span style="background:#F5C518; color:#1a1a2e; font-size:0.65rem; padding:2px 8px; border-radius:10px;">${filteredRequests.length}</span>
+          </div>
+          ${filteredRequests.map(req => renderSubscriptionRequestCard(req)).join('')}
         </div>
-      `}
+      ` : ''}
+
+      <!-- SECCIÓN 2: COMPROBANTES DE PAGOS (CONDOMINIOS EXISTENTES) -->
+      ${filteredProofs.length > 0 ? `
+        <div>
+          <div style="font-size:0.75rem; font-weight:900; color:#aaa; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+            <span>💳 Comprobantes de Membresía</span>
+            <span style="background:rgba(255,255,255,0.1); color:white; font-size:0.65rem; padding:2px 8px; border-radius:10px;">${filteredProofs.length}</span>
+          </div>
+          ${filteredProofs.map(p => {
+            const isPending = !p.status || p.status === 'PENDING';
+            return renderProofCard(p, isPending);
+          }).join('')}
+        </div>
+      ` : ''}
     </div>`;
 
     return html;
-  }
+  };
+
+  // Render Card para Solicitud de Suscripción (Bóveda Master)
+  const renderSubscriptionRequestCard = (req) => {
+    const isPending = !req.status || req.status === 'PENDING_APPROVAL';
+    const isApproved = req.status === 'APPROVED';
+    const planColors = { TRIAL:'#888', BRONCE:'#cd7f32', PLATA:'#F5C518', ORO:'#ffd700' };
+    const planColor = planColors[req.plan_id] || '#888';
+
+    const submitted = req.created_at
+      ? new Date(req.created_at).toLocaleString('es-VE', { dateStyle:'medium', timeStyle:'short' })
+      : 'Fecha desconocida';
+
+    const phoneClean = (req.phone || '').replace(/\D/g, '');
+    const mapsUrl = (req.lat && req.lng) ? `https://maps.google.com/?q=${req.lat},${req.lng}` : null;
+    const locationStr = [req.city, req.address].filter(Boolean).join(' - ');
+
+    return `
+      <div style="background:#0f1127; border:1.5px solid ${isPending ? 'rgba(245,197,24,0.3)' : (isApproved ? 'rgba(34,197,94,0.3)' : 'rgba(230,57,70,0.3)')};
+                  border-radius:20px; overflow:hidden; margin-bottom:18px; box-shadow:0 10px 30px rgba(0,0,0,0.3);">
+        
+        <!-- HEADER SOLICITUD -->
+        <div style="padding:16px 18px 12px; background:${isPending ? 'rgba(245,197,24,0.06)' : 'rgba(255,255,255,0.02)'}; border-bottom:1px solid rgba(255,255,255,0.06); display:flex; justify-content:space-between; align-items:flex-start;">
+          <div>
+            <div style="font-size:1.05rem; font-weight:900; color:white; margin-bottom:2px;">
+              ${escapeHTML(req.building_name)}
+            </div>
+            <div style="font-size:0.65rem; color:#aaa; font-weight:700;">
+              Solicitado por: <b style="color:white;">${escapeHTML(req.admin_name)}</b> &middot; ${submitted}
+            </div>
+          </div>
+          <span style="background:${planColor}; color:${req.plan_id === 'ORO' ? '#1a1a2e' : 'white'}; padding:4px 10px; border-radius:8px; font-size:0.65rem; font-weight:900;">
+            Plan ${escapeHTML(req.plan_id)}
+          </span>
+        </div>
+
+        <!-- CONTACTO Y UBICACIÓN -->
+        <div style="padding:12px 18px; border-bottom:1px solid rgba(255,255,255,0.06); display:flex; flex-direction:column; gap:8px;">
+          <div style="display:flex; gap:16px; flex-wrap:wrap; font-size:0.75rem; color:rgba(255,255,255,0.8);">
+            ${req.phone ? `<div>📱 <b>${escapeHTML(req.phone)}</b></div>` : ''}
+            ${req.email ? `<div>✉️ <b>${escapeHTML(req.email)}</b></div>` : ''}
+          </div>
+
+          ${(mapsUrl || locationStr) ? `
+            <div style="display:flex; align-items:center; gap:8px; font-size:0.7rem; color:#F5C518;">
+              <span>📍</span>
+              <span>${escapeHTML(locationStr || 'Coordenadas GPS capturadas')}</span>
+              ${mapsUrl ? `
+                <a href="${mapsUrl}" target="_blank" style="color:#F5C518; text-decoration:underline; font-weight:800; font-size:0.65rem; margin-left:auto;">
+                  Abrir en Google Maps ↗
+                </a>
+              ` : ''}
+            </div>
+          ` : ''}
+        </div>
+
+        <!-- DETALLES FINANCIEROS Y DE PAGO -->
+        <div style="padding:14px 18px; border-bottom:1px solid rgba(255,255,255,0.06);">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:8px;">
+            <div style="background:rgba(255,255,255,0.04); border-radius:12px; padding:10px;">
+              <div style="font-size:1.15rem; font-weight:900; color:#F5C518;">
+                $${Number(req.amount_usd || 0).toFixed(2)} USD
+              </div>
+              <div style="font-size:0.65rem; color:#aaa; font-weight:700; margin-top:2px;">
+                Bs. ${Number(req.amount_bs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })} (Tasa: ${Number(req.bcv_rate_used || 40).toFixed(2)})
+              </div>
+            </div>
+            <div style="background:rgba(255,255,255,0.04); border-radius:12px; padding:10px;">
+              <div style="font-size:0.75rem; font-weight:900; color:white; word-break:break-all;">
+                ${escapeHTML(req.payment_method || 'N/A')}
+              </div>
+              <div style="font-size:0.65rem; color:#aaa; font-weight:700; margin-top:2px;">
+                Ref: <code>${escapeHTML(req.payment_reference || 'S/R')}</code>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- COMPROBANTE DE PAGO -->
+        ${req.receipt_url ? `
+          <div style="padding:14px 18px; border-bottom:1px solid rgba(255,255,255,0.06);">
+            <div style="font-size:0.65rem; font-weight:900; color:#999; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">
+              Comprobante de Pago
+            </div>
+            ${req.receipt_url.toLowerCase().endsWith('.pdf') ? `
+              <a href="${escapeHTML(req.receipt_url)}" target="_blank" style="display:inline-flex; align-items:center; gap:8px; padding:10px 16px; background:rgba(255,255,255,0.08); border-radius:10px; color:#F5C518; text-decoration:none; font-weight:800; font-size:0.75rem;">
+                📄 Abrir Documento PDF del Comprobante ↗
+              </a>
+            ` : `
+              <img src="${escapeHTML(req.receipt_url)}" alt="Comprobante"
+                   style="width:100%; border-radius:12px; max-height:260px; object-fit:contain; background:rgba(255,255,255,0.03); cursor:pointer;"
+                   onclick="window.open('${escapeHTML(req.receipt_url)}','_blank')" />
+            `}
+          </div>
+        ` : `
+          <div style="padding:10px 18px; font-size:0.7rem; color:rgba(255,255,255,0.4); text-align:center;">
+            Sin archivo adjunto (Pago en efectivo o solicitud directa)
+          </div>
+        `}
+
+        <!-- BOTONES DE ACCIÓN O ESTADO FINAL -->
+        <div style="padding:14px 18px;">
+          ${isPending ? `
+            <div style="display:grid; grid-template-columns:2fr 1fr; gap:8px;">
+              <button onclick="window.handleMasterAction('APPROVE_SUBSCRIPTION_REQUEST','${req.id}')"
+                style="background:#22c55e; color:white; border:none; border-radius:12px; padding:12px; font-size:0.75rem; font-weight:900; cursor:pointer; text-transform:uppercase;">
+                ✓ APROBAR Y CREAR CONDOMINIO
+              </button>
+              <button onclick="window.handleMasterAction('REJECT_SUBSCRIPTION_REQUEST','${req.id}')"
+                style="background:#e63946; color:white; border:none; border-radius:12px; padding:12px; font-size:0.75rem; font-weight:900; cursor:pointer; text-transform:uppercase;">
+                ✕ RECHAZAR
+              </button>
+            </div>
+            ${phoneClean ? `
+              <div style="margin-top:8px;">
+                <a href="https://wa.me/${phoneClean}" target="_blank"
+                   style="display:block; background:rgba(255,255,255,0.04); color:rgba(255,255,255,0.6); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:8px; font-size:0.65rem; font-weight:800; text-decoration:none; text-align:center;">
+                  💬 Contactar por WhatsApp al Administrador
+                </a>
+              </div>
+            ` : ''}
+          ` : `
+            <div style="text-align:center; padding:6px; border-radius:10px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08);">
+              <span style="font-size:0.65rem; color:#888; font-weight:800; text-transform:uppercase;">Estado:</span>
+              <span style="font-size:0.8rem; font-weight:900; color:${isApproved ? '#22c55e' : '#e63946'}; margin-left:6px;">
+                ${isApproved ? 'APROBADO & ACTIVADO' : 'RECHAZADO'}
+              </span>
+              ${req.rejection_reason ? `<div style="font-size:0.65rem; color:#ffccd5; margin-top:4px;">Motivo: ${escapeHTML(req.rejection_reason)}</div>` : ''}
+            </div>
+          `}
+        </div>
+      </div>
+    `;
+  };
 
   // Helper hidden from loop to avoid being redefined
   const renderProofCard = (p, isPending) => {
@@ -2193,6 +2591,16 @@ export const initMaster = (container) => {
       masterChannel = supabase
         .channel('master-proofs')
         .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'subscription_requests'
+        }, () => {
+          notifCount++
+          const nBadge = document.getElementById('master-notif-badge')
+          if (nBadge) { nBadge.textContent = notifCount; nBadge.style.display = 'inline-flex' }
+          else { const ta = document.getElementById('master-tabs-area'); if (ta) ta.innerHTML = tabBar() }
+        })
+        .on('postgres_changes', {
           event: 'INSERT',
           schema: 'public',
           table: 'building_payment_proofs'
@@ -2223,9 +2631,14 @@ export const initMaster = (container) => {
       notifCount = 0  // reset badge
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
       const [
+        { data: subReqs },
         { data: proofs },
         { data: newBlds }
       ] = await Promise.all([
+        supabase.from('subscription_requests')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(50),
         supabase.from('building_payment_proofs')
           .select('*, buildings(name, phone, admin_email, city, code)')
           .order('created_at', { ascending: false })
@@ -2235,7 +2648,7 @@ export const initMaster = (container) => {
           .gte('created_at', sevenDaysAgo)
           .order('created_at', { ascending: false })
       ])
-      html = renderNotifications(proofs || [], newBlds || [])
+      html = renderNotifications(subReqs || [], proofs || [], newBlds || [])
     }
     else if (activeTab === 'BUILDINGS') {
       const { data: bld } = await supabase.from('buildings').select('*').order('created_at', { ascending: false })
