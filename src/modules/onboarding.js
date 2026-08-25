@@ -256,6 +256,38 @@ export const generateBuildingCode = (name) => {
   return `${prefix}-${num}`;
 };
 
+// [NUEVO] Genera código único verificando contra la base de datos
+export async function generateUniqueBuildingCode(name, supabaseClient) {
+  let attempts = 0;
+  const maxAttempts = 10;
+
+  while (attempts < maxAttempts) {
+    const code = generateBuildingCode(name);
+
+    try {
+      const { data } = await supabaseClient
+        .from('buildings')
+        .select('id')
+        .eq('code', code)
+        .maybeSingle();
+
+      if (!data) {
+        return code; // Código único encontrado
+      }
+    } catch (err) {
+      console.warn('[Sloty] Error verificando unicidad del código:', err);
+      // Si falla la query, devolvemos el código con sufijo de timestamp para evitar colisión
+      return `${generateBuildingCode(name)}-${Date.now().toString().slice(-4)}`;
+    }
+
+    attempts++;
+  }
+
+  // Si después de 10 intentos no encontramos uno único, usamos timestamp
+  const base = generateBuildingCode(name);
+  return `${base}-${Date.now().toString().slice(-4)}`;
+}
+
 // ================================================================
 // SLOT SVG MASCOTA
 // ================================================================
@@ -940,12 +972,22 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
         const filePath = `receipts/${Date.now()}_${safeFileName}`;
 
         try {
-          const { data: uploadData } = await supabase.storage
-            .from('payment-proofs')
+          // Intentar primero en payment-proofs y fallback a proofs
+          let bucketName = 'payment-proofs';
+          let { data: uploadData, error: upErr } = await supabase.storage
+            .from(bucketName)
             .upload(filePath, file, { contentType: file.type, upsert: false });
 
+          if (upErr || !uploadData) {
+            bucketName = 'proofs';
+            const retryRes = await supabase.storage
+              .from(bucketName)
+              .upload(filePath, file, { contentType: file.type, upsert: false });
+            uploadData = retryRes.data;
+          }
+
           if (uploadData) {
-            const { data: pubUrl } = supabase.storage.from('payment-proofs').getPublicUrl(filePath);
+            const { data: pubUrl } = supabase.storage.from(bucketName).getPublicUrl(filePath);
             finalReceiptUrl = pubUrl?.publicUrl;
           }
         } catch (storageErr) {
@@ -983,47 +1025,9 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
         console.warn('[Sloty Onboarding] Warning insertando en subscription_requests (posible fallback):', reqErr);
       }
 
-      // 4. Fallback de contingencia: Inserción compatible con building_payment_proofs
-      let tempCode = generateBuildingCode(wizard.buildingName);
-      try {
-        const { data: bldCreated } = await supabase
-          .from('buildings')
-          .insert({
-            name: wizard.buildingName,
-            code: tempCode,
-            membership_status: 'PENDING_PROOF',
-            plan: plan.id,
-            phone: wizard.phone,
-            admin_email: wizard.email,
-            admin_name: wizard.name,
-            lat: wizard.lat,
-            lng: wizard.lng,
-            city: wizard.city || null,
-            address: wizard.address || null,
-            is_first_login: false
-          })
-          .select()
-          .single();
-
-        if (bldCreated) {
-          await supabase.from('building_payment_proofs').insert({
-            building_id: bldCreated.id,
-            plan_key: plan.id,
-            amount: amountUsd,
-            payment_method: method,
-            bank: bankName,
-            reference: refNum,
-            status: 'PENDING',
-            proof_url: finalReceiptUrl,
-            proof_image: finalReceiptUrl
-          });
-        }
-      } catch (legacyErr) {
-        console.warn('[Sloty Onboarding] Legacy backup insert skipped:', legacyErr);
-      }
-
-      // 5. Notificar a Master (Telegram / WhatsApp)
-      await notifyMasterPayment({
+      // 4. Notificar a Master (Telegram / WhatsApp) — fire-and-forget con catch silencioso
+      // [FIX] Si el notificador falla, no debe romper la experiencia del usuario
+      notifyMasterPayment({
         buildingName: wizard.buildingName,
         adminName: wizard.name,
         phone: wizard.phone,
@@ -1038,11 +1042,13 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
         lng: wizard.lng,
         city: wizard.city,
         address: wizard.address
+      }).catch(err => {
+        console.warn('[Sloty Onboarding] Notificación a Master falló (no crítico):', err);
       });
 
       const waData = formatProofWhatsAppMessage({
         buildingName: wizard.buildingName,
-        buildingCode: tempCode,
+        buildingCode: generateBuildingCode(wizard.buildingName), // código temporal solo para el mensaje
         adminName: wizard.name,
         phone: wizard.phone,
         email: wizard.email,

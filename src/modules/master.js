@@ -1,6 +1,6 @@
 import { getParkingState, saveParkingState, logAudit, supabase, getExchangeRate } from '../db.js'
 import { notifyMasterPayment, generateActivationCode, formatActivationWhatsAppMessage, formatRejectionWhatsAppMessage, sanitizePhoneNumber } from '../utils/notifier.js'
-import { generateBuildingCode } from './onboarding.js'
+import { generateBuildingCode, generateUniqueBuildingCode } from './onboarding.js'
 import { escapeHTML } from '../utils/sanitize.js'
 
 export const initMaster = (container) => {
@@ -638,7 +638,7 @@ export const initMaster = (container) => {
           const { data: req } = await supabase.from('subscription_requests').select('*').eq('id', requestId).single();
           if (!req) throw new Error('Solicitud no encontrada');
 
-          const buildingCode = generateBuildingCode(req.building_name);
+          const buildingCode = await generateUniqueBuildingCode(req.building_name, supabase);
           const activationCode = generateActivationCode(6);
           const expiry = new Date();
           expiry.setDate(expiry.getDate() + 30);

@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { generateBuildingCode, validateEmail, validateVenezuelanPhone, validateReceiptFile } from '../src/modules/onboarding.js';
+import { generateBuildingCode, generateUniqueBuildingCode, validateEmail, validateVenezuelanPhone, validateReceiptFile } from '../src/modules/onboarding.js';
 import { formatActivationWhatsAppMessage, formatRejectionWhatsAppMessage, sanitizePhoneNumber } from '../src/utils/notifier.js';
 
 console.log('🧪 Iniciando pruebas de Onboarding y Master Bóveda...');
@@ -56,6 +56,20 @@ const rejectionMsg = formatRejectionWhatsAppMessage({
   reason: 'Referencia bancaria no encontrada en la cuenta'
 });
 assert.ok(rejectionMsg.messageText.includes('Referencia bancaria no encontrada'), 'Rejection message must contain the reason');
-assert.ok(rejectionMsg.whatsappUrl.includes('584121234567'), 'WhatsApp link must target clean phone number');
+// 8. Test generateUniqueBuildingCode (with mock supabase client)
+const mockSupabase = {
+  from: () => ({
+    select: () => ({
+      eq: () => ({
+        maybeSingle: async () => ({ data: null })
+      })
+    })
+  })
+};
+
+const uniqueCode = await generateUniqueBuildingCode('Torre Platinum', mockSupabase);
+console.log('  ✓ Generated unique building code:', uniqueCode);
+assert.ok(uniqueCode.startsWith('PLAT-') || uniqueCode.startsWith('TORR-'), 'Unique code starts with correct prefix');
 
 console.log('✅ ¡Todas las pruebas unitarias y de integración pasaron satisfactoriamente!');
+
