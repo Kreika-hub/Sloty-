@@ -247,3 +247,19 @@ BEGIN
   RETURN jsonb_build_object('success', true);
 END;
 $$;
+
+-- 6. CONFIGURACIÓN DINÁMICA DE MÉTODOS DE PAGO EN system_config
+ALTER TABLE system_config
+ADD COLUMN IF NOT EXISTS payment_methods JSONB DEFAULT '{
+  "PAGO_MOVIL": {
+    "bank": "Banco Exterior",
+    "bank_code": "0115",
+    "id_card": "V-27031049",
+    "phone": "04129135799",
+    "holder": "Sloty Technologies"
+  },
+  "ZELLE": {
+    "holder": "Sloty Technologies",
+    "email": "pagos@slotyapp.com"
+  }
+}'::JSONB;

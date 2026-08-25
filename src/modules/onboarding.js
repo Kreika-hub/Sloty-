@@ -100,6 +100,64 @@ export const PLANS = [
 ];
 
 // ================================================================
+// CONFIGURACIÓN DE PAGOS (dinámica desde Supabase)
+// ================================================================
+let cachedPaymentConfig = null;
+let paymentConfigTimestamp = 0;
+const PAYMENT_CONFIG_TTL = 5 * 60 * 1000; // 5 minutos de cache
+
+export async function getPaymentConfig(supabaseClient) {
+  const now = Date.now();
+  if (cachedPaymentConfig && (now - paymentConfigTimestamp) < PAYMENT_CONFIG_TTL) {
+    return cachedPaymentConfig;
+  }
+
+  try {
+    const { data, error } = await supabaseClient
+      .from('system_config')
+      .select('payment_methods')
+      .eq('id', 'global')
+      .single();
+
+    if (error || !data?.payment_methods) {
+      console.warn('[Sloty] No se pudo cargar config de pagos, usando fallback:', error);
+      return {
+        PAGO_MOVIL: {
+          bank: 'Banco Exterior',
+          bank_code: '0115',
+          id_card: 'V-27031049',
+          phone: '04129135799',
+          holder: 'Sloty Technologies'
+        },
+        ZELLE: {
+          holder: 'Sloty Technologies',
+          email: 'pagos@slotyapp.com'
+        }
+      };
+    }
+
+    cachedPaymentConfig = data.payment_methods;
+    paymentConfigTimestamp = now;
+    return cachedPaymentConfig;
+  } catch (err) {
+    console.warn('[Sloty] Error cargando config de pagos:', err);
+    return cachedPaymentConfig || {
+      PAGO_MOVIL: {
+        bank: 'Banco Exterior',
+        bank_code: '0115',
+        id_card: 'V-27031049',
+        phone: '04129135799',
+        holder: 'Sloty Technologies'
+      },
+      ZELLE: {
+        holder: 'Sloty Technologies',
+        email: 'pagos@slotyapp.com'
+      }
+    };
+  }
+}
+
+// ================================================================
 // RESILIENCIA DE TASA BCV (CACHE TTL 6 HORAS)
 // ================================================================
 const BCV_CACHE_KEY = 'sloty_bcv_rate_cache';
@@ -804,10 +862,14 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
     });
   };
 
-  const renderPaymentForm = (method) => {
+  const renderPaymentForm = async (method) => {
     wizard.paymentMethod = method;
     const plan = wizard.selectedPlan;
     const amountBs = (plan.price * wizard.bcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2 });
+
+    // Cargar configuración de pagos desde Supabase
+    const payConfig = await getPaymentConfig(supabase);
+    const pmConfig = payConfig[method] || {};
 
     let detailsHTML = '';
     if (method === 'PAGO_MOVIL') {
@@ -816,9 +878,9 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
         <div style="font-size:0.8rem; line-height:1.5;">
           Datos oficiales de <b>Pago Móvil Sloty</b> a tasa BCV (<b>${wizard.bcvRate.toFixed(2)} Bs/$</b>):<br><br>
           <div style="background:#0f1127; border:1px solid rgba(245,197,24,0.3); border-radius:14px; padding:14px; margin-bottom:10px;">
-            <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Banco:</span> <b>Banco Exterior (0115)</b></div>
-            <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Cédula:</span> <b>V-27031049</b></div>
-            <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Teléfono:</span> <b>04129135799</b></div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Banco:</span> <b>${escapeHTML(pmConfig.bank || 'Banco Exterior')} (${escapeHTML(pmConfig.bank_code || '0115')})</b></div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Cédula:</span> <b>${escapeHTML(pmConfig.id_card || 'V-27031049')}</b></div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Teléfono:</span> <b>${escapeHTML(pmConfig.phone || '04129135799')}</b></div>
             <div style="display:flex; justify-content:space-between; color:#F5C518; font-weight:900; padding-top:6px; border-top:1px solid rgba(255,255,255,0.1);">
               <span>Monto a transferir:</span> <span>Bs. ${amountBs} ($${plan.price} USD)</span>
             </div>
@@ -832,8 +894,8 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
         <div style="font-size:0.8rem; line-height:1.5;">
           Datos oficiales para transferencia por <b>Zelle</b>:<br><br>
           <div style="background:#0f1127; border:1px solid rgba(245,197,24,0.3); border-radius:14px; padding:14px; margin-bottom:10px;">
-            <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Titular:</span> <b>Sloty Technologies</b></div>
-            <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Correo Zelle:</span> <b>pagos@slotyapp.com</b></div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Titular:</span> <b>${escapeHTML(pmConfig.holder || 'Sloty Technologies')}</b></div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Correo Zelle:</span> <b>${escapeHTML(pmConfig.email || 'pagos@slotyapp.com')}</b></div>
             <div style="display:flex; justify-content:space-between; color:#F5C518; font-weight:900; padding-top:6px; border-top:1px solid rgba(255,255,255,0.1);">
               <span>Monto Total:</span> <span>$${plan.price} USD</span>
             </div>
@@ -1022,7 +1084,29 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
         .maybeSingle();
 
       if (reqErr) {
-        console.warn('[Sloty Onboarding] Warning insertando en subscription_requests (posible fallback):', reqErr);
+        console.error('[Sloty Onboarding] Error crítico insertando solicitud:', reqErr);
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Reintentar Envío';
+        }
+        if (errMsg) {
+          errMsg.textContent = 'No pudimos registrar tu solicitud. Verifica tu conexión e intenta de nuevo, o contacta al equipo Master por WhatsApp.';
+          errMsg.style.display = 'block';
+        }
+        return;
+      }
+
+      if (!reqCreated) {
+        console.error('[Sloty Onboarding] Insert retornó null sin error');
+        if (errMsg) {
+          errMsg.textContent = 'Error inesperado al guardar. Por favor reintenta.';
+          errMsg.style.display = 'block';
+        }
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Reintentar Envío';
+        }
+        return;
       }
 
       // 4. Notificar a Master (Telegram / WhatsApp) — fire-and-forget con catch silencioso

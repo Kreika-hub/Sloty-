@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { generateBuildingCode, generateUniqueBuildingCode, validateEmail, validateVenezuelanPhone, validateReceiptFile } from '../src/modules/onboarding.js';
+import { generateBuildingCode, generateUniqueBuildingCode, getPaymentConfig, validateEmail, validateVenezuelanPhone, validateReceiptFile } from '../src/modules/onboarding.js';
 import { formatActivationWhatsAppMessage, formatRejectionWhatsAppMessage, sanitizePhoneNumber } from '../src/utils/notifier.js';
 
 console.log('🧪 Iniciando pruebas de Onboarding y Master Bóveda...');
@@ -61,7 +61,8 @@ const mockSupabase = {
   from: () => ({
     select: () => ({
       eq: () => ({
-        maybeSingle: async () => ({ data: null })
+        maybeSingle: async () => ({ data: null }),
+        single: async () => ({ data: { payment_methods: { PAGO_MOVIL: { bank: 'Banco Banesco' } } }, error: null })
       })
     })
   })
@@ -70,6 +71,11 @@ const mockSupabase = {
 const uniqueCode = await generateUniqueBuildingCode('Torre Platinum', mockSupabase);
 console.log('  ✓ Generated unique building code:', uniqueCode);
 assert.ok(uniqueCode.startsWith('PLAT-') || uniqueCode.startsWith('TORR-'), 'Unique code starts with correct prefix');
+
+// 9. Test getPaymentConfig
+const paymentConfig = await getPaymentConfig(mockSupabase);
+console.log('  ✓ Loaded payment config:', Object.keys(paymentConfig));
+assert.ok(paymentConfig.PAGO_MOVIL, 'Payment config must include PAGO_MOVIL');
 
 console.log('✅ ¡Todas las pruebas unitarias y de integración pasaron satisfactoriamente!');
 

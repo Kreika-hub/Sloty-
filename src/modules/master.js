@@ -36,6 +36,36 @@ export const initMaster = (container) => {
 
   const getState = () => getParkingState()
 
+  // ================================================================
+  // VERIFICACIÓN DE PERMISOS MASTER
+  // ================================================================
+  const requireMasterRole = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      showMasterAlert('Sesión Expirada', 'Debes iniciar sesión nuevamente.', '⛔');
+      return { allowed: false, userId: null };
+    }
+
+    const { data: profile, error: profileErr } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (profileErr || !profile) {
+      showMasterAlert('Error de Permisos', 'No se pudo verificar tu rol. Intenta de nuevo.', '⛔');
+      return { allowed: false, userId: user.id };
+    }
+
+    const allowedRoles = ['MASTER', 'ADMIN', 'SUPERADMIN'];
+    if (!allowedRoles.includes(profile.role?.toUpperCase())) {
+      showMasterAlert('Acceso Denegado', `Tu rol (${profile.role || 'desconocido'}) no tiene permisos para esta acción.`, '⛔');
+      return { allowed: false, userId: user.id };
+    }
+
+    return { allowed: true, userId: user.id };
+  };
+
   const showActivationModal = ({ buildingName, planLabel, activationCode, expiryDate, whatsappUrl, messageText, phone }) => {
     const existing = document.getElementById('activation-modal-overlay');
     if (existing) existing.remove();
@@ -616,8 +646,9 @@ export const initMaster = (container) => {
       const requestId = typeof btn === 'string' ? btn : (btn.dataset?.id || btn);
       if (!requestId) return;
 
-      const { data: { user } } = await supabase.auth.getUser();
-      const currentUserId = user?.id || null;
+      // [FIX] Verificar rol Master antes de ejecutar
+      const { allowed, userId: currentUserId } = await requireMasterRole();
+      if (!allowed) return;
 
       if (btn.tagName) {
         btn.disabled = true;
@@ -738,8 +769,9 @@ export const initMaster = (container) => {
       const requestId = typeof btn === 'string' ? btn : (btn.dataset?.id || btn);
       if (!requestId) return;
 
-      const { data: { user } } = await supabase.auth.getUser();
-      const currentUserId = user?.id || null;
+      // [FIX] Verificar rol Master antes de ejecutar
+      const { allowed, userId: currentUserId } = await requireMasterRole();
+      if (!allowed) return;
 
       showMasterPrompt({
         title: 'Rechazar Solicitud de Registro',
