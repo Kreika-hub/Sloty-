@@ -9,6 +9,58 @@ import { supabase, saveParkingState, getExchangeRate, isUUID } from '../db.js'
 import { formatProofWhatsAppMessage, notifyMasterPayment, showTermsModal, sanitizePhoneNumber } from '../utils/notifier.js'
 
 // ================================================================
+// AUTO-SAVE WIZARD STATE (TTL 24h)
+// ================================================================
+const WIZARD_SAVE_KEY = 'sloty_wizard_draft';
+const WIZARD_SAVE_TTL = 24 * 60 * 60 * 1000; // 24 horas
+
+function saveWizardState(wizard) {
+  try {
+    const payload = {
+      step: wizard.step,
+      name: wizard.name,
+      email: wizard.email,
+      phone: wizard.phone,
+      buildingName: wizard.buildingName,
+      floors: wizard.floors,
+      slots: wizard.slots,
+      lat: wizard.lat,
+      lng: wizard.lng,
+      city: wizard.city,
+      address: wizard.address,
+      selectedPlanId: wizard.selectedPlan?.id || 'PLATA',
+      paymentMethod: wizard.paymentMethod,
+      bcvRate: wizard.bcvRate,
+      bcvWarning: wizard.bcvWarning,
+      timestamp: Date.now()
+    };
+    localStorage.setItem(WIZARD_SAVE_KEY, JSON.stringify(payload));
+  } catch (e) {
+    console.warn('[Sloty] No se pudo guardar borrador:', e);
+  }
+}
+
+function loadWizardState() {
+  try {
+    const raw = localStorage.getItem(WIZARD_SAVE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    const age = Date.now() - (data.timestamp || 0);
+    if (age > WIZARD_SAVE_TTL) {
+      localStorage.removeItem(WIZARD_SAVE_KEY);
+      return null;
+    }
+    return data;
+  } catch (e) {
+    return null;
+  }
+}
+
+function clearWizardState() {
+  localStorage.removeItem(WIZARD_SAVE_KEY);
+}
+
+// ================================================================
 // CONSTANTES Y CONFIGURACIÓN DE PLANES (SIN IVA)
 // ================================================================
 export const PLANS = [
@@ -437,6 +489,26 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
     proofUrl: null
   };
 
+  // [FIX 1] Cargar borrador si existe
+  const draft = loadWizardState();
+  if (draft) {
+    wizard.step = draft.step || 1;
+    wizard.name = draft.name || '';
+    wizard.email = draft.email || '';
+    wizard.phone = draft.phone || '';
+    wizard.buildingName = draft.buildingName || '';
+    wizard.floors = draft.floors || 1;
+    wizard.slots = draft.slots || 30;
+    wizard.lat = draft.lat || null;
+    wizard.lng = draft.lng || null;
+    wizard.city = draft.city || '';
+    wizard.address = draft.address || '';
+    wizard.selectedPlan = PLANS.find(p => p.id === draft.selectedPlanId) || PLANS[2];
+    wizard.paymentMethod = draft.paymentMethod || 'PAGO_MOVIL';
+    wizard.bcvRate = draft.bcvRate || 40.0;
+    wizard.bcvWarning = draft.bcvWarning || false;
+  }
+
   // Cargar Tasa BCV con Fallback y Cache TTL de 6h
   const bcvData = await getExchangeRateWithFallback();
   wizard.bcvRate = bcvData.rate;
@@ -469,6 +541,21 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
       <button id="btn-close-onboarding" style="background: rgba(255,255,255,0.08); border: none; color: #aaa; width: 32px; height: 32px; border-radius: 50%; font-weight: 900; cursor: pointer;">✕</button>
     </div>
 
+    <!-- [FIX 4] BARRA DE PROGRESO -->
+    <div id="wizard-progress-bar" style="background: rgba(0,0,0,0.4); padding: 10px 20px; flex-shrink: 0;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+        <span id="wizard-progress-text" style="font-size: 0.65rem; color: #F5C518; font-weight: 900; text-transform: uppercase; letter-spacing: 1px;">
+          Paso 1 de 6
+        </span>
+        <span id="wizard-progress-pct" style="font-size: 0.65rem; color: rgba(255,255,255,0.5); font-weight: 700;">
+          16%
+        </span>
+      </div>
+      <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden;">
+        <div id="wizard-progress-fill" style="width: 16.6%; height: 100%; background: #F5C518; border-radius: 2px; transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);"></div>
+      </div>
+    </div>
+
     <!-- AREA DE MENSAJES -->
     <div id="sloty-chat-timeline" style="flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px;">
       <!-- Mensajes dinámicos aquí -->
@@ -485,10 +572,151 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
   const timeline = wrapper.querySelector('#sloty-chat-timeline');
   const inputBar = wrapper.querySelector('#sloty-chat-input-bar');
 
+  // [FIX 3] Reemplazar confirm() por showSlotyConfirm al salir
+  const showSlotyAlert = ({ title, message, icon = 'ℹ️', buttonText = 'ENTENDIDO', onClose }) => {
+    const existing = document.getElementById('sloty-alert-modal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'sloty-alert-modal';
+    modal.style.cssText = `
+      position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px);
+      z-index: 100000; display: flex; align-items: center; justify-content: center;
+      padding: 20px; font-family: 'Montserrat', sans-serif; animation: slotyFadeSlide 0.2s ease;
+    `;
+    modal.innerHTML = `
+      <div style="background: #1a1a2e; border-radius: 24px; padding: 28px 24px; width: 100%; max-width: 360px;
+                  text-align: center; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 25px 60px rgba(0,0,0,0.6);">
+        <div style="font-size: 2.5rem; margin-bottom: 12px;">${icon}</div>
+        <div style="font-size: 1.1rem; font-weight: 900; color: white; margin-bottom: 8px;">${escapeHTML(title)}</div>
+        <div style="font-size: 0.8rem; color: rgba(255,255,255,0.7); line-height: 1.5; margin-bottom: 24px;">${escapeHTML(message)}</div>
+        <button id="sloty-alert-btn" style="width: 100%; padding: 14px; background: #F5C518; color: #1a1a2e;
+                    border: none; border-radius: 14px; font-weight: 900; font-size: 0.85rem; cursor: pointer;
+                    text-transform: uppercase; letter-spacing: 0.5px;">
+          ${escapeHTML(buttonText)}
+        </button>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    modal.querySelector('#sloty-alert-btn').onclick = () => {
+      modal.remove();
+      if (onClose) onClose();
+    };
+  };
+
+  const showSlotyConfirm = ({ title, message, icon = '⚠️', confirmText = 'CONFIRMAR', cancelText = 'CANCELAR', onConfirm, onCancel }) => {
+    const existing = document.getElementById('sloty-confirm-modal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'sloty-confirm-modal';
+    modal.style.cssText = `
+      position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px);
+      z-index: 100000; display: flex; align-items: center; justify-content: center;
+      padding: 20px; font-family: 'Montserrat', sans-serif; animation: slotyFadeSlide 0.2s ease;
+    `;
+    modal.innerHTML = `
+      <div style="background: #1a1a2e; border-radius: 24px; padding: 28px 24px; width: 100%; max-width: 360px;
+                  text-align: center; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 25px 60px rgba(0,0,0,0.6);">
+        <div style="font-size: 2.5rem; margin-bottom: 12px;">${icon}</div>
+        <div style="font-size: 1.1rem; font-weight: 900; color: white; margin-bottom: 8px;">${escapeHTML(title)}</div>
+        <div style="font-size: 0.8rem; color: rgba(255,255,255,0.7); line-height: 1.5; margin-bottom: 24px;">${escapeHTML(message)}</div>
+        <div style="display: flex; gap: 10px;">
+          <button id="sloty-confirm-cancel" style="flex: 1; padding: 14px; background: rgba(255,255,255,0.08);
+                      color: white; border: none; border-radius: 12px; font-weight: 900; font-size: 0.75rem;
+                      cursor: pointer; text-transform: uppercase;">
+            ${escapeHTML(cancelText)}
+          </button>
+          <button id="sloty-confirm-ok" style="flex: 1.5; padding: 14px; background: #e63946;
+                      color: white; border: none; border-radius: 12px; font-weight: 900; font-size: 0.75rem;
+                      cursor: pointer; text-transform: uppercase;">
+            ${escapeHTML(confirmText)}
+          </button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    modal.querySelector('#sloty-confirm-cancel').onclick = () => {
+      modal.remove();
+      if (onCancel) onCancel();
+    };
+    modal.querySelector('#sloty-confirm-ok').onclick = () => {
+      modal.remove();
+      if (onConfirm) onConfirm();
+    };
+  };
+
   wrapper.querySelector('#btn-close-onboarding').onclick = () => {
-    if (confirm('¿Deseas salir del asistente de registro?')) {
-      wrapper.remove();
-      if (onComplete) onComplete();
+    showSlotyConfirm({
+      title: '¿Salir del registro?',
+      message: 'Tu progreso se guardará automáticamente y podrás continuar después.',
+      icon: '🚪',
+      confirmText: 'SÍ, SALIR',
+      cancelText: 'SEGUIR AQUÍ',
+      onConfirm: () => {
+        saveWizardState(wizard);
+        wrapper.remove();
+        if (onComplete) onComplete();
+      }
+    });
+  };
+
+  // [FIX 4] Helper para actualizar progreso
+  const TOTAL_STEPS = 6;
+  const updateProgress = (currentStep) => {
+    const progressText = document.getElementById('wizard-progress-text');
+    const progressPct = document.getElementById('wizard-progress-pct');
+    const progressFill = document.getElementById('wizard-progress-fill');
+    if (!progressText || !progressFill) return;
+
+    const pct = Math.round((currentStep / TOTAL_STEPS) * 100);
+    progressText.textContent = `Paso ${currentStep} de ${TOTAL_STEPS}`;
+    if (progressPct) progressPct.textContent = `${pct}%`;
+    progressFill.style.width = `${pct}%`;
+
+    if (pct >= 80) {
+      progressFill.style.background = '#22c55e'; // Verde al final
+    } else {
+      progressFill.style.background = '#F5C518'; // Amarillo en el proceso
+    }
+  };
+
+  // [FIX 2] Helper de navegación bidireccional
+  const goToStep = (targetStep) => {
+    wizard.step = targetStep;
+    saveWizardState(wizard);
+    timeline.innerHTML = ''; // Limpiar chat para reconstruir
+    switch (targetStep) {
+      case 1: startStep1(); break;
+      case 2: startStep2(); break;
+      case 3: startStep3(); break;
+      case 4: startStep4Location(); break;
+      case 5: startStep5PlanSelection(); break;
+      case 6: startStep6Payment(); break;
+      default: startStep1();
+    }
+  };
+
+  const renderBackButton = (currentStep) => {
+    if (currentStep <= 1) return '';
+    return `
+      <button id="btn-wizard-back" type="button"
+        style="padding: 10px 14px; background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.6);
+               border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; font-weight: 800;
+               font-size: 0.75rem; cursor: pointer; display: flex; align-items: center; gap: 6px;
+               margin-bottom: 8px; width: fit-content;">
+        ← Volver al paso anterior
+      </button>
+    `;
+  };
+
+  const attachBackHandler = (currentStep) => {
+    const backBtn = document.getElementById('btn-wizard-back');
+    if (backBtn) {
+      backBtn.onclick = () => {
+        appendUserBubble('← Volver');
+        goToStep(currentStep - 1);
+      };
     }
   };
 
@@ -553,6 +781,10 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
 
   // PASO 1: Bienvenida y Nombre del Administrador
   const startStep1 = () => {
+    wizard.step = 1;
+    updateProgress(1); // [FIX 4]
+    saveWizardState(wizard); // [FIX 1]
+
     appendSlotBubble(`
       ¡Hola! 👋 Soy <b>Slot</b>, tu asistente de bienvenida en Sloty.<br><br>
       Configuraremos el estacionamiento de tu condominio en unos sencillos pasos.<br>
@@ -560,7 +792,7 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
     `, 'happy', () => {
       inputBar.innerHTML = `
         <form id="sloty-form-step1" style="display: flex; gap: 8px;">
-          <input id="sloty-input-name" type="text" placeholder="Ej: Carlos Mendoza" required autocomplete="name"
+          <input id="sloty-input-name" type="text" placeholder="Ej: Carlos Mendoza" value="${escapeHTML(wizard.name || '')}" required autocomplete="name"
             style="flex: 1; padding: 14px 16px; border-radius: 14px; border: 2px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.25); color: white; font-family: 'Montserrat', sans-serif; font-size: 0.9rem; font-weight: 700; outline: none;" />
           <button type="submit" style="padding: 14px 20px; background: #F5C518; color: #1a1a2e; border: none; border-radius: 14px; font-weight: 900; font-size: 0.9rem; cursor: pointer;">
             ➔
@@ -574,6 +806,8 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
         const val = input.value.trim();
         if (!val || val.length < 3) return;
         wizard.name = val;
+        wizard.step = 2;
+        saveWizardState(wizard); // [FIX 1] Guardar progreso
         appendUserBubble(val);
         startStep2();
       };
@@ -582,17 +816,22 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
 
   // PASO 2: Correo Electrónico y Teléfono WhatsApp
   const startStep2 = () => {
+    wizard.step = 2;
+    updateProgress(2); // [FIX 4]
+    saveWizardState(wizard); // [FIX 1]
+
     appendSlotBubble(`
       ¡Mucho gusto, <b>${escapeHTML(wizard.name)}</b>! 🤝<br><br>
       Necesito tus datos de contacto directo para entregarte el acceso y las alertas del sistema:<br>
       <b>Correo Electrónico y Teléfono WhatsApp</b>
     `, 'talking', () => {
       inputBar.innerHTML = `
+        ${renderBackButton(2)}
         <form id="sloty-form-step2" style="display: flex; flex-direction: column; gap: 10px;">
-          <input id="sloty-input-email" type="email" placeholder="Correo electrónico (Ej: admin@condominio.com)" required autocomplete="email"
+          <input id="sloty-input-email" type="email" placeholder="Correo electrónico (Ej: admin@condominio.com)" value="${escapeHTML(wizard.email || '')}" required autocomplete="email"
             style="padding: 14px 16px; border-radius: 14px; border: 2px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.25); color: white; font-family: 'Montserrat', sans-serif; font-size: 0.85rem; font-weight: 700; outline: none;" />
           <div style="display: flex; gap: 8px;">
-            <input id="sloty-input-phone" type="tel" placeholder="WhatsApp (Ej: 04121234567)" required autocomplete="tel"
+            <input id="sloty-input-phone" type="tel" placeholder="WhatsApp (Ej: 04121234567)" value="${escapeHTML(wizard.phone || '')}" required autocomplete="tel"
               style="flex: 1; padding: 14px 16px; border-radius: 14px; border: 2px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.25); color: white; font-family: 'Montserrat', sans-serif; font-size: 0.85rem; font-weight: 700; outline: none;" />
             <button type="submit" style="padding: 14px 20px; background: #F5C518; color: #1a1a2e; border: none; border-radius: 14px; font-weight: 900; font-size: 0.9rem; cursor: pointer;">
               ➔
@@ -601,6 +840,8 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
           <div id="step2-error" style="color: #ef4444; font-size: 0.75rem; font-weight: 700; display: none;"></div>
         </form>
       `;
+      attachBackHandler(2);
+
       const emailInput = document.getElementById('sloty-input-email');
       const phoneInput = document.getElementById('sloty-input-phone');
       const errEl = document.getElementById('step2-error');
@@ -628,6 +869,8 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
         errEl.style.display = 'none';
         wizard.email = em;
         wizard.phone = sanitizePhoneNumber(ph);
+        wizard.step = 3;
+        saveWizardState(wizard); // [FIX 1] Guardar progreso
         appendUserBubble(`${em} · ${ph}`);
         startStep3();
       };
@@ -636,18 +879,23 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
 
   // PASO 3: Nombre del Edificio y Capacidad
   const startStep3 = () => {
+    wizard.step = 3;
+    updateProgress(3); // [FIX 4]
+    saveWizardState(wizard); // [FIX 1]
+
     appendSlotBubble(`
       Excelente. Ahora cuéntame los detalles del inmueble 🏢:<br><br>
       <b>¿Cómo se llama el edificio/condominio y cuántos puestos de estacionamiento tiene?</b>
     `, 'thinking', () => {
       inputBar.innerHTML = `
+        ${renderBackButton(3)}
         <form id="sloty-form-step3" style="display: flex; flex-direction: column; gap: 10px;">
-          <input id="sloty-input-bld-name" type="text" placeholder="Nombre del Edificio (Ej: Residencias Los Rosales)" required
+          <input id="sloty-input-bld-name" type="text" placeholder="Nombre del Edificio (Ej: Residencias Los Rosales)" value="${escapeHTML(wizard.buildingName || '')}" required
             style="padding: 14px 16px; border-radius: 14px; border: 2px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.25); color: white; font-family: 'Montserrat', sans-serif; font-size: 0.85rem; font-weight: 700; outline: none;" />
           <div style="display: flex; gap: 8px;">
-            <input id="sloty-input-bld-floors" type="number" min="1" max="10" value="1" placeholder="Niveles" title="Niveles"
+            <input id="sloty-input-bld-floors" type="number" min="1" max="10" value="${wizard.floors || 1}" placeholder="Niveles" title="Niveles"
               style="width: 80px; padding: 14px 12px; border-radius: 14px; border: 2px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.25); color: white; font-family: 'Montserrat', sans-serif; font-size: 0.85rem; font-weight: 700; outline: none; text-align: center;" />
-            <input id="sloty-input-bld-slots" type="number" min="1" max="2000" value="30" placeholder="Puestos" title="Puestos"
+            <input id="sloty-input-bld-slots" type="number" min="1" max="2000" value="${wizard.slots || 30}" placeholder="Puestos" title="Puestos"
               style="flex: 1; padding: 14px 16px; border-radius: 14px; border: 2px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.25); color: white; font-family: 'Montserrat', sans-serif; font-size: 0.85rem; font-weight: 700; outline: none;" />
             <button type="submit" style="padding: 14px 20px; background: #F5C518; color: #1a1a2e; border: none; border-radius: 14px; font-weight: 900; font-size: 0.9rem; cursor: pointer;">
               ➔
@@ -655,6 +903,8 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
           </div>
         </form>
       `;
+      attachBackHandler(3);
+
       const nameInput = document.getElementById('sloty-input-bld-name');
       const floorsInput = document.getElementById('sloty-input-bld-floors');
       const slotsInput = document.getElementById('sloty-input-bld-slots');
@@ -667,6 +917,8 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
         wizard.buildingName = bName;
         wizard.floors = parseInt(floorsInput.value) || 1;
         wizard.slots = parseInt(slotsInput.value) || 30;
+        wizard.step = 4;
+        saveWizardState(wizard); // [FIX 1] Guardar progreso
         appendUserBubble(`${bName} (${wizard.floors} nivel(es), ~${wizard.slots} puestos)`);
         startStep4Location();
       };
@@ -675,11 +927,16 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
 
   // PASO 4: Geolocalización GPS con Fallback Suave
   const startStep4Location = () => {
+    wizard.step = 4;
+    updateProgress(4); // [FIX 4]
+    saveWizardState(wizard); // [FIX 1]
+
     appendSlotBubble(`
       Para brindarte soporte en sitio y georreferenciar tu garita de control 📍:<br><br>
       <b>¿Deseas compartir la ubicación GPS del condominio o ingresarla manualmente?</b>
     `, 'happy', () => {
       inputBar.innerHTML = `
+        ${renderBackButton(4)}
         <div style="display: flex; flex-direction: column; gap: 8px;">
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
             <button id="btn-gps-auto" style="padding: 14px 10px; background: #F5C518; color: #1a1a2e; border: none; border-radius: 14px; font-weight: 900; font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
@@ -692,6 +949,7 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
           <div id="gps-status" style="font-size: 0.7rem; color: #F5C518; text-align: center; display: none;"></div>
         </div>
       `;
+      attachBackHandler(4);
 
       const gpsStatus = document.getElementById('gps-status');
 
@@ -708,6 +966,8 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
           (pos) => {
             wizard.lat = pos.coords.latitude;
             wizard.lng = pos.coords.longitude;
+            wizard.step = 5;
+            saveWizardState(wizard); // [FIX 1] Guardar progreso
             appendUserBubble(`📍 GPS Detectado: (${wizard.lat.toFixed(4)}, ${wizard.lng.toFixed(4)})`);
             startStep5PlanSelection();
           },
@@ -731,11 +991,12 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
       Indica la <b>Ciudad / Municipio</b> y una <b>Dirección de referencia</b>:
     `, 'normal', () => {
       inputBar.innerHTML = `
+        ${renderBackButton(4)}
         <form id="sloty-form-manual-loc" style="display: flex; flex-direction: column; gap: 8px;">
-          <input id="input-city" type="text" placeholder="Ciudad / Municipio (Ej: Caracas - Chacao)" required
+          <input id="input-city" type="text" placeholder="Ciudad / Municipio (Ej: Caracas - Chacao)" value="${escapeHTML(wizard.city || '')}" required
             style="padding: 12px 14px; border-radius: 12px; border: 2px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.25); color: white; font-family: 'Montserrat', sans-serif; font-size: 0.85rem; font-weight: 700; outline: none;" />
           <div style="display: flex; gap: 8px;">
-            <input id="input-address" type="text" placeholder="Dirección / Calle / Sector" required
+            <input id="input-address" type="text" placeholder="Dirección / Calle / Sector" value="${escapeHTML(wizard.address || '')}" required
               style="flex: 1; padding: 12px 14px; border-radius: 12px; border: 2px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.25); color: white; font-family: 'Montserrat', sans-serif; font-size: 0.85rem; font-weight: 700; outline: none;" />
             <button type="submit" style="padding: 12px 18px; background: #F5C518; color: #1a1a2e; border: none; border-radius: 12px; font-weight: 900; cursor: pointer;">
               ➔
@@ -743,6 +1004,7 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
           </div>
         </form>
       `;
+      attachBackHandler(4);
 
       const cityInp = document.getElementById('input-city');
       const addrInp = document.getElementById('input-address');
@@ -752,6 +1014,8 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
         e.preventDefault();
         wizard.city = cityInp.value.trim();
         wizard.address = addrInp.value.trim();
+        wizard.step = 5;
+        saveWizardState(wizard); // [FIX 1] Guardar progreso
         appendUserBubble(`📍 ${wizard.city} - ${wizard.address}`);
         startStep5PlanSelection();
       };
@@ -760,6 +1024,10 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
 
   // PASO 5: Selector Dinámico de Planes con Conversión BCV en Vivo
   const startStep5PlanSelection = () => {
+    wizard.step = 5;
+    updateProgress(5); // [FIX 4]
+    saveWizardState(wizard); // [FIX 1]
+
     const plansHTML = PLANS.map(p => {
       const isSelected = p.id === wizard.selectedPlan.id;
       const amountBs = (p.price * wizard.bcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -799,6 +1067,7 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
           const found = PLANS.find(p => p.id === planId);
           if (found) {
             wizard.selectedPlan = found;
+            saveWizardState(wizard); // [FIX 1] Guardar selección
             bubble.querySelectorAll('.sloty-plan-card').forEach(c => c.classList.remove('selected'));
             card.classList.add('selected');
             updateInputBarForPlan();
@@ -810,6 +1079,7 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
         const plan = wizard.selectedPlan;
         const bsFormatted = (plan.price * wizard.bcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2 });
         inputBar.innerHTML = `
+          ${renderBackButton(5)}
           <div style="display: flex; flex-direction: column; gap: 8px;">
             <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: #aaa;">
               <span>Plan seleccionado: <b style="color:white;">Plan ${plan.name}</b></span>
@@ -820,12 +1090,15 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
             </button>
           </div>
         `;
+        attachBackHandler(5);
 
         document.getElementById('btn-confirm-plan').onclick = () => {
           appendUserBubble(`Seleccioné el Plan ${plan.name} ($${plan.price})`);
           if (plan.id === 'TRIAL') {
             submitOnboardingRequest('TRIAL', 'N/A', 'N/A', null);
           } else {
+            wizard.step = 6;
+            saveWizardState(wizard);
             startStep6Payment();
           }
         };
@@ -837,12 +1110,17 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
 
   // PASO 6: Métodos de Pago y Carga de Comprobante
   const startStep6Payment = () => {
+    wizard.step = 6;
+    updateProgress(6); // [FIX 4]
+    saveWizardState(wizard); // [FIX 1]
+
     const plan = wizard.selectedPlan;
 
     appendSlotBubble(`
       <b>¿Por cuál método deseas realizar el pago de $${plan.price} USD?</b>
     `, 'happy', () => {
       inputBar.innerHTML = `
+        ${renderBackButton(6)}
         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
           <button id="pay-pm" style="padding: 12px 6px; border-radius: 12px; border: 1px solid #F5C518; background: rgba(245,197,24,0.1); color: white; font-weight: 800; font-size: 0.75rem; cursor: pointer; text-align: center;">
             💳 Pago Móvil
@@ -855,15 +1133,30 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
           </button>
         </div>
       `;
+      attachBackHandler(6);
 
-      document.getElementById('pay-pm').onclick = () => renderPaymentForm('PAGO_MOVIL');
-      document.getElementById('pay-zelle').onclick = () => renderPaymentForm('ZELLE');
-      document.getElementById('pay-cash').onclick = () => renderPaymentForm('CASH');
+      document.getElementById('pay-pm').onclick = () => {
+        wizard.paymentMethod = 'PAGO_MOVIL';
+        saveWizardState(wizard);
+        renderPaymentForm('PAGO_MOVIL');
+      };
+      document.getElementById('pay-zelle').onclick = () => {
+        wizard.paymentMethod = 'ZELLE';
+        saveWizardState(wizard);
+        renderPaymentForm('ZELLE');
+      };
+      document.getElementById('pay-cash').onclick = () => {
+        wizard.paymentMethod = 'CASH';
+        saveWizardState(wizard);
+        renderPaymentForm('CASH');
+      };
     });
   };
 
   const renderPaymentForm = async (method) => {
     wizard.paymentMethod = method;
+    saveWizardState(wizard); // [FIX 1]
+
     const plan = wizard.selectedPlan;
     const amountBs = (plan.price * wizard.bcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2 });
 
@@ -915,6 +1208,7 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
 
     appendSlotBubble(detailsHTML, 'talking', () => {
       inputBar.innerHTML = `
+        ${renderBackButton(6)}
         <form id="sloty-form-proof" style="display:flex; flex-direction:column; gap:10px;">
           ${method !== 'CASH' ? `
             <div style="display:flex; gap:8px;">
@@ -946,6 +1240,7 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
           <div id="proof-error-msg" style="color:#ef4444; font-size:0.75rem; text-align:center; display:none; font-weight:700;"></div>
         </form>
       `;
+      attachBackHandler(6);
 
       let selectedFile = null;
       const fileInput = document.getElementById('proof-file-input');
@@ -970,8 +1265,16 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
             const f = e.target.files[0];
             const check = validateReceiptFile(f);
             if (!check.valid) {
-              alert(check.error);
-              fileInput.value = '';
+              // [FIX 3] Reemplazar alert() nativo con showSlotyAlert
+              showSlotyAlert({
+                title: 'Archivo no válido',
+                message: check.error,
+                icon: '📎',
+                buttonText: 'ENTENDIDO',
+                onClose: () => {
+                  fileInput.value = '';
+                }
+              });
               return;
             }
             selectedFile = f;
@@ -1186,6 +1489,9 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
           </button>
         </div>
       `, 'excited', (bubble) => {
+        // [FIX 1] Limpiar borrador al completar exitosamente
+        clearWizardState();
+
         const finishBtn = bubble.querySelector('#sloty-finish-btn');
         if (finishBtn) {
           finishBtn.onclick = () => {
@@ -1205,8 +1511,60 @@ export const renderOnboardingWizard = async (container, state, onComplete) => {
     }
   };
 
-  // Iniciar flujo conversacional
-  startStep1();
+  // [FIX 1] Si hay borrador previo (> paso 1), ofrecer reanudar
+  if (draft && draft.step > 1) {
+    const resumeStepNames = {
+      1: 'bienvenida',
+      2: 'datos de contacto',
+      3: 'datos del edificio',
+      4: 'ubicación',
+      5: 'selección de plan',
+      6: 'método de pago'
+    };
+    const stepName = resumeStepNames[draft.step] || 'donde lo dejaste';
+    appendSlotBubble(`
+      ¡Hola de nuevo, <b>${escapeHTML(wizard.name || 'Administrador')}</b>! 👋<br><br>
+      Detectamos que tenías un registro en progreso (<b>${stepName}</b>).<br>
+      ¿Deseas continuar desde donde lo dejaste o empezar de nuevo?
+    `, 'happy', () => {
+      inputBar.innerHTML = `
+        <div style="display:flex; gap:10px;">
+          <button id="btn-resume-wizard" style="flex:2; padding:14px; background:#F5C518; color:#1a1a2e; border:none; border-radius:14px; font-weight:900; font-size:0.85rem; cursor:pointer;">
+            ▶️ Continuar Registro
+          </button>
+          <button id="btn-restart-wizard" style="flex:1; padding:14px; background:rgba(255,255,255,0.08); color:white; border:1px solid rgba(255,255,255,0.2); border-radius:14px; font-weight:900; font-size:0.8rem; cursor:pointer;">
+            🔄 Empezar de Nuevo
+          </button>
+        </div>
+      `;
+
+      document.getElementById('btn-resume-wizard').onclick = () => {
+        appendUserBubble('Continuar donde lo dejé');
+        switch (wizard.step) {
+          case 2: startStep2(); break;
+          case 3: startStep3(); break;
+          case 4: startStep4Location(); break;
+          case 5: startStep5PlanSelection(); break;
+          case 6: startStep6Payment(); break;
+          default: startStep1();
+        }
+      };
+
+      document.getElementById('btn-restart-wizard').onclick = () => {
+        clearWizardState();
+        Object.assign(wizard, {
+          step: 1, name: '', email: '', phone: '', buildingName: '',
+          floors: 1, slots: 30, lat: null, lng: null, city: '', address: '',
+          selectedPlan: PLANS[2], paymentMethod: 'PAGO_MOVIL'
+        });
+        appendUserBubble('Empezar de nuevo');
+        startStep1();
+      };
+    });
+  } else {
+    // Iniciar flujo conversacional normal
+    startStep1();
+  }
 };
 
 export { PLANS as defaultPlans };
