@@ -6,6 +6,7 @@ import { initMaster } from './modules/master.js'
 import { renderOnboardingWizard } from './modules/onboarding.js'
 import { initUpdateBanner } from './pwa-update.js'
 import { formatProofWhatsAppMessage, showTermsModal } from './utils/notifier.js'
+import { DEV_CONFIG, isDevBypass } from './config/dev.config.js'
 
 const $ = id => document.getElementById(id)
 
@@ -198,24 +199,31 @@ const renderResidentLogin = () => {
     document.getElementById('btn-submit-res-login').textContent = 'Verificando...'
     const { data, error } = await supabase.from('subscriptions').select('*').eq('plate', plate).eq('pin', pin).single()
     
-    // BYPASS DESARROLLO: Si no existe, creamos uno temporal para ver el panel
+    // BYPASS DESARROLLO: Si no existe y está en modo DEV, creamos uno temporal para ver el panel
     if (error || !data) {
-       console.log('Modo Desarrollo: Creando sesión temporal de residente');
-       const mockSub = {
-         id: 'mock-id',
-         resident_name: 'Residente de Prueba',
-         plate: plate || 'TEST-123',
-         pin: pin,
-         expiry_date: new Date(Date.now() + 30*86400000).toISOString(),
-         slots_count: 1,
-         custom_price: 50,
-         is_coming: false
+       if (isDevBypass()) {
+         console.log('[DEV] Creando sesión temporal de residente');
+         const mockSub = {
+           id: 'mock-id',
+           resident_name: 'Residente de Prueba',
+           plate: plate || 'TEST-123',
+           pin: pin,
+           expiry_date: new Date(Date.now() + 30*86400000).toISOString(),
+           slots_count: 1,
+           custom_price: 50,
+           is_coming: false
+         };
+         import('./modules/resident.js').then(m => {
+            m.initResident(screens.residentPanel, mockSub);
+            showOnly('residentPanel');
+         });
+         return;
        }
-       import('./modules/resident.js').then(m => {
-          m.initResident(screens.residentPanel, mockSub)
-          showOnly('residentPanel')
-       })
-       return
+
+       // En producción: mostrar error real
+       document.getElementById('res-login-error').textContent = 'Placa o PIN incorrectos';
+       document.getElementById('btn-submit-res-login').textContent = 'ENTRAR AL PANEL';
+       return;
     }
 
     import('./modules/resident.js').then(m => {
@@ -284,8 +292,28 @@ const renderLogin = () => {
   // Activar Admin por defecto visualmente
   chips[0].click()
 
+  // ─── BYPASS DE DESARROLLO (solo en VITE_DEV) ─────────────────
+  const tryDevBypass = async (email, password, selectedRole) => {
+    if (!isDevBypass()) return null; // ← En producción, esto retorna null inmediatamente
+
+    // Master bypass
+    if (email === DEV_CONFIG.masterBypass.email && selectedRole === 'MASTER') {
+      return { type: 'MASTER', bypass: true };
+    }
+
+    // Admin bypass
+    if (email === DEV_CONFIG.adminBypass.email &&
+        password === DEV_CONFIG.adminBypass.password &&
+        selectedRole === 'ADMIN') {
+      return { type: 'ADMIN', bypass: true, building: DEV_CONFIG.demoBuilding };
+    }
+
+    return null;
+  };
+
   $('btn-login').onclick = async () => {
     const email = $('login-email').value.trim()
+    const pwd = $('login-password')?.value?.trim() || ''
     const errorEl = $('login-error')
     
     // Clear error & styling
@@ -293,9 +321,8 @@ const renderLogin = () => {
     errorEl.textContent = ''
     
     // Check which role is selected
-    // Force Master if the user types 'master' specifically to avoid them falling into admin by mistake
     let isMaster = selectedRole === 'MASTER'
-    if (email.toLowerCase() === 'master' || email.toLowerCase() === 'nucita') {
+    if (isDevBypass() && (email.toLowerCase() === 'master' || email.toLowerCase() === 'nucita')) {
         isMaster = true;
     }
     
@@ -310,38 +337,35 @@ const renderLogin = () => {
     $('btn-login').disabled = true;
 
     try {
-      // ─── BYPASS PROVISIONAL / MOCK DEV ──────────────────────────
-      const pwd = $('login-password')?.value?.trim() || ''
-      if ((email === 'nucita' || email === 'master') && isMaster) {
-        clearInterval(interval)
-        errorEl.textContent = ''
-        showOnly('main')
-        initMaster($('main-screen'))
-        return
-      }
-      if (email === 'nucita.admin' && pwd === '1234' && !isMaster) {
-        clearInterval(interval)
-        errorEl.textContent = ''
-        showOnly('main')
-        const bypassBuilding = {
-          id: 'bypass-building-id', name: 'Edificio Nucita (Demo)',
-          code: 'NUC-001', plan: 'ORO', membership_status: 'ACTIVE',
-          admin_email: 'nucita.admin@sloty.com'
+      // 1. Intentar bypass de desarrollo (solo en DEV)
+      const devResult = await tryDevBypass(email, pwd, selectedRole);
+      if (devResult) {
+        clearInterval(interval);
+        errorEl.textContent = '';
+        if (devResult.type === 'MASTER') {
+          showOnly('main');
+          initMaster($('main-screen'));
+          return;
         }
-        const bypassState = {
-          buildingId: bypassBuilding.id, buildingName: bypassBuilding.name,
-          buildingCode: bypassBuilding.code, plan: 'ORO',
-          membership_status: 'ACTIVE', adminInfo: { email: bypassBuilding.admin_email, registered: true },
-          levels: [], personnel: [], movements: [], isBypass: true
+        if (devResult.type === 'ADMIN') {
+          showOnly('main');
+          const demoState = {
+            buildingId: devResult.building.id,
+            buildingName: devResult.building.name,
+            buildingCode: devResult.building.code,
+            plan: devResult.building.plan,
+            membership_status: devResult.building.membership_status,
+            adminInfo: { email, registered: true },
+            levels: [], personnel: [], movements: []
+          };
+          localStorage.setItem('sloty_state', JSON.stringify(demoState));
+          initAdmin($('main-screen'));
+          return;
         }
-        localStorage.setItem('sloty_state', JSON.stringify(bypassState))
-        initAdmin($('main-screen'))
-        return
       }
-      // ─────────────────────────────────────────────────────────────
 
-      // AUTENTICACIÓN REAL CON SUPABASE AUTH
-      if (email !== 'admin@test.com') {
+      // 2. Autenticación REAL (flujo normal con Supabase Auth)
+      if (email !== 'admin@test.com' || !isDevBypass()) {
         const authRes = await login(email, pwd)
         if (authRes.error) {
           clearInterval(interval)
@@ -361,8 +385,8 @@ const renderLogin = () => {
       }
 
       let building;
-      // Fast path for mocks
-      if (!isMaster && (email === 'admin@test.com' || email === 'nucita.admin')) {
+      // Fast path for mocks in DEV
+      if (isDevBypass() && !isMaster && (email === 'admin@test.com' || email === 'nucita.admin')) {
           // Skip DB fetch to make mock instant
       } else if (email && !isMaster) {
         try {
@@ -383,7 +407,6 @@ const renderLogin = () => {
         }
       }
 
-      // DEV BYPASS: always bypass if not found
       let resolvedBuilding = building
       if (resolvedBuilding && isUUID(resolvedBuilding.id)) {
          try {
@@ -394,91 +417,100 @@ const renderLogin = () => {
          } catch(e) { console.warn('Could not fetch membership expiry') }
       }
       if (!resolvedBuilding && !isMaster) {
-         console.warn('[Sloty] Network or missing building. Creating rich DEV demo state instantly.')
-         const demoState = {
-           buildingId: '00000000-0000-0000-0000-000000000001',
-           buildingName: 'Edificio de Prueba (Demo)',
-           buildingCode: 'DEV-123',
-           plan: 'ORO',
-           membership_status: 'ACTIVE',
-           onboarding_completed: true,
-           isBypass: true,
-           adminInfo: { name: 'Administrador Demo', email: email || 'admin@test.com', registered: true },
-           levels: [
-             {
-               name: 'Planta Baja (PB)',
-               collapsed: false,
-               color: '#38bdf8',
-               slots: [
-                 { label: 'PB-01', status: 'OCCUPIED', category: 'RESIDENTE' },
-                 { label: 'PB-02', status: 'AVAILABLE', category: 'VISITANTE' },
-                 { label: 'PB-03', status: 'OCCUPIED', category: 'VISITANTE' },
-                 { label: 'PB-04', status: 'AVAILABLE', category: 'MERCADO' },
-                 { label: 'PB-05', status: 'OCCUPIED', category: 'RESIDENTE' },
-                 { label: 'PB-06', status: 'AVAILABLE', category: 'VISITANTE' }
-               ]
-             },
-             {
-               name: 'Piso 1 (E-1)',
-               collapsed: false,
-               color: '#F5C518',
-               slots: [
-                 { label: 'E1-01', status: 'AVAILABLE', category: 'RESIDENTE' },
-                 { label: 'E1-02', status: 'OCCUPIED', category: 'RESIDENTE' },
-                 { label: 'E1-03', status: 'AVAILABLE', category: 'VISITANTE' },
-                 { label: 'E1-04', status: 'AVAILABLE', category: 'VISITANTE' }
-               ]
-             }
-           ],
-           personnel: [
-             { id: 'p-1', name: 'Carlos Guardia (Día)', phone: '+584120000001', shift: 'MAÑANA', pin: '1234' },
-             { id: 'p-2', name: 'José Martínez (Noche)', phone: '+584140000002', shift: 'NOCHE', pin: '5678' }
-           ],
-           movements: [
-             {
-               id: `m-${Date.now() - 3600000}`,
-               type: 'INGRESO',
-               timestamp: new Date(Date.now() - 3600000).toISOString(),
-               plate: 'ABC123X',
-               slot: 'PB-01',
-               category: 'VISITANTE',
-               guardName: 'Carlos Guardia',
-               payMethod: 'EFECTIVO_USD',
-               amount: 2.0,
-               amount_usd: 2.0,
-               amount_bs: 80.0,
-               bcv_rate_used: 40.0,
-               closed: false
-             }
-           ],
-           stats: {
-             totalCollected: 2.0,
-             totalSpots: 10,
-             occupied: 4,
-             debt: 0
-           },
-           settings: {
-             freeHours: 8, baseRate: 1, extraPerHour: 0, rentalSlotsCap: null,
-             customFields: [ 
-                { id: 'torre', label: 'Torre', required: true }, 
-                { id: 'piso', label: 'Piso', required: true }, 
-                { id: 'apto', label: 'Apartamento', required: true } 
-             ],
-             categories: [
-               { id:'VISITANTE', label:'Visitante', color:'#F5C518', tag:'V', txt:'#000000', maxHours: 8 },
-               { id:'RESIDENTE', label:'Residente', color:'#38bdf8', tag:'R', txt:'white', maxHours: null },
-               { id:'MERCADO', label:'Mercado', color:'#22c55e', tag:'M', txt:'white', maxHours: 0.5 }
-             ]
-           }
-         }
-         localStorage.setItem('sloty_state', JSON.stringify(demoState))
-         resolvedBuilding = {
-           id: demoState.buildingId,
-           name: demoState.buildingName,
-           code: demoState.buildingCode,
-           plan: 'ORO',
-           membership_status: 'ACTIVE',
-           admin_email: email || 'admin@test.com'
+         if (isDevBypass()) {
+            console.warn('[Sloty] Network or missing building. Creating rich DEV demo state instantly.')
+            const demoState = {
+              buildingId: '00000000-0000-0000-0000-000000000001',
+              buildingName: 'Edificio de Prueba (Demo)',
+              buildingCode: 'DEV-123',
+              plan: 'ORO',
+              membership_status: 'ACTIVE',
+              onboarding_completed: true,
+              isBypass: true,
+              adminInfo: { name: 'Administrador Demo', email: email || 'admin@test.com', registered: true },
+              levels: [
+                {
+                  name: 'Planta Baja (PB)',
+                  collapsed: false,
+                  color: '#38bdf8',
+                  slots: [
+                    { label: 'PB-01', status: 'OCCUPIED', category: 'RESIDENTE' },
+                    { label: 'PB-02', status: 'AVAILABLE', category: 'VISITANTE' },
+                    { label: 'PB-03', status: 'OCCUPIED', category: 'VISITANTE' },
+                    { label: 'PB-04', status: 'AVAILABLE', category: 'MERCADO' },
+                    { label: 'PB-05', status: 'OCCUPIED', category: 'RESIDENTE' },
+                    { label: 'PB-06', status: 'AVAILABLE', category: 'VISITANTE' }
+                  ]
+                },
+                {
+                  name: 'Piso 1 (E-1)',
+                  collapsed: false,
+                  color: '#F5C518',
+                  slots: [
+                    { label: 'E1-01', status: 'AVAILABLE', category: 'RESIDENTE' },
+                    { label: 'E1-02', status: 'OCCUPIED', category: 'RESIDENTE' },
+                    { label: 'E1-03', status: 'AVAILABLE', category: 'VISITANTE' },
+                    { label: 'E1-04', status: 'AVAILABLE', category: 'VISITANTE' }
+                  ]
+                }
+              ],
+              personnel: [
+                { id: 'p-1', name: 'Carlos Guardia (Día)', phone: '+584120000001', shift: 'MAÑANA', pin: '1234' },
+                { id: 'p-2', name: 'José Martínez (Noche)', phone: '+584140000002', shift: 'NOCHE', pin: '5678' }
+              ],
+              movements: [
+                {
+                  id: `m-${Date.now() - 3600000}`,
+                  type: 'INGRESO',
+                  timestamp: new Date(Date.now() - 3600000).toISOString(),
+                  plate: 'ABC123X',
+                  slot: 'PB-01',
+                  category: 'VISITANTE',
+                  guardName: 'Carlos Guardia',
+                  payMethod: 'EFECTIVO_USD',
+                  amount: 2.0,
+                  amount_usd: 2.0,
+                  amount_bs: 80.0,
+                  bcv_rate_used: 40.0,
+                  closed: false
+                }
+              ],
+              stats: {
+                totalCollected: 2.0,
+                totalSpots: 10,
+                occupied: 4,
+                debt: 0
+              },
+              settings: {
+                freeHours: 8, baseRate: 1, extraPerHour: 0, rentalSlotsCap: null,
+                customFields: [ 
+                   { id: 'torre', label: 'Torre', required: true }, 
+                   { id: 'piso', label: 'Piso', required: true }, 
+                   { id: 'apto', label: 'Apartamento', required: true } 
+                ],
+                categories: [
+                  { id:'VISITANTE', label:'Visitante', color:'#F5C518', tag:'V', txt:'#000000', maxHours: 8 },
+                  { id:'RESIDENTE', label:'Residente', color:'#38bdf8', tag:'R', txt:'white', maxHours: null },
+                  { id:'MERCADO', label:'Mercado', color:'#22c55e', tag:'M', txt:'white', maxHours: 0.5 }
+                ]
+              }
+            }
+            localStorage.setItem('sloty_state', JSON.stringify(demoState))
+            resolvedBuilding = {
+              id: demoState.buildingId,
+              name: demoState.buildingName,
+              code: demoState.buildingCode,
+              plan: 'ORO',
+              membership_status: 'ACTIVE',
+              admin_email: email || 'admin@test.com'
+            }
+         } else {
+            // En producción: mostrar error de conexión/edificio no encontrado
+            clearInterval(interval);
+            errorEl.style.color = '#e63946';
+            errorEl.textContent = 'Edificio no encontrado. Verifica tu correo o contacta soporte.';
+            $('btn-login').disabled = false;
+            return;
          }
       }
       
@@ -508,11 +540,10 @@ const renderLogin = () => {
         localStorage.setItem('sloty_state', JSON.stringify(newState))
       }
 
-      // --- NUEVAS VALIDACIONES DE MEMBRESÍA ---
+      // --- VALIDACIONES DE MEMBRESÍA ---
       
       // 1. Bloqueo por pago pendiente
-      // BYPASS DESARROLLO: Desactivado temporalmente para poder continuar editando.
-      if (false && (resolvedBuilding.membership_status === 'PENDING_CASH' || resolvedBuilding.membership_status === 'PENDING_PROOF')) {
+      if (!isDevBypass() && (resolvedBuilding.membership_status === 'PENDING_CASH' || resolvedBuilding.membership_status === 'PENDING_PROOF')) {
           const type = resolvedBuilding.membership_status === 'PENDING_CASH' ? 'CASH' : 'PROOF'
           const planObj = { label: resolvedBuilding.plan || 'Plan Seleccionado', price: 'Pendiente de cobro' }
           renderPendingScreen(type, planObj)
@@ -523,22 +554,22 @@ const renderLogin = () => {
       let isExpired = false;
       
       if (resolvedBuilding.plan === 'TRIAL') {
-          // BYPASS DESARROLLO: Trial ilimitado
-          newState.trialDaysLeft = 9999;
-          localStorage.setItem('sloty_state', JSON.stringify(newState));
+          if (isDevBypass()) {
+            const curState = JSON.parse(localStorage.getItem('sloty_state') || '{}');
+            curState.trialDaysLeft = 9999;
+            localStorage.setItem('sloty_state', JSON.stringify(curState));
+          }
       } else {
           // Si es ORO, PLATA, BRONCE
           if (resolvedBuilding.membership_expiry) {
               const expiry = new Date(resolvedBuilding.membership_expiry);
               if (new Date() > expiry) isExpired = true;
           } else {
-              // Si no tiene fecha, lo procesamos como vencido (esperando primer pago)
               isExpired = true;
           }
       }
 
-      // BYPASS DESARROLLO: Desactivado temporalmente añadiendo "false &&"
-      if (false && isExpired && resolvedBuilding.membership_status !== 'SUSPENDED') {
+      if (!isDevBypass() && isExpired && resolvedBuilding.membership_status !== 'SUSPENDED') {
           // Candado Soft: Permite cargar UI pero bloquea todos los clics y despliega banner.
           window.__slotyExpired = true;
           
@@ -572,11 +603,11 @@ const renderLogin = () => {
     } catch (err) {
       clearInterval(interval);
       errorEl.style.color = '#e63946';
-      errorEl.textContent = 'Error de conexión'
-      $('btn-login').disabled = false
-      console.error(err)
+      errorEl.textContent = 'Error de conexión';
+      $('btn-login').disabled = false;
+      console.error(err);
     }
-  }
+  };
 }
 
 // ─── REGISTER SCREEN (ONBOARDING WIZARD V3 CON SLOT) ───────────

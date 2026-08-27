@@ -2,10 +2,48 @@
  * Admin Finance — Live cash, payments, audits and reports (FINANCE tab)
  * Extracted from admin.js (Phase C Lot 2 refactor)
  */
-import { supabase, getParkingState, saveParkingState, logAudit, showToast, getExchangeRate, enqueueSync } from '../../db.js'
+import { supabase, getParkingState, saveParkingState, logAudit, showToast, getExchangeRate, enqueueSync, isUUID } from '../../db.js'
 import { escapeHTML } from '../../utils/sanitize.js'
 import { ICONS } from './admin-ui-components.js'
 import { store, getExpensesCached, invalidateExpensesCache, hasFeature } from './admin-store.js'
+
+// ─── PAGOS PENDIENTES DE RESIDENTES ──────────────────────────
+export const loadPendingPayments = async () => {
+  const state = getParkingState();
+  if (!state.buildingId || !isUUID(state.buildingId)) {
+    store.pendingPayments = [];
+    return;
+  }
+  try {
+    const { data, error } = await supabase
+      .from('payments')
+      .select(`
+        id,
+        amount,
+        payment_method,
+        reference,
+        proof_image,
+        status,
+        created_at,
+        subscriptions (
+          id,
+          resident_name,
+          plate,
+          phone,
+          expiry_date
+        )
+      `)
+      .eq('building_id', state.buildingId)
+      .eq('status', 'PENDING')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    store.pendingPayments = data || [];
+  } catch (err) {
+    console.warn('[Sloty Finance] Error cargando pagos pendientes:', err);
+    store.pendingPayments = [];
+  }
+};
 
 // ─── FINANCE TAB RENDERER (FINANCE) ───────────────────────────
 export const renderFinanceSummary = async (state) => {
@@ -71,8 +109,58 @@ export const renderFinanceSummary = async (state) => {
     });
   }, 50);
 
-  const rateVal = store.currentBcv?.rate || 40.0;
-  const netBalanceBs = netBalanceMonth * rateVal;
+  await loadPendingPayments();
+  const pendingPayments = store.pendingPayments || [];
+  const pendingSection = pendingPayments.length > 0 ? `
+    <div style="background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%); border: 2px solid #f59e0b; border-radius: 24px; padding: 24px; margin-bottom: 24px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 1.5rem;">⏳</span>
+          <div>
+            <div style="font-size: 0.9rem; font-weight: 900; color: #92400e;">PAGOS POR CONFIRMAR</div>
+            <div style="font-size: 0.65rem; font-weight: 700; color: #b45309;">${pendingPayments.length} residente${pendingPayments.length !== 1 ? 's' : ''} esperando aprobación</div>
+          </div>
+        </div>
+        <span style="background: #f59e0b; color: white; font-size: 0.6rem; font-weight: 900; padding: 4px 12px; border-radius: 50px;">PENDIENTES</span>
+      </div>
+      <div style="display: grid; gap: 12px;">
+        ${pendingPayments.map(p => {
+          const sub = p.subscriptions || {};
+          const createdAt = new Date(p.created_at).toLocaleString('es-VE');
+          return `
+            <div style="background: white; border-radius: 16px; padding: 16px; border: 1px solid #fde68a; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+              <div style="flex: 1; min-width: 200px;">
+                <div style="font-size: 0.85rem; font-weight: 900; color: #1a1a2e;">${escapeHTML(sub.resident_name || 'Sin nombre')}</div>
+                <div style="font-size: 0.65rem; font-weight: 700; color: #666; margin-top: 2px;">
+                  ${escapeHTML(sub.plate || '---')} ・ ${escapeHTML(sub.phone || '---')}
+                </div>
+                <div style="font-size: 0.6rem; font-weight: 700; color: #999; margin-top: 4px;">
+                  $${Number(p.amount || 0).toFixed(2)} ・ ${escapeHTML(p.payment_method || '---')} ・ ${escapeHTML(p.reference || '---')}
+                </div>
+                <div style="font-size: 0.55rem; font-weight: 700; color: #bbb; margin-top: 2px;">Enviado: ${createdAt}</div>
+              </div>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                ${p.proof_image ? `
+                  <button data-action="VIEW_PROOF" data-url="${escapeHTML(p.proof_image)}" data-resident="${escapeHTML(sub.resident_name || '')}"
+                    style="padding: 10px 16px; background: #1a1a2e; color: #F5C518; border: none; border-radius: 12px; font-weight: 900; font-size: 0.7rem; cursor: pointer;">
+                    📎 VER COMPROBANTE
+                  </button>
+                ` : ''}
+                <button data-action="APPROVE_PAYMENT" data-id="${p.id}" data-sub-id="${sub.id || ''}" data-amount="${p.amount || 0}"
+                  style="padding: 10px 16px; background: #22c55e; color: white; border: none; border-radius: 12px; font-weight: 900; font-size: 0.7rem; cursor: pointer;">
+                  ✓ APROBAR
+                </button>
+                <button data-action="REJECT_PAYMENT" data-id="${p.id}" data-sub-id="${sub.id || ''}"
+                  style="padding: 10px 16px; background: #e63946; color: white; border: none; border-radius: 12px; font-weight: 900; font-size: 0.7rem; cursor: pointer;">
+                  ✕ RECHAZAR
+                </button>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  ` : '';
 
   return `
   <div style="padding:20px; padding-bottom:120px; background:#f8f9fa;">
@@ -87,6 +175,9 @@ export const renderFinanceSummary = async (state) => {
           <div style="font-size:0.75rem; color:rgba(255,255,255,0.7); font-weight:700;">Tasa Activa</div>
        </div>
     </div>
+
+    <!-- SECCIÓN PAGOS PENDIENTES (POR CONFIRMAR) -->
+    ${pendingSection}
 
     <!-- TARJETA PRINCIPAL: BALANCE NETO REAL -->
     <div style="background:#1a1a2e; color:white; border-radius:30px; padding:25px; margin-bottom:20px; box-shadow:0 15px 35px rgba(26,26,46,0.15); border:1px solid rgba(255,255,255,0.08);">
@@ -258,6 +349,129 @@ export const renderFinanceSummary = async (state) => {
 // ─── ACTIONS INITIALIZER ─────────────────────────────────────
 export const initFinanceActions = (actions, container, refresh) => {
   Object.assign(actions, {
+    VIEW_PROOF: (btn) => {
+      const url = btn.dataset.url;
+      const resident = btn.dataset.resident;
+      const modal = document.getElementById('modal-layer');
+      if (!modal) return;
+      modal.style.pointerEvents = 'auto';
+      modal.innerHTML = `
+        <div style="position: fixed; inset: 0; background: rgba(0,0,0,0.9); backdrop-filter: blur(15px); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 20px;">
+          <div style="background: white; border-radius: 24px; width: 100%; max-width: 500px; padding: 24px; box-shadow: 0 25px 50px rgba(0,0,0,0.3);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+              <div style="font-size: 0.9rem; font-weight: 900; color: #1a1a2e;">📎 Comprobante — ${escapeHTML(resident || '')}</div>
+              <button data-action="CANCEL_MODAL" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #999;">×</button>
+            </div>
+            <img src="${escapeHTML(url)}" style="width: 100%; border-radius: 16px; border: 1px solid #eee;" onerror="this.style.display='none'; this.parentElement.innerHTML+='<div style=\\'text-align:center;padding:20px;color:#999;font-weight:700;\\'>No se pudo cargar la imagen</div>'">
+          </div>
+        </div>
+      `;
+    },
+
+    APPROVE_PAYMENT: async (btn) => {
+      const paymentId = btn.dataset.id;
+      const subId = btn.dataset.subId;
+      const amount = parseFloat(btn.dataset.amount) || 0;
+      btn.textContent = '...';
+      btn.disabled = true;
+
+      try {
+        // 1. Actualizar pago a CONFIRMED
+        const { error: payErr } = await supabase
+          .from('payments')
+          .update({ status: 'CONFIRMED', confirmed_at: new Date().toISOString() })
+          .eq('id', paymentId);
+
+        if (payErr) throw payErr;
+
+        // 2. Extender suscripción 30 días
+        const newExpiry = new Date();
+        newExpiry.setDate(newExpiry.getDate() + 30);
+        const { error: subErr } = await supabase
+          .from('subscriptions')
+          .update({
+            expiry_date: newExpiry.toISOString(),
+            status: 'ACTIVE',
+            last_payment_date: new Date().toISOString()
+          })
+          .eq('id', subId);
+
+        if (subErr) throw subErr;
+
+        // 3. Notificar al residente por WhatsApp
+        const { data: sub } = await supabase
+          .from('subscriptions')
+          .select('resident_name, phone, expiry_date')
+          .eq('id', subId)
+          .single();
+
+        if (sub?.phone) {
+          const cleanPhone = sub.phone.replace(/\D/g, '');
+          const targetPhone = cleanPhone.startsWith('58') ? cleanPhone : (cleanPhone.startsWith('0') ? '58' + cleanPhone.slice(1) : '58' + cleanPhone);
+          const expiryFormatted = new Date(newExpiry).toLocaleDateString('es-VE');
+          const msg = `¡Hola ${sub.resident_name}! 👋\n\nTu pago de $${amount.toFixed(2)} ha sido *APROBADO* ✅.\n\n📅 Nueva vigencia hasta: ${expiryFormatted}\n\n¡Gracias por confiar en Sloty! 🚗`;
+          window.open(`https://wa.me/${targetPhone}?text=${encodeURIComponent(msg)}`, '_blank');
+        }
+
+        showToast('Pago aprobado y suscripción actualizada', 'success');
+        logAudit('APPROVE_PAYMENT', { payment_id: paymentId, subscription_id: subId, amount });
+
+        // Recargar
+        await loadPendingPayments();
+        store.cachedFinance = null;
+        refresh();
+      } catch (err) {
+        console.error('Error aprobando pago:', err);
+        showToast('Error al aprobar el pago', 'error');
+        btn.textContent = '✓ APROBAR';
+        btn.disabled = false;
+      }
+    },
+
+    REJECT_PAYMENT: async (btn) => {
+      const paymentId = btn.dataset.id;
+      const subId = btn.dataset.subId;
+      if (!confirm('¿Rechazar este pago? El residente deberá enviar un nuevo comprobante.')) return;
+
+      btn.textContent = '...';
+      btn.disabled = true;
+
+      try {
+        const { error } = await supabase
+          .from('payments')
+          .update({ status: 'REJECTED', rejected_at: new Date().toISOString() })
+          .eq('id', paymentId);
+
+        if (error) throw error;
+
+        // Notificar rechazo
+        const { data: sub } = await supabase
+          .from('subscriptions')
+          .select('resident_name, phone')
+          .eq('id', subId)
+          .single();
+
+        if (sub?.phone) {
+          const cleanPhone = sub.phone.replace(/\D/g, '');
+          const targetPhone = cleanPhone.startsWith('58') ? cleanPhone : (cleanPhone.startsWith('0') ? '58' + cleanPhone.slice(1) : '58' + cleanPhone);
+          const msg = `Hola ${sub.resident_name},\n\nRevisamos tu comprobante de pago y *no pudimos verificarlo* ⚠️.\n\nPor favor, envía un nuevo comprobante claro con la referencia visible.\n\nEquipo Sloty 🚗`;
+          window.open(`https://wa.me/${targetPhone}?text=${encodeURIComponent(msg)}`, '_blank');
+        }
+
+        showToast('Pago rechazado', 'success');
+        logAudit('REJECT_PAYMENT', { payment_id: paymentId, subscription_id: subId });
+
+        await loadPendingPayments();
+        store.cachedFinance = null;
+        refresh();
+      } catch (err) {
+        console.error('Error rechazando pago:', err);
+        showToast('Error al rechazar el pago', 'error');
+        btn.textContent = '✕ RECHAZAR';
+        btn.disabled = false;
+      }
+    },
+
     BACK_TO_FINANCE: () => {
       store.pendingAction = null;
       store.cachedFinance = null; 

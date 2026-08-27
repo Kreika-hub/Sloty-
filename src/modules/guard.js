@@ -39,6 +39,31 @@ export const initGuard = (container, guardName = 'Guardia') => {
   let elContent = null
   let subSearchText = ''
 
+  // Helper para obtener tasa BCV en guardia con fallback
+  const getGuardBcvRate = async () => {
+    try {
+      const bcvData = await getExchangeRate();
+      if (bcvData?.rate) return Number(bcvData.rate);
+    } catch (e) {
+      console.warn('[Guard] BCV fetch failed, using fallback:', e);
+    }
+    return 40.0;
+  };
+
+  const loadMorosos = async (buildingId) => {
+    try {
+      const { data, error } = await supabase
+        .from('subscriptions')
+        .select('*')
+        .eq('building_id', buildingId)
+        .lt('expiry_date', new Date().toISOString())
+        .order('expiry_date', { ascending: true });
+      if (error) throw error;
+      cachedResidents = data || [];
+    } catch (err) {
+      console.warn('Error cargando morosos:', err);
+    }
+  };
 
   let shiftData = {
     startedAt: new Date().toISOString(),
@@ -384,67 +409,120 @@ export const initGuard = (container, guardName = 'Guardia') => {
     SET_SUB_METHOD: (btn) => {
       subPaymentMethod = btn.dataset.method; render()
     },
-    SUBMIT_SUB_PAYMENT: async () => {
-      const amount = parseFloat(document.getElementById('sub-pay-amount').value) || 0
+    SUBMIT_SUB_PAYMENT: async (btn) => {
+      const amount = parseFloat(btn?.dataset?.amount || document.getElementById('sub-pay-amount')?.value || 0)
+      const subId = btn?.dataset?.id || selectedResident?.id
+      const method = btn?.dataset?.method || subPaymentMethod || 'EFECTIVO_USD'
       const ref = document.getElementById('sub-pay-ref')?.value?.trim() || ''
       const bank = document.getElementById('sub-pay-bank')?.value || ''
       const date = document.getElementById('sub-pay-date')?.value || new Date().toISOString().split('T')[0]
-      const method = subPaymentMethod
 
-      if (['PAGO_MOVIL', 'TRANSFERENCIA', 'ZELLE', 'OTRO'].includes(method) && !ref) return showToast('Introduce la referencia o detalles del pago', 'error')
-
-      const evidence_b64 = window.subPaymentPhotoBase64 || null;
-
-      const { data: existing } = await supabase
-        .from('payments')
-        .select('id')
-        .eq('subscription_id', selectedResident.id)
-        .eq('status', 'PENDING')
-        .limit(1)
-      if (existing && existing.length > 0) {
-        showToast('Este residente ya tiene un pago pendiente de aprobación', 'error')
+      if (!amount || amount <= 0) {
+        showToast('Ingresa un monto válido', 'error')
         return
       }
 
-      // Registramos el pago como PENDIENTE para aprobación de admin
-      const rateVal = Number(_bcvCache?.rate || 40.0);
-      const amountUsd = Number(amount.toFixed(2));
-      const amountBs = Number((amountUsd * rateVal).toFixed(2));
+      if (['PAGO_MOVIL', 'TRANSFERENCIA', 'ZELLE', 'OTRO'].includes(method) && !ref) {
+        showToast('Introduce la referencia o detalles del pago', 'error')
+        return
+      }
 
-      await supabase.from('payments').insert({
-         building_id: state.buildingId || localStorage.getItem('sloty_building_id'),
-         subscription_id: selectedResident.id,
-         amount: amount,
-         amount_usd: amountUsd,
-         amount_bs: amountBs,
-         bcv_rate_used: rateVal,
-         method: method,
-         reference: ref,
-         status: 'PENDING',
-         payment_date: date,
-         bank: bank,
-         evidence_b64: evidence_b64
-      })
+      if (btn?.tagName) {
+        btn.textContent = 'Guardando...';
+        btn.disabled = true;
+      }
 
-      // IMPORTANTE: NO actualizamos expiry_date aquí.
-      window.subPaymentPhotoBase64 = null;
+      try {
+        const isCash = method === 'EFECTIVO' || method === 'EFECTIVO_USD' || method === 'EFECTIVO_BS';
+        const rateVal = await getGuardBcvRate();
+        const amountUsd = Number(amount.toFixed(2));
+        const amountBs = Number((amountUsd * rateVal).toFixed(2));
+        const evidence_b64 = window.subPaymentPhotoBase64 || null;
 
+        // 1. Insertar el pago
+        const { data: paymentData, error: payErr } = await supabase
+          .from('payments')
+          .insert({
+            building_id: state.buildingId || localStorage.getItem('sloty_building_id'),
+            subscription_id: subId,
+            amount: amount,
+            amount_usd: amountUsd,
+            amount_bs: amountBs,
+            bcv_rate_used: rateVal,
+            payment_method: method,
+            reference: ref,
+            bank: bank,
+            status: isCash ? 'CONFIRMED' : 'PENDING',
+            guard_name: guardName,
+            created_at: new Date().toISOString(),
+            confirmed_at: isCash ? new Date().toISOString() : null,
+            evidence_b64: evidence_b64
+          })
+          .select()
+          .single();
 
-      logMovement({
-         type: 'MENSUALIDAD',
-         plate: selectedResident.plate.split(',')[0],
-         slot: 'MENSUAL',
-         category: 'RESIDENTE',
-         guardName,
-         amount: amount,
-         payMethod: method,
-         reference: ref,
-         paymentStatus: 'PENDIENTE',
-         metadata: { bank, date }
-      })
+        if (payErr) throw payErr;
 
-      showToast('Pago registrado. Pendiente de aprobación por administración.', 'success')
-      currentView = 'MAP'; render()
+        // 2. Si es efectivo, actualizar suscripción INMEDIATAMENTE (+30 días)
+        if (isCash) {
+          const newExpiry = new Date();
+          newExpiry.setDate(newExpiry.getDate() + 30);
+          const { error: subErr } = await supabase
+            .from('subscriptions')
+            .update({
+              expiry_date: newExpiry.toISOString(),
+              status: 'ACTIVE',
+              last_payment_date: new Date().toISOString(),
+              last_payment_id: paymentData?.id || null
+            })
+            .eq('id', subId);
+
+          if (subErr) throw subErr;
+
+          showToast('✓ Pago registrado y suscripción actualizada', 'success');
+        } else {
+          showToast('⏳ Pago registrado. Esperando confirmación del administrador.', 'info');
+        }
+
+        window.subPaymentPhotoBase64 = null;
+
+        // 3. Log de movimiento y auditoría
+        logMovement({
+          type: 'MENSUALIDAD',
+          plate: selectedResident?.plate ? selectedResident.plate.split(',')[0] : 'DESCONOCIDO',
+          slot: 'MENSUAL',
+          category: 'RESIDENTE',
+          guardName,
+          amount: amount,
+          payMethod: method,
+          reference: ref,
+          paymentStatus: isCash ? 'CONFIRMADO' : 'PENDIENTE',
+          metadata: { bank, date }
+        });
+
+        logAudit('SUBMIT_SUB_PAYMENT', {
+          subscription_id: subId,
+          amount,
+          method,
+          payment_id: paymentData?.id || null
+        });
+
+        // 4. Recargar lista de morosos
+        const currentBldId = state.buildingId || localStorage.getItem('sloty_building_id');
+        if (currentBldId) {
+          await loadMorosos(currentBldId);
+        }
+
+        currentView = 'MAP';
+        render();
+      } catch (err) {
+        console.error('Error en cobro de mensualidad:', err);
+        showToast('Error al registrar el pago. Intenta de nuevo.', 'error');
+        if (btn?.tagName) {
+          btn.textContent = 'CONFIRMAR MENSUALIDAD';
+          btn.disabled = false;
+        }
+      }
     },
     SHOW_MANUAL_ENTRY: () => {
        state = getParkingState()
